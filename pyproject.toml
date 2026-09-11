@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xyzac-slicer"
+version = "0.1.0"
+description = "Slicer soustractif 5 axes pour centre d'usinage maker XYZAC"
+requires-python = ">=3.11"
+# Licence produit volontairement non déclarée : voir ADR-001 / D10 et ADR-002 (à venir).
+dependencies = [
+    "cadquery-ocp>=7.7",   # OCCT via bindings OCP. Wheels x86_64 + aarch64 (Pi 5).
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pydantic>=2.5",
+    "networkx>=3.0",
+]
+
+[project.optional-dependencies]
+viz = ["matplotlib>=3.8", "trimesh>=4.0"]
+dev = ["pytest>=7.4", "pytest-cov"]
+# Backends optionnels, jamais dans le paquet coeur (licences : voir docs/audit/).
+ocl = ["opencamlib"]        # LGPL-2.1
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: tests longs (corpus complet)",
+    "needs_occt: necessite OCCT/OCP",
+]

@@ -1,0 +1,476 @@
+[
+  {
+    "id": "C01",
+    "name": "bloc_simple",
+    "difficulty": "reference",
+    "expect": "import et volume exacts ; 6 faces planes",
+    "file": "C01_bloc_simple.step",
+    "volume_mm3": 48000.0,
+    "n_faces": 6,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 6
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      60.0,
+      40.0,
+      20.0
+    ]
+  },
+  {
+    "id": "C02",
+    "name": "poche_droite",
+    "difficulty": "poche fermee",
+    "expect": "parois verticales accessibles a A=0",
+    "file": "C02_poche_droite.step",
+    "volume_mm3": 72000.0,
+    "n_faces": 11,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 11
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      60.0,
+      60.0,
+      25.0
+    ]
+  },
+  {
+    "id": "C03",
+    "name": "poche_conique",
+    "difficulty": "normale variable",
+    "expect": "lead continu sur la face conique",
+    "file": "C03_poche_conique.step",
+    "volume_mm3": 76930.9746,
+    "n_faces": 8,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 7,
+      "cone": 1
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      60.0,
+      60.0,
+      25.0
+    ]
+  },
+  {
+    "id": "C04",
+    "name": "rainure_profonde",
+    "difficulty": "collision porte-outil",
+    "expect": "rejet COLLISION_HOLDER en vertical ; admissible en basculant",
+    "file": "C04_rainure_profonde.step",
+    "volume_mm3": 114800.0,
+    "n_faces": 10,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 10
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      70.0,
+      40.0,
+      45.0
+    ]
+  },
+  {
+    "id": "C05",
+    "name": "ailettes_rapprochees",
+    "difficulty": "acces bilateral contraint",
+    "expect": "cones d'accessibilite etroits, 2 composantes attendues",
+    "file": "C05_ailettes_rapprochees.step",
+    "volume_mm3": 65800.0,
+    "n_faces": 18,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 18
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      70.0,
+      50.0,
+      53.0
+    ]
+  },
+  {
+    "id": "C06",
+    "name": "contre_depouille",
+    "difficulty": "contre-depouille",
+    "expect": "aucune direction a A=0 ; exige |A| > 0",
+    "file": "C06_contre_depouille.step",
+    "volume_mm3": 52681.569,
+    "n_faces": 9,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 9
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      60.0,
+      50.0,
+      30.0
+    ]
+  },
+  {
+    "id": "C07",
+    "name": "gorge_en_T",
+    "difficulty": "contre-depouille double",
+    "expect": "inaccessible sans outil a col ; doit proposer le remede",
+    "file": "C07_gorge_en_T.step",
+    "volume_mm3": 82000.0,
+    "n_faces": 14,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 14
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      60.0,
+      50.0,
+      35.0
+    ]
+  },
+  {
+    "id": "C08",
+    "name": "trou_incline",
+    "difficulty": "indexation 3+2",
+    "expect": "un seul couple (A,C) couvre tout le trou",
+    "file": "C08_trou_incline.step",
+    "volume_mm3": 103887.456,
+    "n_faces": 8,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 7,
+      "cylinder": 1
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -4.8245
+    ],
+    "bbox_hi": [
+      60.0,
+      60.0,
+      36.9651
+    ]
+  },
+  {
+    "id": "C09",
+    "name": "trous_4_faces",
+    "difficulty": "multi-indexation",
+    "expect": "4 segments 3+2 distincts, aucun simultane",
+    "file": "C09_trous_4_faces.step",
+    "volume_mm3": 120287.611,
+    "n_faces": 14,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 10,
+      "cylinder": 4
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      50.0,
+      50.0,
+      50.0
+    ]
+  },
+  {
+    "id": "C10",
+    "name": "dome_convexe",
+    "difficulty": "5 axes simultane",
+    "expect": "intersection des admissibles vide -> simultane justifie",
+    "file": "C10_dome_convexe.step",
+    "volume_mm3": 66444.1272,
+    "n_faces": 8,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 6,
+      "sphere": 2
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -12.0
+    ],
+    "bbox_hi": [
+      60.0,
+      60.0,
+      32.0
+    ]
+  },
+  {
+    "id": "C11",
+    "name": "cavite_spherique",
+    "difficulty": "normales rentrantes",
+    "expect": "pas de gouge du corps d'outil sur la cavite",
+    "file": "C11_cavite_spherique.step",
+    "volume_mm3": 91244.8392,
+    "n_faces": 7,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 6,
+      "sphere": 1
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      60.0,
+      60.0,
+      30.0
+    ]
+  },
+  {
+    "id": "C12",
+    "name": "arbre_etage",
+    "difficulty": "revolution coaxiale C",
+    "expect": "detection de revolution ; candidat tournage",
+    "file": "C12_arbre_etage.step",
+    "volume_mm3": 38919.097,
+    "n_faces": 8,
+    "n_solids": 1,
+    "face_types": {
+      "cone": 1,
+      "plane": 4,
+      "cylinder": 3
+    },
+    "bbox_lo": [
+      -20.0,
+      -20.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      20.0,
+      20.0,
+      70.0
+    ]
+  },
+  {
+    "id": "C13",
+    "name": "arbre_gorge_torique",
+    "difficulty": "revolution + concave",
+    "expect": "revolution detectee malgre le tore",
+    "file": "C13_arbre_gorge_torique.step",
+    "volume_mm3": 57154.838,
+    "n_faces": 5,
+    "n_solids": 1,
+    "face_types": {
+      "cylinder": 2,
+      "torus": 1,
+      "plane": 2
+    },
+    "bbox_lo": [
+      -23.3099,
+      -23.3099,
+      -0.0
+    ],
+    "bbox_hi": [
+      23.3099,
+      23.3099,
+      60.0
+    ]
+  },
+  {
+    "id": "C14",
+    "name": "hybride_meplats",
+    "difficulty": "hybride tournage/fraisage",
+    "expect": "regions de revolution ET regions prismatiques separees",
+    "file": "C14_hybride_meplats.step",
+    "volume_mm3": 51011.8995,
+    "n_faces": 6,
+    "n_solids": 1,
+    "face_types": {
+      "cylinder": 2,
+      "plane": 4
+    },
+    "bbox_lo": [
+      -14.0,
+      -20.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      14.0,
+      20.0,
+      50.0
+    ]
+  },
+  {
+    "id": "C15",
+    "name": "revolution_hors_axe",
+    "difficulty": "faux positif tournage",
+    "expect": "revolution detectee mais REJETEE (axe non colineaire a C)",
+    "file": "C15_revolution_hors_axe.step",
+    "volume_mm3": 118785.8401,
+    "n_faces": 10,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 8,
+      "cylinder": 2
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      70.0,
+      40.0,
+      52.0
+    ]
+  },
+  {
+    "id": "C16",
+    "name": "paroi_mince",
+    "difficulty": "rigidite",
+    "expect": "l'orientation doit penaliser les grands porte-a-faux",
+    "file": "C16_paroi_mince.step",
+    "volume_mm3": 49000.0,
+    "n_faces": 11,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 11
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      60.0,
+      60.0,
+      40.0
+    ]
+  },
+  {
+    "id": "C17",
+    "name": "face_quasi_horizontale",
+    "difficulty": "singularite A->0",
+    "expect": "rejet SINGULARITY ou contournement ; pas de retournement C",
+    "file": "C17_face_quasi_horizontale.step",
+    "volume_mm3": 74990.5126,
+    "n_faces": 12,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 12
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      60.0,
+      60.0,
+      22.5229
+    ]
+  },
+  {
+    "id": "C18",
+    "name": "poche_fond_bombe",
+    "difficulty": "types de surface melanges",
+    "expect": "plan + cylindre + sphere sur la meme piece",
+    "file": "C18_poche_fond_bombe.step",
+    "volume_mm3": 79273.2768,
+    "n_faces": 8,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 6,
+      "cylinder": 1,
+      "sphere": 1
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      60.0,
+      60.0,
+      30.0
+    ]
+  },
+  {
+    "id": "C19",
+    "name": "deux_solides",
+    "difficulty": "topologie compound",
+    "expect": "import sans erreur ; 2 solides comptes",
+    "file": "C19_deux_solides.step",
+    "volume_mm3": 25000.0,
+    "n_faces": 12,
+    "n_solids": 2,
+    "face_types": {
+      "plane": 12
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      70.0,
+      25.0,
+      20.0
+    ]
+  },
+  {
+    "id": "C20",
+    "name": "micro_detail",
+    "difficulty": "tolerances",
+    "expect": "le percage D1.2 survit a la tessellation",
+    "file": "C20_micro_detail.step",
+    "volume_mm3": 71990.9522,
+    "n_faces": 8,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 7,
+      "cylinder": 1
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      60.0,
+      60.0,
+      20.0
+    ]
+  }
+]
