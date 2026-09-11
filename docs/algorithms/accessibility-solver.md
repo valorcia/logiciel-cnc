@@ -20,13 +20,17 @@ Six étages, du moins cher au plus cher. Chaque étage ne traite que ce que le
 précédent n'a pas tranché.
 
 ```
-E0  génération des candidats      642 directions (icosphère niveau 3, ~8,6°)
+E0  génération des candidats      642 directions (icosphère niv. 3) + germes analytiques
 E1  filtre géométrique local      face arrière + angle de lead maximal
 E2  filtre cinématique            butées A/C, singularité, 2 branches IK
 E3  encadrement à deux bornes     (désactivé par défaut — voir §5)
-E4  test exact outil complet      par tronçon, vectorisé NumPy
+E4  test exact outil complet      par tronçon, coquille radiale, vectorisé NumPy
+E4b garde machine                 berceau, plateau, carters + courses linéaires
 E5  structuration                 composantes connexes → cônes d'accessibilité
 ```
+
+> **M2** : E0 reçoit des germes analytiques, E4 une coquille radiale par tronçon,
+> et E4b est nouveau. Voir [ADR-002](../adr/ADR-002-jalon-M2.md).
 
 ### E0 — Génération des candidats
 
@@ -43,6 +47,27 @@ et grossière à l'équateur où elle est critique.
 
 Le niveau 3 est le défaut. Le raffinement fin est fait **localement** par
 l'orientation solver, pas globalement ici.
+
+#### Germes analytiques (M2)
+
+Une grille uniforme peut **manquer par construction** un ensemble admissible
+étroit. Le cas concret : sur une face usinée en bout à la fraise à bout droit,
+l'ensemble admissible est une lamelle de quelques degrés autour de la normale —
+incliner l'outil enfonce son talon. Un pas de 8,6° n'a aucune raison d'y placer
+un sommet.
+
+On ajoute donc la **normale exacte**, la direction lead/tilt souhaitée, et un
+éventail fin (±8°, 3 anneaux × 10) autour d'elles. Coût : ~31 candidats de plus
+sur ~640. Raffiner toute la sphère coûterait ×4 par niveau pour un problème
+purement local.
+
+Propriété garantie : les germes **ajoutent** des candidats, ils n'en retirent
+aucun.
+
+⚠️ Les germes ne sont pas des sommets de grille — ils sont rattachés au sommet
+le plus proche. L'intersection d'ensembles de la segmentation 3+2 devient donc
+une *heuristique de proposition*, et l'orientation qu'elle retient est
+**re-vérifiée exactement** en chaque point du segment.
 
 ### E1 — Filtre géométrique local
 
@@ -153,6 +178,25 @@ d'échantillonnage. La détection au centième exige des requêtes de distance
 exactes sur le B-Rep (`BRepExtrema`) et est reportée à M3. Ce qui **est** garanti
 ici : aucun organe non coupant ne pénètre la matière.
 
+### E4b — Garde machine (M2)
+
+Une orientation parfaitement dégagée côté pièce peut envoyer le nez de broche
+dans le berceau, ou l'outil sous le plateau. Ne pas le tester laisse passer
+précisément les collisions les plus coûteuses.
+
+**L'idée qui rend ce test bon marché** : dans le repère MACHINE, l'axe de
+l'outil vaut invariablement `+Z` — c'est la définition d'une broche à axe fixe.
+Inutile donc de transporter les organes machine dans le repère pièce pour chaque
+orientation ; on transporte le TCP vers le repère machine, où l'outil est
+toujours droit.
+
+Seuls bougent les volumes portés par le berceau (`Rx(A)`) et par le plateau
+(`Rx(A)·Rz(C)`). Les courses linéaires X/Y/Z sont vérifiées au même endroit.
+
+Deux motifs de rejet distincts, avec deux remèdes distincts :
+`MACHINE_COLLISION` (rapprocher la pièce du centre du plateau) et
+`MACHINE_TRAVEL` (repositionner la pièce).
+
 ### E5 — Structuration
 
 Les directions admissibles sont regroupées en **composantes connexes** sur le
@@ -204,8 +248,29 @@ candidates dont ~87 après E1) :
 |---|---|
 | boucle `check()` par direction | 98 ms/point |
 | `check_many` vectorisé, pré-filtre sphérique seul | 243 ms/point |
-| `check_many` + pré-filtre conique | **122 ms/point** |
+| `check_many` + pré-filtre conique | 122 ms/point |
+| **+ coquille radiale par tronçon (M2)** | **55 ms/point** |
 | bornes E3 activées | +55 %, **0 gain** |
+
+**Coquille radiale par tronçon (M2)** — la mesure M1 disait que le goulot était
+le nombre d'obstacles `N`, pas la structure de boucle. L'observation qui a
+débloqué : `|p − tcp|` ne dépend pas de la direction testée. Un point ne peut
+donc atteindre le tronçon `[z₀,z₁]×[r₀,r₁]` que si
+
+```
+z₀ − inf − spread  ≤  |p − tcp|  ≤  √((z₁+inf)² + (r_max+inf)²) + spread
+```
+
+Chaque tronçon ne voit qu'une coquille du nuage, calculée une fois pour toutes
+les orientations. L'arête de coupe (z ≤ 20 mm, r = 3 mm) ne voit plus qu'une
+petite boule là où elle balayait les mêmes milliers de points que le nez de
+broche. **×2,2 mesuré, résultats identiques.**
+
+**Index spatial adaptatif (M2)** — une grille de hachage uniforme, utilisée
+seulement quand la requête est sélective (`volume_sphère < 15 %` du volume de
+scène). Sur une pièce plus petite que la portée de l'outil : ×1,5 seulement, la
+sphère couvrant tout le nuage. Sur une pièce de 600 mm : **×48** (3,4 ms contre
+162 ms). Le critère est mesurable, pas doctrinal.
 
 **Constat honnête** : les deux chemins (boucle et vectorisé) sont à 10 % l'un de
 l'autre. Le goulot n'est pas la structure de boucle mais le **nombre
@@ -231,11 +296,16 @@ Plan d'optimisation, dans l'ordre, chacun conditionné à une mesure :
 
 ## Limites connues
 
-- Le brut est considéré **intact** (hypothèse la plus conservative). Le suivi de
-  matière enlevée arrive avec `stock_engine` M2 ; sans lui, l'ébauche
-  multi-passes n'est pas représentable.
-- Les volumes de collision **machine** (berceau, plateau) sont modélisés mais
-  pas encore intégrés au champ d'obstacles : à ce jalon on ne teste que
-  pièce/brut/bridages.
-- La détection de gouge fine de l'arête de coupe est reportée (voir E4).
-- Les bridages `custom_step` ne sont pas échantillonnés (boîtes seulement).
+- ~~Brut considéré intact~~ → **levé en M2** : `MaterialState` suit la matière
+  restante sur grille voxel. Trois modes : `intact` (conservatif), `finished`
+  (ébauche supposée faite — optimiste, réservé à l'étude d'une passe de
+  finition), ou état réel issu de la simulation des passes précédentes.
+- ~~Volumes machine non intégrés~~ → **levé en M2** (E4b).
+- ~~Bridages `custom_step` non échantillonnés~~ → **levé en M2**
+  (`Fixture.step_path`).
+- La détection de gouge fine reste un **sondage** : `verify_gouge_exact` est
+  exact sur les poses testées, mais son coût interdit de tout tester. Une gouge
+  détectée est certaine ; une absence de gouge sur l'échantillon ne prouve rien
+  entre les échantillons.
+- Performance **jamais mesurée sur Pi 5** : l'extrapolation ×3–5 reste une
+  extrapolation.

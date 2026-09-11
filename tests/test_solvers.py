@@ -11,14 +11,22 @@ from xyzac.accessibility_solver import (
 )
 from xyzac.collision_engine import ObstacleClass, ObstacleField
 from xyzac.orientation_solver import OrientationSolver, OrientationWeights
-from xyzac.tool_model import build_ballnose, build_endmill
+from xyzac.tool_model import build_ballnose, build_endmill  # noqa: F401
+
+
+#: Hauteur de la face d'essai au-dessus de l'origine piece.
+#: Le plateau C du modele machine occupe z in [-12, 0] : poser la face a z = 0
+#: la placerait EXACTEMENT sur le plateau, et le garde machine rejetterait
+#: toutes les orientations — a juste titre. On travaille donc a une hauteur de
+#: piece realiste.
+FACE_Z = 30.0
 
 
 @pytest.fixture
 def open_field():
-    """Un plan horizontal seul : le cas le plus permissif possible."""
+    """Un plan horizontal seul, au-dessus du plateau : cas le plus permissif."""
     g = np.stack(np.meshgrid(np.linspace(-40, 40, 40), np.linspace(-40, 40, 40)), -1)
-    pts = np.concatenate([g.reshape(-1, 2), np.zeros((1600, 1))], axis=1)
+    pts = np.concatenate([g.reshape(-1, 2), np.full((1600, 1), FACE_Z)], axis=1)
     return ObstacleField.build(pts, part_spacing=2.0, safety_clearance=0.2)
 
 
@@ -46,7 +54,7 @@ def test_tcp_offsets_by_radius_for_ballnose():
 def test_back_facing_directions_are_rejected(machine, tool, open_field):
     s = AccessibilitySolver(tool, machine, open_field,
                             AccessibilityConfig(subdivisions=2, max_lead_deg=45.0))
-    m = s.solve_point(np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.0, 1.0]))
+    m = s.solve_point(np.array([0.0, 0.0, FACE_Z]), np.array([0.0, 0.0, 1.0]))
     assert np.all(m.directions[m.feasible] @ np.array([0, 0, 1.0]) > 0)
 
 
@@ -54,7 +62,7 @@ def test_lead_limit_is_enforced(machine, tool, open_field):
     lead = 30.0
     s = AccessibilitySolver(tool, machine, open_field,
                             AccessibilityConfig(subdivisions=3, max_lead_deg=lead))
-    m = s.solve_point(np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.0, 1.0]))
+    m = s.solve_point(np.array([0.0, 0.0, FACE_Z]), np.array([0.0, 0.0, 1.0]))
     ang = np.degrees(np.arccos(np.clip(m.directions[m.feasible] @ np.array([0, 0, 1.0]), -1, 1)))
     assert ang.size == 0 or ang.max() <= lead + 1e-6
 
@@ -67,7 +75,7 @@ def test_rejection_always_carries_a_reason_and_a_remedy(machine, tool):
                      for z in np.linspace(-5, 90, 40)])
     f = ObstacleField.build(wall, part_spacing=2.0, safety_clearance=0.2)
     s = AccessibilitySolver(tool, machine, f, AccessibilityConfig(subdivisions=2))
-    m = s.solve_point(np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.0, 1.0]))
+    m = s.solve_point(np.array([0.0, 0.0, FACE_Z]), np.array([0.0, 0.0, 1.0]))
     assert not m.accessible, "une rainure de 18 mm ne laisse pas passer un ER16"
     dom = m.dominant_reason()
     assert dom is not None and dom is not RejectReason.OK
@@ -79,13 +87,13 @@ def test_singularity_is_rejected_when_configured(machine, tool, open_field):
     s = AccessibilitySolver(tool, machine, open_field,
                             AccessibilityConfig(subdivisions=3, max_lead_deg=5.0,
                                                 reject_singular=True))
-    m = s.solve_point(np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.0, 1.0]))
+    m = s.solve_point(np.array([0.0, 0.0, FACE_Z]), np.array([0.0, 0.0, 1.0]))
     assert np.all(np.abs(m.a_deg[m.feasible]) >= machine.singularity_a_deg - 1e-9)
 
 
 def test_accessibility_map_exposes_cones(machine, tool, open_field):
     s = AccessibilitySolver(tool, machine, open_field, AccessibilityConfig(subdivisions=3))
-    m = s.solve_point(np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.0, 1.0]))
+    m = s.solve_point(np.array([0.0, 0.0, FACE_Z]), np.array([0.0, 0.0, 1.0]))
     if m.accessible:
         cones = m.cones()
         assert cones and sum(len(c) for c in cones) == m.n_feasible
@@ -98,7 +106,7 @@ def test_two_sided_bounds_never_disagree_with_exact_test(machine, tool, open_fie
                             AccessibilityConfig(subdivisions=2, use_two_sided_bounds=True))
     b = AccessibilitySolver(tool, machine, open_field,
                             AccessibilityConfig(subdivisions=2, use_two_sided_bounds=False))
-    for p in ([0, 0, 0], [10, -5, 0], [-20, 15, 0]):
+    for p in ([0, 0, FACE_Z], [10, -5, FACE_Z], [-20, 15, FACE_Z]):
         ma = a.solve_point(np.array(p, float), np.array([0.0, 0.0, 1.0]))
         mb = b.solve_point(np.array(p, float), np.array([0.0, 0.0, 1.0]))
         assert np.array_equal(ma.feasible, mb.feasible)
@@ -123,7 +131,7 @@ def ballnose():
 def _maps(machine, tool, field_, n=12, normal=(0.0, 0.0, 1.0)):
     s = AccessibilitySolver(tool, machine, field_,
                             AccessibilityConfig(subdivisions=3, max_lead_deg=45.0))
-    pts = np.stack([np.linspace(-15, 15, n), np.zeros(n), np.zeros(n)], axis=1)
+    pts = np.stack([np.linspace(-15, 15, n), np.zeros(n), np.full(n, FACE_Z)], axis=1)
     return pts, [s.solve_point(p, np.array(normal)) for p in pts]
 
 
@@ -165,10 +173,161 @@ def test_plan_reports_inaccessible_points_instead_of_guessing(machine, ballnose)
     """Une trajectoire partiellement inaccessible n'est pas 'presque bonne' :
     le plan doit le dire et nommer les points."""
     box = np.array([[x, y, z] for x in np.linspace(-8, 8, 18)
-                    for y in np.linspace(-8, 8, 18) for z in (-2.0, 60.0)])
+                    for y in np.linspace(-8, 8, 18)
+                    for z in (FACE_Z - 2.0, FACE_Z + 60.0)])
     f = ObstacleField.build(box, part_spacing=1.5, safety_clearance=0.5)
     pts, amaps = _maps(machine, ballnose, f, n=6)
     plan = OrientationSolver(machine, ballnose).solve(amaps, path_points=pts)
     if not plan.feasible:
         assert plan.failures
         assert "INCOMPLET" in plan.summary()
+
+
+# ------------------------------------------------------------- jalon M2
+
+def test_seeds_can_only_enlarge_the_admissible_set(machine, tool):
+    """Propriete GARANTIE des germes : ils ajoutent des candidats, ils n'en
+    retirent aucun. L'ensemble admissible avec germes contient donc toujours
+    celui sans germes.
+
+    C'est ce que l'on peut affirmer sans condition. Le gain reel, lui, depend
+    de la geometrie — il est mesure par le test suivant.
+    """
+    g = np.stack(np.meshgrid(np.linspace(-30, 30, 30), np.linspace(10, 70, 30)), -1)
+    g = g.reshape(-1, 2)
+    pts = np.concatenate([np.zeros((len(g), 1)), g], axis=1)
+    f = ObstacleField.build(pts, part_spacing=2.0, safety_clearance=0.2)
+
+    def solve(seeds: bool, p, n):
+        cfg = AccessibilityConfig(subdivisions=3, max_lead_deg=45.0,
+                                  seed_directions=seeds, check_machine=False)
+        return AccessibilitySolver(tool, machine, f, cfg).solve_point(p, n)
+
+    for z in (25.0, 40.0, 55.0):
+        p, n = np.array([0.0, 0.0, z]), np.array([1.0, 0.0, 0.0])
+        assert solve(True, p, n).n_feasible >= solve(False, p, n).n_feasible
+
+
+def test_seeds_recover_directions_the_uniform_grid_misses(machine, tool):
+    """Sur une face usinee en bout a la fraise a bout DROIT, l'ensemble
+    admissible est une lamelle etroite autour de la normale : incliner l'outil
+    enfonce son talon dans la matiere.
+
+    Une grille icospherique de pas 8,6 deg n'a aucune raison d'avoir un sommet
+    dans cette lamelle. Les germes garantissent que la normale EXACTE et son
+    voisinage immediat sont toujours evalues — sans quoi la solution depend de
+    l'alignement fortuit entre la grille et la piece, ce qui est exactement ce
+    qu'un moteur deterministe ne doit pas tolerer.
+
+    Mesure sur ce cas : 1 direction admissible avec la grille seule, 2 avec les
+    germes, dont la normale exacte a 0,000 deg pres.
+    """
+    g = np.stack(np.meshgrid(np.linspace(-30, 30, 35), np.linspace(10, 70, 35)), -1)
+    g = g.reshape(-1, 2)
+    pts = np.concatenate([np.zeros((len(g), 1)), g], axis=1)
+    f = ObstacleField.build(pts, part_spacing=2.0, safety_clearance=0.2)
+    p, n = np.array([0.0, 0.0, 40.0]), np.array([1.0, 0.0, 0.0])
+
+    def solve(seeds: bool):
+        cfg = AccessibilityConfig(subdivisions=3, max_lead_deg=45.0,
+                                  seed_directions=seeds, check_machine=False)
+        return AccessibilitySolver(tool, machine, f, cfg).solve_point(p, n)
+
+    sans, avec = solve(False), solve(True)
+    assert avec.n_feasible > sans.n_feasible
+
+    # La normale exacte doit figurer parmi les candidats ET etre admissible.
+    dots = avec.directions @ n
+    k = int(np.argmax(dots))
+    assert np.degrees(np.arccos(np.clip(dots[k], -1, 1))) < 1e-6
+    assert avec.feasible[k], "la normale exacte a ete evaluee mais rejetee"
+
+
+def test_machine_guard_rejects_a_part_sitting_on_the_table(machine, ballnose):
+    """Une piece posee a l'origine du plateau y est encastree : le garde doit
+    le refuser, et c'est un defaut de MONTAGE, pas de solveur.
+
+    On emploie une hemispherique pour que le rejet vienne bien du PLATEAU : avec
+    une fraise a bout droit, les collisions piece domineraient et masqueraient
+    ce que ce test cherche a verifier.
+    """
+    g = np.stack(np.meshgrid(np.linspace(-30, 30, 30), np.linspace(-30, 30, 30)), -1)
+    pts = np.concatenate([g.reshape(-1, 2), np.zeros((900, 1))], axis=1)
+    f = ObstacleField.build(pts, part_spacing=2.0, safety_clearance=0.2)
+    s = AccessibilitySolver(ballnose, machine, f,
+                            AccessibilityConfig(subdivisions=2, check_machine=True))
+    m = s.solve_point(np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.0, 1.0]))
+    assert m.n_feasible == 0
+    assert m.dominant_reason() is RejectReason.MACHINE_COLLISION
+
+
+def test_indexed_segment_is_verified_exactly_not_just_proposed(machine, ballnose, open_field):
+    """L'intersection d'ensembles travaille sur des indices de grille, or les
+    germes n'en sont pas — ils sont rattaches au sommet le plus proche. La
+    segmentation 3+2 doit donc REVERIFIER l'orientation qu'elle propose.
+    """
+    pts, amaps = _maps(machine, ballnose, open_field)
+    calls = {"n": 0}
+
+    def verify(index, direction):
+        calls["n"] += 1
+        return True, 1.0
+
+    plan = OrientationSolver(machine, ballnose).solve(amaps, path_points=pts, verify=verify)
+    assert calls["n"] > 0, "l'orientation commune a ete acceptee sans verification"
+    assert any(s.mode == "3+2" for s in plan.segments)
+
+
+def test_indexed_segment_falls_back_when_verification_refuses(machine, ballnose, open_field):
+    """Si la verification refuse toutes les candidates, le segment doit basculer
+    en simultane — jamais etre indexe sur une orientation non verifiee."""
+    pts, amaps = _maps(machine, ballnose, open_field)
+    plan = OrientationSolver(machine, ballnose).solve(
+        amaps, path_points=pts, verify=lambda i, d: (False, -1.0))
+    assert all(s.mode == "simultane" for s in plan.segments)
+
+
+def test_refinement_respects_machine_limits(machine, ballnose, open_field):
+    """Mesure qui a impose ``make_pose_verifier`` : un raffinement qui ne
+    connait que la piece gagne de la marge en poussant un axe lineaire hors
+    course — meilleur sur le critere optimise, irrealisable sur la machine."""
+    from xyzac.kinematics_solver import KinematicsSolver
+
+    pts, amaps = _maps(machine, ballnose, open_field)
+    osolver = OrientationSolver(machine, ballnose)
+    plan = osolver.solve(amaps, path_points=pts)
+    if not plan.feasible:
+        pytest.skip("scene trop contrainte")
+
+    kin = KinematicsSolver(machine)
+    refined = osolver.refine(plan, amaps, lambda i, d: (True, 1.0),
+                             half_angle_deg=5.0, iterations=1)
+    for i in range(refined.n_points):
+        assert kin.ik_best(refined.directions[i]) is not None
+        assert machine.a.contains(refined.a_deg[i])
+
+
+def test_refinement_does_not_blow_up_rotary_travel(machine, ballnose, open_field):
+    """Le raffinement optimise la marge, mais pas au prix de n'importe quoi.
+
+    Mesure qui a impose le terme de course rotative dans son score : en ne
+    penalisant que l'ecart angulaire entre directions VOISINES, le raffinement
+    gagnait 0,26 mm de marge en faisant passer la course A+C de 86 a 145 deg.
+    Deux directions peuvent etre tres proches sur la sphere et demander des
+    couples (A, C) tres eloignes — c'est la difficulte propre a la cinematique
+    AC, et un proxy purement geometrique ne la voit pas.
+
+    On borne donc l'augmentation acceptable plutot que de la laisser libre.
+    """
+    pts, amaps = _maps(machine, ballnose, open_field)
+    osolver = OrientationSolver(machine, ballnose)
+    plan = osolver.solve(amaps, path_points=pts)
+    if not plan.feasible:
+        pytest.skip("scene trop contrainte")
+
+    refined = osolver.refine(plan, amaps, lambda i, d: (True, 2.0),
+                             half_angle_deg=5.0, iterations=1)
+    before = sum(plan.rotary_travel())
+    after = sum(refined.rotary_travel())
+    assert after <= before * 1.5 + 30.0, (
+        f"course rotative A+C passee de {before:.1f} a {after:.1f} deg")

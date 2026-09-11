@@ -16,16 +16,17 @@ logiciel-cnc/
 │   ├── testplan/plan-de-tests.md
 │   └── architecture.md
 ├── src/xyzac/
-│   ├── geometry_core/        types.py, brep.py, sphere.py
+│   ├── geometry_core/        types.py, brep.py, sphere.py, voxelize.py
 │   ├── machine_model/        machine.py, setup.py
 │   ├── tool_model/           assembly.py
-│   ├── stock_engine/         stock.py
+│   ├── stock_engine/         stock.py, material.py
 │   ├── feature_engine/       revolution.py
 │   ├── accessibility_solver/ solver.py            ← différenciateur (1/2)
 │   ├── orientation_solver/   solver.py            ← différenciateur (2/2)
-│   ├── collision_engine/     field.py, tool_collision.py
+│   ├── collision_engine/     field.py, tool_collision.py, spatial.py,
+│   │                         machine_guard.py, sweep.py, exact_gouge.py
 │   ├── kinematics_solver/    solver.py
-│   ├── simulation_engine/    scene.py
+│   ├── simulation_engine/    scene.py, validator.py
 │   ├── turning_engine/       interfaces.py
 │   ├── safety_state_machine/ machine.py
 │   ├── subtractive_slicer/   interfaces.py        ← stub M1
@@ -37,8 +38,8 @@ logiciel-cnc/
 │   ├── recipe_profiles/      interfaces.py        ← stub M1
 │   ├── assembly_calibration/ interfaces.py        ← stub M1
 │   └── ui/                   render.py
-├── tests/         conftest, 5 fichiers, corpus/ (20 STEP + manifeste)
-├── tools/         make_corpus.py, demo_vertical_slice.py
+├── tests/         conftest, 7 fichiers, corpus/ (20 STEP + manifeste)
+├── tools/         make_corpus.py, demo_vertical_slice.py, demo_m2_pipeline.py
 └── out/           rendus PNG (non versionnés)
 ```
 
@@ -107,13 +108,46 @@ Setup(machine, part_step_path, stock, fixtures, tools, work_offset)
 ```python
 ObstacleField.build(part_points, part_spacing, finish_allowance,
                     stock_points, fixture_points, safety_clearance) -> ObstacleField
+  .subset_near(center, radius)            # index spatial adaptatif
+  .subset_capsule(p0, p1, radius)         # requête du balayage
 ToolCollisionChecker(tool)
   .check(tcp, axis, obstacles, cutting_depth, cutting_allowance) -> CollisionReport
   .check_many(tcps, axes, obstacles, ...) -> (feasible, margin, blocking)
+
+MachineGuard(machine, tool)
+  .check_pose(tcp_machine, a_deg, c_deg) -> MachineCheck
+  .check_many(tcps_machine, ac) -> np.ndarray[bool]
+
+SweepChecker(machine, tool, max_step_mm)
+  .displacement_bound(tcp0, axis0, tcp1, axis1) -> float   # majorant STRICT
+  .check_segment(...) -> SweepReport
+  .check_path(tcps, axes, a_seq, c_seq, obstacles) -> list[SweepReport]
+
+verify_gouge_exact(part_shape, tool, tcp, axis, ...) -> GougeResult   # B-Rep exact
 ```
 
 `check_many` accepte **un TCP par orientation** — obligatoire dès qu'il y a un
 rayon de bec.
+
+### stock_engine / simulation_engine (M2)
+
+```python
+MaterialState.from_setup(stock, part_verts, part_tris, pitch) -> MaterialState
+  .remove_tool_sweep(tcps, axes, tool) -> int      # voxels enlevés
+  .count_gouged_voxels(tcps, axes, tool) -> int    # matière protégée touchée
+  .carve_to_finished() -> int
+  .boundary_points() -> (points, inflation)
+
+TrajectoryValidator(setup, obstacles, tool, ...)
+  .validate(plan, contacts, normals) -> ValidationReport   # V1..V4
+make_pose_verifier(setup, obstacles, tool, contacts, normals, ...) -> verify
+run_simulation_gate(validator, plan, contacts, normals, safety) -> ValidationReport
+```
+
+`make_pose_verifier` est le **point unique** de construction de la fonction
+`verify(index, direction)`, partagée par la segmentation 3+2 et le raffinement.
+Elle vérifie la pièce **et** la machine — une version qui n'en vérifiait qu'une
+a produit un plan hors course.
 
 ### accessibility_solver / orientation_solver
 
@@ -153,11 +187,14 @@ Les portes ne peuvent pas être sautées : le graphe de transitions les refuse.
 
 | Module | État |
 |---|---|
-| geometry_core, machine_model, tool_model, stock_engine | **implémenté** |
-| collision_engine, kinematics_solver | **implémenté** |
+| geometry_core (+ voxelisation), machine_model, tool_model | **implémenté** |
+| stock_engine (+ suivi de matière voxel) | **implémenté** |
+| collision_engine (poses, balayage, machine, gouge exacte, index) | **implémenté** |
+| kinematics_solver | **implémenté** |
 | accessibility_solver, orientation_solver | **implémenté (prototype R&D)** |
-| feature_engine (révolution), simulation_engine (scène), ui (rendu) | **implémenté** |
+| simulation_engine (scène + validateur 4 points) | **implémenté** |
+| feature_engine (révolution), ui (rendu) | **implémenté** |
 | safety_state_machine | **implémenté** |
 | turning_engine | détection implémentée, génération **non** |
 | subtractive_slicer, strategy_planner, vision, probing, recipes, calibration | **interfaces seules** |
-| postprocessor_linuxcnc, linuxcnc_gateway | **verrouillés** (ADR-001 §6) |
+| postprocessor_linuxcnc, linuxcnc_gateway | **verrouillés** (ADR-001 §6, motif mis à jour en M2) |

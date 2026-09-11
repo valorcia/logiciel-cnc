@@ -238,6 +238,7 @@ class OrientationSolver:
         amaps: list[AccessibilityMap],
         path_points: np.ndarray | None = None,
         feed_dirs: np.ndarray | None = None,
+        verify=None,
     ) -> OrientationPlan:
         """Sequence A/C optimale sur l'ensemble discretise (Viterbi)."""
         P = len(amaps)
@@ -303,7 +304,7 @@ class OrientationSolver:
 
         plan = OrientationPlan(directions=dirs, a_deg=a, c_deg=c, margin=mg,
                                total_cost=total, feasible=True)
-        plan.segments = self.segment_3plus2(amaps, plan)
+        plan.segments = self.segment_3plus2(amaps, plan, verify=verify)
         return plan
 
     def _step_lengths(self, amaps, path_points) -> np.ndarray:
@@ -333,7 +334,7 @@ class OrientationSolver:
 
     def segment_3plus2(
         self, amaps: list[AccessibilityMap], plan: OrientationPlan,
-        min_run: int = 3,
+        min_run: int = 3, verify=None,
     ) -> list[OrientationSegment]:
         """Decoupe la trajectoire en segments indexes et simultanes.
 
@@ -345,6 +346,18 @@ class OrientationSolver:
         Le simultane n'est donc jamais un choix : c'est ce qui reste quand la
         geometrie interdit toute orientation commune. Et le point de bascule est
         affichable, donc explicable a l'utilisateur.
+
+        ``verify(index, direction) -> (ok, marge)`` : verification EXACTE de
+        l'orientation commune proposee, en chaque point du segment.
+
+        Elle n'est pas optionnelle par confort. L'intersection travaille sur des
+        indices de grille, or les directions « germes » ajoutees par
+        l'accessibility solver ne sont pas des sommets de grille : elles sont
+        rattachees au sommet le plus proche. L'intersection est donc une
+        HEURISTIQUE DE PROPOSITION, exacte sur les sommets de grille et
+        approchee sur les germes. Sans verification, un segment pourrait etre
+        declare indexable sur une orientation qui ne degage pas partout — le
+        seul type d'erreur que ce projet ne peut pas se permettre.
         """
         P = len(amaps)
         segments: list[OrientationSegment] = []
@@ -372,14 +385,41 @@ class OrientationSolver:
                         math.degrees(math.acos(np.clip(amaps[i].grid.directions[t][2], -1, 1)))
                     ) for t in cand_idx
                 ])
-                best = cand_idx[int(np.argmax(scores))]
-                d = amaps[i].grid.directions[best]
-                sol = self.kin.ik_best(d)
-                if sol is not None:
+                accepted = None
+                # On essaie les meilleures candidates dans l'ordre : la premiere
+                # qui passe la verification exacte l'emporte. Se limiter a la
+                # meilleure ferait basculer tout le segment en simultane des que
+                # celle-ci echoue, alors qu'une voisine convient souvent.
+                for best in cand_idx[np.argsort(-scores)][:8]:
+                    d = amaps[i].grid.directions[best]
+                    sol = self.kin.ik_best(d)
+                    if sol is None:
+                        continue
+                    if verify is not None:
+                        margins = []
+                        for t_idx in range(i, j + 1):
+                            ok, mg = verify(t_idx, d)
+                            if not ok:
+                                margins = None
+                                break
+                            margins.append(mg)
+                        if margins is None:
+                            continue
+                        worst = float(min(margins))
+                    else:
+                        worst = float(margin_acc[best])
+                    accepted = (sol, worst, run)
+                    break
+
+                if accepted is not None:
+                    sol, worst, run_n = accepted
                     segments.append(OrientationSegment(
                         i, j, "3+2", a_deg=sol.a_deg, c_deg=sol.c_deg,
-                        reason=f"orientation commune a {run} points "
-                               f"(marge min {margin_acc[best]:.2f} mm)"))
+                        reason=f"orientation commune a {run_n} points "
+                               f"(marge min verifiee {worst:.2f} mm)"
+                               if verify is not None else
+                               f"orientation commune a {run_n} points "
+                               f"(marge min {worst:.2f} mm)"))
                     i = j + 1
                     continue
 
@@ -417,6 +457,7 @@ class OrientationSolver:
         P = plan.n_points
         dirs = plan.directions.copy()
         margins = plan.margin.copy()
+        a_cur, c_cur = plan.a_deg.copy(), plan.c_deg.copy()
 
         for _ in range(iterations):
             for i in range(P):
@@ -430,6 +471,7 @@ class OrientationSolver:
                 )
                 cands = local_refine(dirs[i], half_angle_deg, n_rings=3, n_per_ring=8)
                 best, best_score = dirs[i], -np.inf
+                best_ac = (a_cur[i], c_cur[i])
                 for d in cands:
                     ok, mg = collision_check(i, d)
                     if not ok:
@@ -437,12 +479,38 @@ class OrientationSolver:
                     a_sol = self.kin.ik_best(d)
                     if a_sol is None:
                         continue
+
+                    # Course rotative REELLE, et non lissage de direction.
+                    #
+                    # Mesure qui a impose ce terme : en ne penalisant que l'ecart
+                    # angulaire entre directions voisines, le raffinement gagnait
+                    # 0,26 mm de marge en faisant passer la course A+C de 86 a
+                    # 145 deg. Deux directions peuvent etre tres proches sur la
+                    # sphere et demander des couples (A, C) tres eloignes — c'est
+                    # toute la difficulte de la cinematique AC, et un proxy
+                    # geometrique ne la voit pas.
+                    rot = 0.0
+                    if i > 0:
+                        rot += abs(a_sol.a_deg - a_cur[i - 1]) + abs(
+                            math.degrees(unwrap_towards(math.radians(a_sol.c_deg),
+                                                        math.radians(c_cur[i - 1])))
+                            - c_cur[i - 1])
+                    if i < P - 1:
+                        rot += abs(a_cur[i + 1] - a_sol.a_deg) + abs(
+                            math.degrees(unwrap_towards(math.radians(c_cur[i + 1]),
+                                                        math.radians(a_sol.c_deg)))
+                            - a_sol.c_deg)
+
                     score = (min(mg, self.w.clearance_saturation)
                              - 40.0 * (1.0 - float(d @ target))
-                             - self.w.singularity * self.kin.singularity_severity(a_sol.a_deg))
+                             - self.w.singularity * self.kin.singularity_severity(a_sol.a_deg)
+                             - self.w.rotary_travel * rot)
                     if score > best_score:
-                        best, best_score, margins[i] = d, score, mg
+                        best, best_score = d, score
+                        best_ac = (a_sol.a_deg, a_sol.c_deg)
+                        margins[i] = mg
                 dirs[i] = best
+                a_cur[i], c_cur[i] = best_ac
 
         a = np.empty(P); c = np.empty(P)
         for i in range(P):

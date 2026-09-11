@@ -119,15 +119,63 @@ détectée.
 | `geometric_change_invalidates` (5 mutations) | origine, surépaisseur, bridage, jauge, pivot |
 | **`no_module_besides_gateway_imports_a_machine_transport`** | **vérifié sur le source**, pas seulement documenté |
 
-## 4. État actuel
+## 4. Suites ajoutées au jalon M2
+
+### `test_m2_spatial_material.py` — index, voxelisation, matière
+
+| Test | Ce qu'il protège |
+|---|---|
+| `grid_query_matches_brute_force` (4 rayons) | l'index ne change **jamais** l'ensemble retourné, seulement le coût |
+| `grid_capsule_matches_brute_force` | idem pour la requête du balayage |
+| `obstacle_field_subset_identical_with_and_without_index` | le choix de stratégie est une optimisation, pas une sémantique |
+| `voxel_volume_is_exact_on_a_box` | une dérive ici = erreur de parité du lancer de rayons |
+| `voxel_volume_converges_on_curved_solids` (3 cas) | l'écart reste de l'ordre de la discrétisation (< 3 % à 0,8 mm) |
+| `voxelization_handles_two_disjoint_solids` | le vide entre deux solides n'est pas rempli |
+| **`part_is_protected_and_never_removed`** | **masquer une gouge en la retirant du suivi serait le pire comportement** |
+| `carve_to_finished_leaves_only_the_protected_part` | |
+| `boundary_points_are_conservative` | le rayon couvre le demi-diagonal du voxel |
+
+### `test_m2_validation.py` — garde machine, balayage, validation, gouge exacte
+
+| Test | Ce qu'il protège |
+|---|---|
+| `machine_volumes_move_with_the_cradle` | traiter le berceau comme statique rendrait le garde aveugle |
+| `guard_detects_collision_with_the_cradle` / `..._linear_travel_violation` | deux causes, deux remèdes |
+| `guard_check_many_matches_check_pose` | test différentiel du chemin groupé |
+| `sweep_bound_grows_with_rotation` | 30° de rotation > 60 mm de déplacement |
+| **`sweep_catches_what_both_endpoints_miss`** | **LE test du jalon** : deux poses saines, un chemin qui ne l'est pas |
+| `sweep_interpolates_axes_not_directions` | le contrôleur interpole les axes ; c'est son mouvement qui fait foi |
+| `sweep_unwraps_c_across_the_seam` | sinon on balaie un tour de plateau qui n'existe pas |
+| `validator_runs_all_four_checks` | poses, cinématique, machine, balayage |
+| `validator_reports_every_defect_not_just_the_first` | éviter la boucle corriger-relancer |
+| `singularity_is_a_warning_not_an_error` | elle dégrade, elle ne casse pas |
+| **`simulation_gate_cannot_be_passed_without_validating`** | **l'état « simulé » exige une validation réelle** |
+| **`exact_verifier_detects_a_five_hundredth_gouge`** | **0,05 mm — ce que le nuage à 2 mm ne peut pas voir** |
+| `exact_verifier_accepts_tangential_contact` | en fraisage la coupe est tangente par construction |
+| `sparse_verification_is_documented_as_a_sample` | un sondage n'est pas une preuve |
+
+### Ajouts à `test_solvers.py`
+
+- `seeds_can_only_enlarge_the_admissible_set` — propriété garantie ;
+- `seeds_recover_directions_the_uniform_grid_misses` — la normale exacte est
+  toujours évaluée, la solution ne dépend pas d'un alignement fortuit ;
+- `machine_guard_rejects_a_part_sitting_on_the_table` ;
+- **`indexed_segment_is_verified_exactly_not_just_proposed`** ;
+- `indexed_segment_falls_back_when_verification_refuses` — jamais indexé sur
+  une orientation non vérifiée ;
+- `refinement_respects_machine_limits` ;
+- `refinement_does_not_blow_up_rotary_travel` — borne l'augmentation de course
+  A+C, après avoir mesuré un +59° pour +0,26 mm de marge.
+
+## 5. État actuel
 
 ```
 $ python -m pytest tests/ -q
-108 passed
+151 passed
 ```
 
-Deux bugs réels ont été trouvés **par ces tests** pendant le développement du
-jalon, ce qui est leur meilleure justification :
+Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
+ce qui est leur meilleure justification. Les trois premiers datent de M1 :
 
 1. **Triangles dégénérés** (C11) : OCCT produit des triangles d'aire nulle sur
    les surfaces sphériques. Leur normale, normalisée par 1,0, devenait un
@@ -146,19 +194,40 @@ talon déclaré en gouge dès qu'on l'inclinait — c'est-à-dire dans tous les 
 l'on se sert d'une hémisphérique. Le bec est désormais modélisé par 8 troncs de
 cône (écart au cercle exact ≈ 0,015 mm pour un bec de 3 mm).
 
-## 5. Ce qui n'est PAS testé, et doit l'être
+Deux autres au jalon M2 :
 
-| Manque | Jalon |
+4. **Raffinement hors course.** Le vérificateur de pose ne connaissait que la
+   pièce. Le raffinement a gagné 0,24 mm de marge en poussant l'axe Z à 60,1 mm
+   pour une course s'arrêtant à 60,0 : meilleur sur le critère optimisé,
+   irréalisable sur la machine. D'où `make_pose_verifier`, qui vérifie les deux.
+5. **Segmentation 3+2 non vérifiée.** Les germes analytiques n'étant pas des
+   sommets de grille, l'intersection d'ensembles est devenue une heuristique.
+   Un segment pouvait donc être déclaré indexable sur une orientation ne
+   dégageant pas partout. Corrigé par une vérification exacte en chaque point.
+6. **Raffinement optimisant un proxy.** Son score ne pénalisait que l'écart
+   entre directions voisines : +0,26 mm de marge obtenus en portant la course
+   A+C de 86 à 145°. Deux directions proches sur la sphère peuvent demander des
+   couples (A, C) très éloignés. Le score porte désormais sur la course réelle.
+
+Les défauts 4 et 6 relèvent de la même erreur — **optimiser un proxy au lieu du
+critère réel** — ce qui en fait un point de vigilance permanent plutôt qu'un
+incident isolé.
+
+## 6. Ce qui n'est PAS testé, et doit l'être
+
+| Manque | État |
 |---|---|
-| Collision sur le **balayage** entre deux points (on teste les positions, pas les transitions) | M2 — **bloquant pour toute validation de trajectoire** |
-| Volumes de collision machine (berceau, plateau) dans le champ d'obstacles | M2 |
-| Détection de gouge fine de l'arête (requêtes exactes B-Rep) | M3 |
-| Suivi de matière enlevée (le brut est traité comme intact) | M2 |
-| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M2 |
-| Import de STEP réels (mal cousus, tolérances hétérogènes, unités en pouces) | M2 |
-| Tout ce qui touche une machine réelle | après M3 |
+| ~~Collision sur le balayage~~ | **levé M2** |
+| ~~Volumes machine~~ | **levé M2** |
+| ~~Suivi de matière enlevée~~ | **levé M2** |
+| Gouge fine sur **toute** la passe (aujourd'hui : sondage épars) | M3 |
+| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M3 |
+| Import de STEP réels (mal cousus, tolérances hétérogènes, unités en pouces) | M3 |
+| Gamme complète (`strategy_planner`, `subtractive_slicer`) | M3 |
+| Poids d'orientation calibrés | exige une machine |
+| Tout ce qui touche une machine réelle | après qualification |
 
-## 6. Précision — ce que les tests ne disent pas
+## 7. Précision — ce que les tests ne disent pas
 
 Aucun test de ce dépôt ne dit quoi que ce soit de la précision d'une pièce
 usinée. Ils portent sur la **justesse numérique** du moteur.

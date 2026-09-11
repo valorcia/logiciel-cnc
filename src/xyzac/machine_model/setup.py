@@ -47,9 +47,21 @@ class Fixture(BaseModel):
     keepout_mm: float = Field(3.0, ge=0.0)
 
     def surface_samples(self, spacing: float = 2.0) -> tuple[np.ndarray, np.ndarray]:
+        """Peau du bridage : boite analytique, ou STEP si un fichier est fourni.
+
+        Un bridage reel (equerre, montage imprime, mors doux usines) n'est pas
+        une boite. Le forcer a en etre une surestime son encombrement et fait
+        rejeter des orientations valides — ou pire, le sous-estime si on ajuste
+        la boite « au plus juste » a la main.
+        """
+        if self.step_path:
+            from ..geometry_core import brep
+
+            s = brep.sample_surface(brep.load_step(self.step_path), spacing=spacing)
+            return s.points, s.normals
         if self.lo is None or self.hi is None:
-            raise NotImplementedError(
-                f"bridage '{self.name}': echantillonnage STEP non implemente a ce jalon"
+            raise ValueError(
+                f"bridage '{self.name}': ni boite (lo/hi) ni step_path fourni"
             )
         from ..stock_engine.stock import _box_samples
 
@@ -81,7 +93,14 @@ class Setup(BaseModel):
     tools: list[ToolAssembly] = Field(default_factory=list)
     work_offset: WorkOffset = Field(default_factory=WorkOffset)
 
-    #: Transformation piece -> plateau C. Identite = piece posee a l'origine du plateau.
+    #: Position de l'origine PIECE dans le repere du plateau C.
+    #:
+    #: Laisser (0, 0, 0) pose la piece a l'origine exacte du plateau, c'est-a-dire
+    #: ENCASTREE dans lui : le plateau occupe z < 0 et la piece demarrerait a sa
+    #: surface. Une piece reelle repose sur des cales, une equerre ou un plateau
+    #: martyr, donc plus haut. Ne pas renseigner ce champ fait rejeter des
+    #: orientations parfaitement saines, l'outil etant declare en collision avec
+    #: un plateau qu'il n'approche pas.
     part_to_table_mm: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
 
     notes: str = ""
@@ -124,6 +143,15 @@ class Setup(BaseModel):
         blob = json.dumps(self.fingerprint(), sort_keys=True, separators=(",", ":"),
                           default=str).encode()
         return hashlib.sha256(blob).hexdigest()
+
+    def part_to_table(self, p_part: np.ndarray) -> np.ndarray:
+        """Transporte un point du repere PIECE vers le repere du plateau C."""
+        return np.asarray(p_part, dtype=np.float64) + np.asarray(self.part_to_table_mm,
+                                                                 dtype=np.float64)
+
+    @property
+    def mount_offset(self) -> np.ndarray:
+        return np.asarray(self.part_to_table_mm, dtype=np.float64)
 
     def tool(self, tool_id: str) -> ToolAssembly:
         for t in self.tools:

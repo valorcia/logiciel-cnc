@@ -21,6 +21,7 @@ from enum import IntEnum
 import numpy as np
 
 from ..tool_model.assembly import SegmentRole
+from .spatial import UniformGrid
 
 
 class ObstacleClass(IntEnum):
@@ -104,12 +105,59 @@ class ObstacleField:
 
         return ObstacleField(np.vstack(pts), np.concatenate(cls), np.concatenate(inf))
 
-    def subset_near(self, center: np.ndarray, radius: float) -> "ObstacleField":
-        """Restreint le champ a une sphere. Pre-filtre O(N) avant le test fin.
+    #: En deca de cette fraction du volume de la scene, la requete est assez
+    #: selective pour que l'index spatial soit rentable. Au-dela, la sphere
+    #: couvre presque tout le nuage et le balayage direct est plus rapide que
+    #: la visite des cellules. Mesure a l'appui : sur une piece plus petite que
+    #: la portee de l'outil, l'index ne gagne rien (x1,5 au mieux) ; il devient
+    #: decisif des que la piece est grande devant l'outil.
+    INDEX_VOLUME_FRACTION = 0.15
 
-        Sans cela, chaque orientation testee balaierait tout le nuage ; avec, on
-        ne garde que ce que l'outil peut physiquement atteindre depuis ce point.
+    def _grid(self, cell_size: float) -> UniformGrid:
+        cached = getattr(self, "_grid_cache", None)
+        if cached is not None and abs(cached.cell_size - cell_size) < 1e-9:
+            return cached
+        g = UniformGrid(self.points, cell_size)
+        object.__setattr__(self, "_grid_cache", g)
+        return g
+
+    def _scene_volume(self) -> float:
+        cached = getattr(self, "_vol_cache", None)
+        if cached is None:
+            span = self.points.max(axis=0) - self.points.min(axis=0) if len(self) else np.zeros(3)
+            cached = float(np.prod(np.maximum(span, 1e-6)))
+            object.__setattr__(self, "_vol_cache", cached)
+        return cached
+
+    def subset_near(self, center: np.ndarray, radius: float) -> "ObstacleField":
+        """Restreint le champ a une sphere.
+
+        Deux strategies, choisies sur un critere mesurable plutot que par
+        principe : index spatial quand la requete est selective, balayage
+        direct sinon. Dans les deux cas le filtrage par distance est EXACT —
+        l'index ne fait que reduire l'ensemble candidat, jamais l'ensemble
+        retourne, sans quoi la garantie conservative en amont tomberait.
         """
+        if len(self) == 0:
+            return self
+
+        sphere_vol = 4.18879 * radius ** 3
+        if sphere_vol < self.INDEX_VOLUME_FRACTION * self._scene_volume():
+            idx = self._grid(max(radius, 1e-3)).query_ball(center, radius)
+            return ObstacleField(self.points[idx], self.classes[idx], self.inflation[idx])
+
         d2 = np.sum((self.points - np.asarray(center)) ** 2, axis=1)
         m = d2 <= radius * radius
         return ObstacleField(self.points[m], self.classes[m], self.inflation[m])
+
+    def subset_capsule(self, p0: np.ndarray, p1: np.ndarray, radius: float) -> "ObstacleField":
+        """Restreint le champ au voisinage d'un SEGMENT.
+
+        Requete du test de balayage : entre deux poses, l'outil parcourt un
+        volume allonge. Une sphere englobant ce volume retournerait presque tout
+        le nuage des que le deplacement depasse quelques millimetres.
+        """
+        if len(self) == 0:
+            return self
+        idx = self._grid(max(radius, 1e-3)).query_capsule(p0, p1, radius)
+        return ObstacleField(self.points[idx], self.classes[idx], self.inflation[idx])

@@ -311,25 +311,49 @@ class ToolCollisionChecker:
         margin = np.full((M,), np.inf)
         blocking = np.full((M,), -1, np.int8)
 
-        for si, (role, z0, z1, r0, r1) in enumerate(self._segs):
-            d = signed_clearance_to_segment(r_all, z_all, z0, z1, r0, r1) - inf  # (N,M)
+        # Bande radiale PAR TRONCON, independante de l'orientation.
+        #
+        # Le gain vient d'une observation simple : ``|p - tcp|`` ne depend pas de
+        # la direction testee (a ``spread`` pres, l'ecart entre les TCP). Or un
+        # point ne peut etre a portee du troncon [z0, z1] x [r0, r1] que si
+        #
+        #     z0 - inf - spread  <=  |p - tcp|  <=  sqrt((z1+inf)^2 + (rmax+inf)^2) + spread
+        #
+        # puisque |p - tcp|^2 = z^2 + r^2. Chaque troncon ne voit donc qu'une
+        # COQUILLE du nuage, calculee une seule fois pour toutes les orientations.
+        #
+        # L'effet est tres inegal selon le troncon, et c'est tout l'interet :
+        # l'arete de coupe (z <= 20 mm, r = 3 mm) ne voit qu'une petite boule,
+        # alors que sans cette bande elle balayait les memes milliers de points
+        # que le nez de broche.
+        dist_mean = np.linalg.norm(pts - center, axis=1)  # (N,), calcule une fois
 
-            mask = np.zeros((len(sub), 1), dtype=bool)
+        for si, (role, z0, z1, r0, r1) in enumerate(self._segs):
+            forbidden = np.zeros(len(sub), dtype=bool)
             for oc in ObstacleClass:
                 if not PENETRATION_ALLOWED[(role, oc)]:
-                    mask |= (sub.classes == int(oc))[:, None]
-            if not mask.any():
+                    forbidden |= sub.classes == int(oc)
+            if not forbidden.any():
                 continue
 
-            if role is SegmentRole.CUTTING and cutting_allowance > 0.0:
-                part_rows_all = (sub.classes == int(ObstacleClass.PART))[:, None]
-                d = np.where(part_rows_all, d + cutting_allowance, d)
-            dm = np.where(mask, d, np.inf)
-            if role is SegmentRole.CUTTING and cutting_depth > 0:
-                part_rows = (sub.classes == int(ObstacleClass.PART))[:, None]
-                dm = np.where(part_rows & (z_all <= cutting_depth), np.inf, dm)
+            rmax = max(r0, r1)
+            d_hi = float(np.hypot(z1 + inf_max, rmax + inf_max) + spread)
+            d_lo = float(max(0.0, z0 - inf_max - spread))
+            rows = np.flatnonzero(forbidden & (dist_mean <= d_hi) & (dist_mean >= d_lo))
+            if rows.size == 0:
+                continue
 
-            seg_min = dm.min(axis=0)                       # (M,)
+            zs, rs = z_all[rows], r_all[rows]
+            d = signed_clearance_to_segment(rs, zs, z0, z1, r0, r1) - inf[rows]
+
+            if role is SegmentRole.CUTTING:
+                part_rows = (sub.classes[rows] == int(ObstacleClass.PART))[:, None]
+                if cutting_allowance > 0.0:
+                    d = np.where(part_rows, d + cutting_allowance, d)
+                if cutting_depth > 0:
+                    d = np.where(part_rows & (zs <= cutting_depth), np.inf, d)
+
+            seg_min = d.min(axis=0)                        # (M,)
             improved = seg_min < margin
             blocking = np.where(improved, si, blocking).astype(np.int8)
             margin = np.minimum(margin, seg_min)

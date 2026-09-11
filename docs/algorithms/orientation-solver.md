@@ -141,16 +141,69 @@ Le cas du dôme est celui qui valide la règle : l'intersection des ensembles
 admissibles **se vide**, et le moteur bascule en simultané sans qu'on le lui ait
 demandé.
 
-## 9. Limites connues
+## 9. Vérification exacte de l'orientation indexée (M2)
 
-- Le raffinement continu n'est pas encore appelé par le prototype : il demande
-  un `collision_check` fourni par l'appelant, câblé en M2.
+Les **germes analytiques** ajoutés en M2 à l'accessibility solver ne sont pas
+des sommets de grille : ils sont rattachés au sommet le plus proche. Or
+l'intersection d'ensembles du §6 travaille sur des indices de grille.
+
+Elle est donc devenue une **heuristique de proposition** — exacte sur les
+sommets de grille, approchée sur les germes. Sans garde-fou, un segment pourrait
+être déclaré indexable sur une orientation qui ne dégage pas partout : le seul
+type d'erreur que ce projet ne peut pas se permettre.
+
+`segment_3plus2` accepte donc un `verify(index, direction) -> (ok, marge)` et
+**re-teste l'orientation proposée en chaque point du segment**. Les 8 meilleures
+candidates sont essayées dans l'ordre : se limiter à la meilleure ferait
+basculer tout le segment en simultané dès qu'elle échoue, alors qu'une voisine
+convient souvent. Si aucune ne passe, le segment devient simultané — jamais
+indexé sur une orientation non vérifiée.
+
+## 10. Raffinement : la vérification doit connaître la MACHINE (M2)
+
+Le raffinement est désormais câblé. La première version de son vérificateur ne
+testait que la pièce, et la mesure a été instructive : libre d'optimiser le
+dégagement sans contrainte machine, le raffinement a gagné 0,24 mm de marge en
+poussant l'axe Z à **60,1 mm pour une course qui s'arrête à 60,0**. Un plan
+meilleur sur le critère optimisé, et irréalisable.
+
+`make_pose_verifier` (module `simulation_engine`) est donc le point unique de
+construction de cette fonction, partagé par la segmentation 3+2 et le
+raffinement. Elle vérifie les deux : ce que l'outil rencontre, et ce que la
+machine peut atteindre.
+
+### Le score du raffinement doit porter sur la course RÉELLE des axes
+
+Deuxième mesure instructive, même famille d'erreur : le score ne pénalisait que
+l'écart angulaire entre directions voisines — un proxy géométrique du lissage.
+Résultat : +0,26 mm de marge gagnés en faisant passer la course A+C de **86 à
+145°**.
+
+Deux directions peuvent être très proches sur la sphère et demander des couples
+(A, C) très éloignés. C'est la difficulté propre à la cinématique AC, et aucun
+critère purement géométrique ne la voit. Le score porte donc désormais sur
+`|ΔA| + |ΔC|` calculé par cinématique inverse, avec `C` déroulé.
+
+Effet mesuré sur C02 face #2, hémisphérique :
+
+| | marge min | course A+C |
+|---|---|---|
+| plan DP | 0,369 mm | 85,7° |
+| raffiné, score géométrique seul | 0,624 mm | **144,7°** |
+| raffiné, score avec course réelle | 0,542 mm | **94,9°** |
+
+Le compromis est maintenant explicite et piloté par `OrientationWeights.rotary_travel`.
+
+## 11. Limites connues
+
+- ~~Raffinement non câblé~~ → **levé en M2**.
+- ~~Pas de collision sur le balayage~~ → **levé en M2** : voir
+  `collision_engine/sweep.py` et la verification V4 du `TrajectoryValidator`.
 - Les poids par défaut n'ont **pas** été calibrés sur machine réelle. Ce sont
-  des points de départ raisonnés, pas des valeurs qualifiées.
-- Pas encore de vérification de collision sur le mouvement **entre** deux points
-  (balayage) : on vérifie les positions, pas les transitions. Prérequis du
-  `simulation_engine` M2. **Tant que ce n'est pas fait, aucune trajectoire ne
-  peut être considérée comme validée**, et c'est l'une des raisons du verrou
-  ADR-001 §6.
+  des points de départ raisonnés, pas des valeurs qualifiées. Cette limite
+  **exige une machine** et ne peut pas être levée par le calcul.
 - Pas de gestion des mouvements de dégagement entre cônes d'accessibilité
-  disjoints.
+  disjoints : quand l'orientation doit sauter d'un cône à l'autre, le solveur
+  paie le coût de transition mais ne planifie pas de retrait.
+- La DP optimise sur l'ensemble discret des candidats retenus (K = 24) ;
+  l'élagage par coût intrinsèque est une heuristique, pas une garantie.

@@ -8,8 +8,12 @@ Ce n'est **pas** un CAM généraliste : l'utilisateur ne programme pas
 d'opérations. Ce n'est **pas** un portage d'OrcaSlicer : l'inspiration est
 l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 
-> **État : jalon M1 (prototype R&D).** Aucun G-code n'est généré, aucune
-> connexion machine n'est possible. Voir [ADR-001 §6](docs/adr/ADR-001-architecture-fondatrice.md).
+> **État : jalon M2.** Les quatre portes de sécurité existent et **vérifient
+> réellement** quelque chose. Aucun G-code n'est généré et aucune connexion
+> machine n'est possible : le verrou tient, mais son motif a changé — ce n'est
+> plus la chaîne de sécurité qui manque, c'est une machine calibrée.
+> Voir [ADR-001 §6](docs/adr/ADR-001-architecture-fondatrice.md) et
+> [ADR-002](docs/adr/ADR-002-jalon-M2.md).
 
 ---
 
@@ -36,10 +40,20 @@ remède (« le porte-outil touche → allonge la jauge »).
 pip install -e ".[viz,dev]"
 
 python tools/make_corpus.py                  # 20 géométries STEP synthétiques
-python tools/demo_vertical_slice.py C08      # STEP → accessibilité → orientation → PNG
-python tools/demo_vertical_slice.py C10 --ballnose --face 6   # cas 5 axes simultané
-python -m pytest tests/ -q                   # 108 tests
+python -m pytest tests/ -q                   # 151 tests
+
+# M1 — accessibilité + orientation + visualisation
+python tools/demo_vertical_slice.py C08
+python tools/demo_vertical_slice.py C10 --ballnose --face 6   # 5 axes simultané
+
+# M2 — pipeline complet jusqu'aux portes de sécurité
+python tools/demo_m2_pipeline.py C02 --face 2 --ballnose --material finished
+python tools/demo_m2_pipeline.py C08 --material intact        # comparaison
 ```
+
+Le pipeline M2 enchaîne : scène → accessibilité → orientation (+ vérification
+3+2 et raffinement) → **validation 4 points** → portes de sécurité → refus de
+générer du G-code.
 
 Le prototype produit quatre images dans `out/` :
 
@@ -59,11 +73,32 @@ Le prototype produit quatre images dans `out/` :
 | [ADR-001](docs/adr/ADR-001-architecture-fondatrice.md) | décisions fondatrices, alternatives écartées, risques |
 | [Audit dépendances & licences](docs/audit/dependencies-licenses.md) | ce qui est réutilisable, et ce qui ne l'est pas |
 | [Architecture](docs/architecture.md) | arborescence, règles de dépendance, interfaces |
+| [ADR-002](docs/adr/ADR-002-jalon-M2.md) | jalon M2 : ce qui a levé les limites de M1, et ce qui reste |
 | [Accessibility Solver](docs/algorithms/accessibility-solver.md) | algorithme, garantie conservative, performance mesurée |
 | [Orientation Solver](docs/algorithms/orientation-solver.md) | Viterbi, segmentation 3+2, raffinement |
 | [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 108 tests, ce qui n'est pas testé |
 
 ---
+
+## Ce que valide le moteur
+
+Quatre vérifications, toutes exécutées, toutes nécessaires :
+
+| | Vérification | Ce qu'elle attrape |
+|---|---|---|
+| V1 | **poses** | l'outil complet dégage en chaque point de contact |
+| V2 | **cinématique** | butées A/C, singularité, variation rotative excessive |
+| V3 | **machine** | berceau, plateau, carters + courses linéaires X/Y/Z |
+| V4 | **balayage** | le mouvement **continu** entre poses successives |
+
+V4 est celle qui change tout : V1–V3 portent sur des instants, V4 sur le trajet.
+Deux poses saines reliées par un chemin qui ne l'est pas est le mode de
+collision le plus courant en 5 axes — et sur le cas du dôme C10, la marge de
+balayage mesurée (−2,97 mm) est bien pire que celle des poses (−0,26 mm).
+
+La subdivision se fait sur une **borne prouvée** du déplacement
+(`|Δp| ≤ |Δtcp| + reach·Δangle`), pas sur un nombre d'échantillons arbitraire :
+une translation de 10 mm demande 20 poses, une rotation de 30° en demande 129.
 
 ## Sécurité — non négociable
 
@@ -99,6 +134,11 @@ renvoie « Précision NON QUALIFIÉE » tant que la mesure n'a pas eu lieu.
 Python 3.11+ · **OCCT 8.0.1** via `cadquery-ocp` (wheels x86_64 **et aarch64**,
 donc `pip install` sur Raspberry Pi 5) · NumPy/SciPy · pydantic · matplotlib
 (rendu hors-ligne).
+
+Performance mesurée (x86_64) : **55 ms/point** d'accessibilité sur une scène de
+13 500 obstacles et 642 directions candidates — ×2,2 depuis M1. Sur une pièce
+grande devant l'outil, l'index spatial donne ×48. **Jamais mesuré sur Pi 5** :
+l'extrapolation ×3–5 reste une extrapolation.
 
 Aucune dépendance AGPL dans le paquet distribué — voir
 [l'audit](docs/audit/dependencies-licenses.md).

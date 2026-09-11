@@ -34,12 +34,13 @@ from enum import IntEnum
 import numpy as np
 
 from ..collision_engine.field import ObstacleClass, ObstacleField
+from ..collision_engine.machine_guard import MachineGuard
 from ..collision_engine.tool_collision import ToolCollisionChecker, signed_clearance_to_segment
-from ..geometry_core.sphere import SphereGrid, icosphere
+from ..geometry_core.sphere import SphereGrid, icosphere, local_refine
 from ..geometry_core.types import normalize
 from ..kinematics_solver.solver import KinematicsSolver
 from ..machine_model.machine import MachineKinematics
-from ..tool_model.assembly import SegmentRole, ToolAssembly
+from ..tool_model.assembly import SegmentRole, ToolAssembly, tilt_axis_from_lead_tilt
 
 
 class RejectReason(IntEnum):
@@ -59,6 +60,8 @@ class RejectReason(IntEnum):
     COLLISION_SHANK = 7    # la tige touche -> allonger la jauge
     COLLISION_HOLDER = 8   # le porte-outil touche -> jauge ou porte-outil plus fin
     COLLISION_SPINDLE = 9  # le nez de broche touche -> jauge nettement plus longue
+    MACHINE_COLLISION = 10  # l'outil touche le berceau, le plateau ou un carter
+    MACHINE_TRAVEL = 11     # la pose sort des courses lineaires X/Y/Z
 
 
 _ROLE_TO_REASON = {
@@ -81,6 +84,10 @@ REMEDY = {
     RejectReason.COLLISION_SHANK: "augmenter la longueur hors pince (jauge)",
     RejectReason.COLLISION_HOLDER: "porte-outil plus elance, ou jauge plus longue",
     RejectReason.COLLISION_SPINDLE: "jauge nettement plus longue, ou accessibilite impossible",
+    RejectReason.MACHINE_COLLISION: "rapprocher la piece du centre du plateau, ou reduire "
+                                    "l'inclinaison : l'outil touche un organe machine",
+    RejectReason.MACHINE_TRAVEL: "repositionner la piece sur le plateau : la pose sort "
+                                 "des courses lineaires",
 }
 
 
@@ -204,6 +211,31 @@ class AccessibilityConfig:
     use_two_sided_bounds: bool = False
     reject_singular: bool = True
 
+    #: Ajout de directions « germes » motivees analytiquement, en plus de la
+    #: grille uniforme.
+    #:
+    #: Mesure qui a impose ce mecanisme : sur une face plane usinee a la fraise
+    #: a bout DROIT, l'ensemble admissible est une lamelle de quelques degres
+    #: autour de la normale — incliner l'outil enfonce son talon dans le plan.
+    #: Une grille icospherique de pas 8,6 deg passe donc a cote, non par manque
+    #: de finesse mais par construction : aucun de ses sommets ne tombe dans la
+    #: lamelle. Raffiner la grille entiere coûterait 4x par niveau pour resoudre
+    #: un probleme purement local.
+    #:
+    #: On ajoute donc la normale exacte, la direction lead/tilt souhaitee, et un
+    #: eventail fin autour d'elles.
+    seed_directions: bool = True
+    seed_half_angle_deg: float = 8.0
+    seed_rings: int = 3
+    seed_per_ring: int = 10
+    seed_lead_deg: float = 0.0
+    seed_tilt_deg: float = 0.0
+
+    #: Verification des organes machine (berceau, plateau, carters) et des
+    #: courses lineaires. Sans elle, une orientation degagee cote piece peut
+    #: quand meme envoyer le nez de broche dans le berceau.
+    check_machine: bool = True
+
     #: Tolerance de penetration de l'arete de coupe dans la piece (mm).
     #: ``None`` = deduite de l'inflation du champ d'obstacles, ce qui rend le
     #: fraisage de flanc possible sans faux positif. Voir ToolCollisionChecker
@@ -220,12 +252,23 @@ class AccessibilitySolver:
         machine: MachineKinematics,
         obstacles: ObstacleField,
         config: AccessibilityConfig | None = None,
+        *,
+        work_offset_mm: np.ndarray | None = None,
+        mount_offset_mm: np.ndarray | None = None,
     ):
         self.tool = tool
         self.machine = machine
         self.obstacles = obstacles
         self.cfg = config or AccessibilityConfig()
         self.checker = ToolCollisionChecker(tool)
+        self.work_offset = (np.zeros(3) if work_offset_mm is None
+                            else np.asarray(work_offset_mm, dtype=np.float64))
+        #: Position de l'origine piece sur le plateau. Sans elle, la piece est
+        #: consideree encastree dans le plateau et le garde machine rejette tout.
+        self.mount_offset = (np.zeros(3) if mount_offset_mm is None
+                             else np.asarray(mount_offset_mm, dtype=np.float64))
+        self.guard = (MachineGuard(machine, tool)
+                      if (self.cfg.check_machine and machine.collision_volumes) else None)
         self.kin = KinematicsSolver(machine)
         self.grid = icosphere(self.cfg.subdivisions)
 
@@ -339,6 +382,28 @@ class AccessibilitySolver:
 
     # -- pipeline complet -------------------------------------------------
 
+    def _seed_directions(self, normal: np.ndarray) -> np.ndarray:
+        """Directions germes autour de la normale et du lead/tilt souhaite."""
+        cfg = self.cfg
+        seeds = [normalize(normal)]
+        if cfg.seed_lead_deg or cfg.seed_tilt_deg:
+            # Direction d'avance inconnue a ce stade : on prend une tangente
+            # arbitraire. Le germe sert a entrer dans la bonne region, pas a
+            # fixer l'orientation finale — l'orientation solver, lui, connait
+            # l'avance et raffinera.
+            from ..geometry_core.types import orthonormal_basis
+            u, _, _ = orthonormal_basis(normal)
+            seeds.append(tilt_axis_from_lead_tilt(normal, u, cfg.seed_lead_deg,
+                                                  cfg.seed_tilt_deg))
+        fan = [local_refine(d, cfg.seed_half_angle_deg, cfg.seed_rings, cfg.seed_per_ring)
+               for d in seeds]
+        out = np.vstack(fan)
+        # Deduplication angulaire grossiere : des germes trop proches ne font
+        # que gonfler le test exact sans elargir l'exploration.
+        key = np.round(out / 0.02).astype(np.int64)
+        _, keep = np.unique(key, axis=0, return_index=True)
+        return out[np.sort(keep)]
+
     def solve_point(self, contact: np.ndarray, normal: np.ndarray) -> AccessibilityMap:
         """Champ d'accessibilite complet en un point de contact."""
         contact = np.asarray(contact, dtype=np.float64)
@@ -347,12 +412,25 @@ class AccessibilitySolver:
 
         keep_geo, reason_geo = self._geometric_filter(normal)
         idx = np.flatnonzero(keep_geo)
-        counts["E1_apres_geometrie"] = len(idx)
+        dirs = self.grid.directions[idx]
 
+        if self.cfg.seed_directions:
+            seeds = self._seed_directions(normal)
+            cos_lead = float(np.cos(np.radians(self.cfg.max_lead_deg)))
+            seeds = seeds[(seeds @ normal) >= min(cos_lead, 1.0 - 1e-12)]
+            if len(seeds):
+                # Chaque germe est rattache au sommet de grille le plus proche.
+                # Cet indice ne sert QU'A la detection 3+2, qui cherche une
+                # orientation commune a plusieurs points ; l'orientation
+                # proposee y est de toute facon reverifiee exactement.
+                nearest = np.argmax(seeds @ self.grid.directions.T, axis=1)
+                dirs = np.vstack([dirs, seeds])
+                idx = np.concatenate([idx, nearest])
+                counts["E0_germes"] = int(len(seeds))
+
+        counts["E1_apres_geometrie"] = len(idx)
         if len(idx) == 0:
             return self._empty_map(contact, normal, reason_geo, counts)
-
-        dirs = self.grid.directions[idx]
         keep_kin, reason_kin, a_deg, c_deg = self._kinematic_filter(dirs)
         counts["E2_apres_cinematique"] = int(keep_kin.sum())
 
@@ -390,6 +468,32 @@ class AccessibilitySolver:
                 si = int(block_v[k])
                 reason[live[k]] = (_ROLE_TO_REASON[self.tool.segments[si].role]
                                    if si >= 0 else RejectReason.COLLISION_CUTTING)
+
+            # E4b — organes machine et courses lineaires.
+            #
+            # Teste dans le repere MACHINE, ou l'axe outil vaut toujours +Z. On
+            # n'evalue que les orientations ayant survecu au test piece : une
+            # orientation deja rejetee n'a pas besoin d'une seconde raison.
+            if self.guard is not None:
+                still = np.flatnonzero(feasible[live])
+                if still.size:
+                    tcps_m = np.array([
+                        self.kin.part_to_machine_point(
+                            tcps[k] + self.mount_offset, a_deg[live[k]], c_deg[live[k]])
+                        + self.work_offset for k in still])
+                    ac = np.stack([a_deg[live[still]], c_deg[live[still]]], axis=1)
+                    ok_m = self.guard.check_many(tcps_m, ac)
+                    counts["E4b_rejets_machine"] = int((~ok_m).sum())
+                    for k, okk in zip(still, ok_m):
+                        if okk:
+                            continue
+                        j = live[k]
+                        feasible[j] = False
+                        chk = self.guard.check_pose(tcps_m[list(still).index(k)],
+                                                    float(a_deg[j]), float(c_deg[j]))
+                        reason[j] = (RejectReason.MACHINE_TRAVEL
+                                     if not chk.axis_limits_ok
+                                     else RejectReason.MACHINE_COLLISION)
 
         reason[feasible] = RejectReason.OK
         counts["E5_admissibles"] = int(feasible.sum())

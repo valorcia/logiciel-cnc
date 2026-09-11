@@ -75,10 +75,15 @@ def test_postprocessor_refuses_without_approval(setup):
 
 
 def test_postprocessor_is_not_implemented_even_when_approved(setup):
-    """Jalon M1 : meme approuve, aucun G-code ne sort. ADR-001 §6."""
+    """Meme approuve, aucun G-code ne sort. ADR-001 §6.
+
+    Le motif du verrou a change entre M1 et M2 — les portes existent
+    desormais — mais le verrou lui-meme tient. Le test porte donc sur le
+    comportement (rien ne sort), pas sur le libelle du message.
+    """
     from xyzac.postprocessor_linuxcnc import post_process
     h = setup.setup_hash()
-    with pytest.raises(NotImplementedError, match="M1"):
+    with pytest.raises(NotImplementedError, match="non implemente"):
         post_process(plan=None, safety=_approved(h), current_setup_hash=h)
 
 
