@@ -355,11 +355,31 @@ depuis sa source et mis devant la configuration. Voir
 | `angular_velocity_is_declared_because_a_rotary_axis_exists` | `Missing required specifier (has angular joint or axis)` |
 | `no_default_is_left_to_be_chosen_in_silence` | `[EMCIO]CYCLE_TIME` manquait et LinuxCNC choisissait 0,1 s en le disant dans son journal |
 
+## 11 bis. Suite ajoutée après le recoupement des cinématiques
+
+### `test_m10_kinematics_agreement.py`
+
+La correspondance de broches n'y est **pas recopiée** : elle est lue dans le
+HAL que `build_config` produit. Une copie testerait la copie — c'est exactement
+ainsi qu'un `[JOINT_5]` écrit à la main a survécu à un `JOINT_AXIS` disant 4.
+
+| Test | Ce qu'il protège |
+|---|---|
+| **`the_two_kinematics_agree_through_the_generated_hal`** | **le recoupement central : 7,1·10⁻¹⁵ mm. La correspondance d'avant correction donnait 10,286 mm — un centimètre sur la pièce** |
+| `agreement_holds_for_any_pivot_configuration` (4 cas) | l'accord ne doit pas dépendre d'un jeu de pivots particulier |
+| **`the_comparison_actually_sees_each_pin`** (4 broches) | **perturber chaque broche de 1 mm doit rompre l'accord. Un test d'accord aveugle passerait quoi qu'on fasse : avec des pivots nuls, toute correspondance, juste ou fausse, donne le même résultat** |
+| `a_dead_pin_cannot_carry_the_calibration` | poser `x-offset` ne doit **rien** changer — et c'est précisément pourquoi la calibration ne doit pas y passer |
+
+L'étage qui compare à la fonction **compilée** vit dans
+`tools/verify_kinematics_linuxcnc.py` : il exige un arbre source LinuxCNC, donc
+il n'a pas sa place dans la suite. Son résultat est consigné dans
+[la note de validation](../validation-linuxcnc.md).
+
 ## 11. État actuel
 
 ```
 $ python -m pytest tests/ -q
-355 passed
+365 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -581,6 +601,30 @@ d'indisponibilité.** `apt` ne trouvait pas le paquet et le dépôt répondait 4
 — les deux constats étaient exacts, la conclusion « inaccessible » ne l'était
 pas. Le second canal coûtait quelques minutes à essayer.
 
+**Deux de plus, en recoupant les cinématiques :**
+
+39. **La configuration ne se met pas en marche.** `STATE_ON` laisse
+    `motion.motion-enabled = FALSE` alors que la boucle d'arrêt d'urgence
+    fonctionne. La configuration de référence de LinuxCNC passe en marche dans
+    le même environnement, ce qui attribue le défaut. **OUVERT.** Il souligne
+    aussi la faiblesse de l'affirmation précédente : j'avais validé le
+    *démarrage* et écrit « la configuration démarre », ce qui était vrai, mais
+    laissait entendre plus. **Démarrer n'est pas fonctionner.**
+40. **Un commentaire posé sur les valeurs qu'il prétend absentes** :
+    « prise d'origine NON renseignée » écrit juste sous `HOME` et
+    `HOME_SEQUENCE`. Cinquième de cette famille.
+
+Et deux défauts de mes propres bancs d'épreuve, qui enseignent autant :
+`linuxcnc.stat()` rendait `joints=5, task_state=1` **instantanément**, pour une
+instance non démarrée, en lisant un segment de mémoire partagée figé par une
+instance tuée ; corriger cela a révélé le symétrique, un tampon créé vide par
+le client trop tôt. **Les deux fautes se couvraient mutuellement** — d'où la
+nécessité de corriger une cause à la fois et de remesurer entre chaque. Enfin,
+un garde-fou cherchant `milltask` dans les lignes de commande s'est déclenché
+sur **sa propre invocation** : même faute que chercher un import par `grep` au
+lieu de l'AST, et elle a aussi fait échouer un test de M9 quand un commentaire
+s'est mis à nommer la clé dont il expliquait l'absence.
+
 ## 13. Ce qui n'est PAS testé, et doit l'être
 
 | Manque | État |
@@ -608,7 +652,8 @@ pas. Le second canal coûtait quelques minutes à essayer.
 | Poids d'orientation calibrés | exige une machine |
 | Les cinq étapes de calibration matérielles | exigent la machine, dont la pièce d'épreuve |
 | ~~Configuration LinuxCNC jamais chargée par LinuxCNC~~ | **levée** : 2.9 compilée depuis la source, configuration chargée, elle démarre. Cinq défauts trouvés ([note](../validation-linuxcnc.md)) |
-| **Accord numérique des deux cinématiques** | le démarrage ne dit rien de l'endroit où LinuxCNC place réellement la pointe d'outil. Travail suivant |
+| ~~Accord numérique des deux cinématiques~~ | **levé** : 7,1·10⁻¹⁵ mm contre la fonction compilée de LinuxCNC, sur 56 poses et 5 jeux de pivots |
+| **Mise en marche de la configuration** | **défaut n° 39, OUVERT** : `STATE_ON` laisse `motion-enabled = FALSE` là où la configuration de référence de LinuxCNC passe en marche dans le même environnement. Une configuration qu'on ne peut pas mettre en marche est inutilisable |
 | Signe des offsets de pivot dans le HAL | seul `AXIS_DIRECTION` sur la machine physique l'établit |
 | Lancement de cycle | **par décision**, pas par manque : `start_cycle` lève, et un test le maintient |
 | Tout ce qui touche une machine réelle | après qualification |

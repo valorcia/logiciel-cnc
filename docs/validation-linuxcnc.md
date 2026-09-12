@@ -180,3 +180,103 @@ personne ne le chargeait.
 
 Et, sur la méthode : un échec d'installation n'est pas un verdict
 d'indisponibilité. Le second canal coûtait quelques minutes à essayer.
+
+---
+
+# Partie II — Le recoupement chiffré des deux cinématiques
+
+Démarrer ne dit rien de l'endroit où LinuxCNC place la pointe d'outil. Un
+mauvais offset de pivot démarre parfaitement et usine faux : c'est tout le
+sujet de la décision D80. Il faut donc comparer des **nombres**.
+
+## 6. Résultat
+
+`tools/verify_kinematics_linuxcnc.py` compare `part_to_machine_point` à
+`xyzacKinematicsInverse`, avec la correspondance de broches **lue dans le HAL
+que le générateur produit** :
+
+| Étage | Contre quoi | Poses | Écart max |
+|---|---|---|---|
+| `formule` | une transcription de `trtfuncs.c` | 56 | **7,105·10⁻¹⁵ mm** |
+| `source` | la fonction **compilée** depuis `trtfuncs.c` | 56 | **7,105·10⁻¹⁵ mm** |
+
+Soit l'epsilon machine : **les deux implémentations calculent la même
+fonction.** Et, pour mesurer ce qui était en jeu, la correspondance **d'avant
+correction** donne sur les mêmes poses un écart de **10,286 mm**. Ce n'était
+pas une subtilité numérique, c'était un centimètre sur la pièce.
+
+## 7. Pourquoi deux étages, et pourquoi pas en pilotant l'interface
+
+L'étage `formule` seul est un **miroir** : il compare mon modèle à ma lecture
+de la source. Une erreur de transcription rendrait l'accord parfait et faux.
+
+La première version de l'étage 2 lançait LinuxCNC, levait l'arrêt d'urgence,
+passait en MDI et relisait les articulations. Elle n'a jamais abouti, et les
+obstacles rencontrés valent d'être notés parce qu'aucun ne concernait la
+cinématique :
+
+- **mémoire partagée résiduelle.** `linuxcnc.stat()` lit un segment SysV. Une
+  instance tuée sans nettoyage laisse le segment vivant, **figé** — et `stat()`
+  rend alors instantanément `joints=5, task_state=1` pour une instance qui n'a
+  pas encore démarré. J'ai accusé mon code d'un défaut qui était un cadavre.
+  Le signe révélateur est celui de tout ce projet : **une grandeur disponible
+  avant que ce qui la produit existe.**
+- **le symétrique** : sans instance, NML ne refuse pas, il *crée* le tampon,
+  vide. Construire `stat()` trop tôt donne des zéros indéfiniment. Corriger la
+  première faute a donc *révélé* la seconde : les deux se couvraient.
+- **un garde-fou qui se déclenche sur lui-même** : cherchant `milltask` dans
+  les lignes de commande, il a refusé de démarrer en signalant une instance
+  vivante qui était sa propre invocation.
+
+Or ce que l'étage 2 devait établir est précis : **la fidélité de la
+transcription.** Compiler `trtfuncs.c` (quatre bouchons HAL suffisent :
+`hal_malloc`, `hal_pin_float_newf`, `rtapi_print`, `rtapi_print_msg`) et
+appeler sa fonction l'établit directement — sans arrêt d'urgence, sans prise
+d'origine, sans NML. Toute la difficulté du pilotage était **accidentelle au
+regard de la question posée**.
+
+Le banc confirme au passage les sept noms de broches, identiques à ceux lus
+sur l'instance vivante en §3.1.
+
+## 8. Défaut n° 39, resté OUVERT : la configuration ne se met pas en marche
+
+**Ce qui est établi.** `STATE_ESTOP_RESET` puis `STATE_ON` laissent
+`task_state = 1` (ESTOP) et `motion.motion-enabled = FALSE`. La boucle
+d'arrêt d'urgence fonctionne pourtant : `iocontrol.0.user-enable-out` passe de
+FALSE à TRUE et `emc-enable-in` suit. Le statut lu n'est donc pas périmé — la
+machine est réellement à l'arrêt.
+
+**Le contrôle qui l'attribue.** La configuration de référence livrée avec
+LinuxCNC (`configs/sim/gmoccapy/gmoccapy_XYZAC.ini`), passée par la **même**
+séquence dans le **même** environnement, donne `task_state = 4` et
+`motion.motion-enabled = TRUE`. Le défaut est donc dans ma configuration, pas
+dans la méthode ni dans l'environnement.
+
+**Ce qui a été écarté** : le câblage HAL de l'arrêt d'urgence, identique au mot
+près à celui de toutes les configurations de simulation livrées ;
+`[EMCIO]EMCIO = io`, qui a une valeur par défaut dans le script de démarrage ;
+`FERROR`/`MIN_FERROR`, ajoutés sans effet.
+
+**Ce que cela veut dire.** Une configuration qui démarre mais qu'on ne peut pas
+mettre en marche est **inutilisable** : aucune ligne de G-code ne peut y être
+exécutée. Et cela souligne la faiblesse de l'affirmation de la partie I : j'y
+ai validé le **démarrage** et écrit « la configuration démarre », ce qui était
+vrai — mais j'ai laissé entendre plus que cela. Démarrer n'est pas
+fonctionner.
+
+`FERROR` et `MIN_FERROR` ont été conservés (ils étaient absents et la référence
+les porte), et le contradictoire commentaire « prise d'origine NON
+renseignée » posé sous `HOME`/`HOME_SEQUENCE` a été corrigé — quarantième
+défaut du projet, cinquième de la famille « une phrase fausse posée sur les
+valeurs qu'elle prétend absentes ». La cause du refus de mise en marche reste
+à trouver ; la bissection a été arrêtée après que l'état temps réel de
+l'environnement est devenu peu fiable.
+
+## 9. Ce qui reste non prouvé
+
+- le **signe** des axes, qu'aucun calcul n'établit ;
+- que le HAL porte les valeurs jusqu'aux broches **dans un système qui
+  tourne** : établi une fois par `halcmd show pin xyzac` (§3.4), non
+  automatisé ;
+- la **mise en marche** (défaut n° 39) ;
+- **±0,02 mm**, qui reste un objectif de qualification physique.

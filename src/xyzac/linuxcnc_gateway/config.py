@@ -164,12 +164,26 @@ def _joint_block(joint: str, name: str, ax, *, is_rotary: bool,
         f"MAX_VELOCITY = {vel:.4f}\n"
         f"MAX_ACCELERATION = {acc:.4f}\n"
         f"BACKLASH = {backlash}\n"
+        f"FERROR = {5.0 if is_rotary else 1.0}\n"
+        f"MIN_FERROR = {1.0 if is_rotary else 0.25}\n"
+        # HOME et HOME_SEQUENCE suffisent a une prise d'origine SUR PLACE, qui
+        # est la seule honnete ici : elle ne commande aucun mouvement et se
+        # contente de declarer que la position courante vaut zero.
+        #
+        # Ce qui reste absent est la RECHERCHE d'origine sur capteur
+        # (HOME_SEARCH_VEL, HOME_LATCH_VEL, HOME_OFFSET), et c'est elle qui
+        # depend du cablage. Le commentaire precedent disait « prise d'origine
+        # NON renseignee » juste sous deux lignes qui la renseignaient : une
+        # phrase fausse posee sur les valeurs qu'elle pretendait absentes.
         f"HOME = 0.0\n"
         f"HOME_SEQUENCE = {joint}\n"
-        f"# Prise d'origine NON renseignee : elle depend du cablage reel des\n"
-        f"# capteurs, que seule l'etape WIRING_TEST de assembly_calibration\n"
-        f"# peut etablir. La renseigner ici au hasard ferait partir un axe\n"
-        f"# dans la mauvaise direction a la premiere prise d'origine.\n"
+        f"# RECHERCHE d'origine sur capteur NON renseignee (HOME_SEARCH_VEL,\n"
+        f"# HOME_LATCH_VEL, HOME_OFFSET absents) : elle depend du cablage\n"
+        f"# reel, que seule l'etape WIRING_TEST de assembly_calibration peut\n"
+        f"# etablir. La renseigner au hasard ferait partir un axe dans la\n"
+        f"# mauvaise direction a la premiere prise d'origine. En l'etat, la\n"
+        f"# prise d'origine se fait SUR PLACE : LinuxCNC accepte la position\n"
+        f"# courante comme zero, sans bouger.\n"
     )
 
 

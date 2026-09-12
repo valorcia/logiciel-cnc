@@ -23,11 +23,18 @@ l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 > articulations existent. Cette épreuve a révélé **cinq défauts**, dont deux
 > silencieux — voir [la note de validation](docs/validation-linuxcnc.md).
 >
-> Ce qui n'est **pas** acquis : l'accord numérique entre la cinématique de
-> LinuxCNC et le solveur de ce projet, que le démarrage ne dit pas. Le **signe**
-> des offsets de pivot, qu'aucune simulation ne peut établir. Aucun lancement de
-> cycle n'existe, **par décision**. Le dépôt vers une cible matérielle reste
-> refusé tant que la pièce d'épreuve n'a pas été usinée **puis mesurée**. Voir
+> Les deux cinématiques ont été **recoupées chiffre par chiffre** :
+> `part_to_machine_point` et `xyzacKinematicsInverse` — cette dernière
+> **compilée depuis la source de LinuxCNC et appelée** — s'accordent à
+> **7,1·10⁻¹⁵ mm** sur 56 poses. La correspondance de broches d'avant
+> correction donnait **10,286 mm** d'écart.
+>
+> Ce qui n'est **pas** acquis : la configuration **ne se met pas en marche**
+> (défaut n° 39, ouvert — la configuration de référence de LinuxCNC le fait
+> dans le même environnement, donc le défaut est chez nous). Le **signe** des
+> offsets de pivot, qu'aucun calcul n'établit. Aucun lancement de cycle
+> n'existe, **par décision**. Le dépôt vers une cible matérielle reste refusé
+> tant que la pièce d'épreuve n'a pas été usinée **puis mesurée**. Voir
 > [ADR-001 §6](docs/adr/ADR-001-architecture-fondatrice.md),
 > [ADR-002](docs/adr/ADR-002-jalon-M2.md),
 > [ADR-003](docs/adr/ADR-003-jalon-M3.md),
@@ -64,7 +71,7 @@ pip install -e ".[viz,dev]"
 
 python tools/make_corpus.py                  # 20 géométries STEP synthétiques
 python tools/make_degraded_corpus.py         # 3 STEP volontairement abîmés
-python -m pytest tests/ -q                   # 355 tests
+python -m pytest tests/ -q                   # 365 tests
 
 # M1 — accessibilité + orientation + visualisation
 python tools/demo_vertical_slice.py C08
@@ -81,6 +88,10 @@ python tools/demo_m7_calibration.py C10 --out /tmp/piece.ngc
 
 # M9 — configuration LinuxCNC dérivée, dépôt simulation accepté / matériel refusé
 python tools/demo_m9_linuxcnc.py --out out/config-xyzac
+
+# Recoupement des deux cinématiques (étage 2 : avec un arbre source LinuxCNC)
+python tools/verify_kinematics_linuxcnc.py --exagere
+python tools/verify_kinematics_linuxcnc.py --exagere --linuxcnc-source ~/linuxcnc
 ```
 
 Le pipeline M2 enchaîne : scène → accessibilité → orientation (+ vérification
@@ -114,10 +125,10 @@ Le prototype produit quatre images dans `out/` :
 | [ADR-008](docs/adr/ADR-008-jalon-M8.md) | jalon M8 : recettes de coupe, approche et dégagement, un programme exécutable |
 | [ADR-009](docs/adr/ADR-009-jalon-M9.md) | jalon M9 : configuration LinuxCNC dérivée, dépôt de programme, pas de lancement de cycle |
 | [Banc de debug](docs/banc-de-debug.md) | interface de contrôle visuel : ce qu'elle montre, comment la lancer |
-| [Validation LinuxCNC](docs/validation-linuxcnc.md) | compiler LinuxCNC, lui donner la configuration, et les cinq défauts qu'il a trouvés |
+| [Validation LinuxCNC](docs/validation-linuxcnc.md) | compiler LinuxCNC, lui donner la configuration, les six défauts trouvés, et le recoupement chiffré des deux cinématiques |
 | [Accessibility Solver](docs/algorithms/accessibility-solver.md) | algorithme, garantie conservative, performance mesurée |
 | [Orientation Solver](docs/algorithms/orientation-solver.md) | Viterbi, segmentation 3+2, raffinement |
-| [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 355 tests, ce qui n'est pas testé |
+| [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 365 tests, ce qui n'est pas testé |
 
 ---
 

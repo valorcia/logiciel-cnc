@@ -172,12 +172,25 @@ def test_the_dangerous_point_is_named_as_such(machine, calibre):
     assert "halcmd show pin" in joint, "le moyen de verifier les noms doit etre donne"
 
 
-def test_homing_is_left_unset_on_purpose(machine):
-    """Renseigner une prise d'origine au hasard ferait partir un axe dans la
-    mauvaise direction au premier cycle."""
+def test_homing_search_is_left_unset_on_purpose(machine):
+    """Une RECHERCHE d'origine inventee fait partir un axe dans la mauvaise
+    direction au premier cycle. HOME et HOME_SEQUENCE, eux, decrivent une prise
+    d'origine SUR PLACE : aucun mouvement, la position courante vaut zero.
+
+    Le test cherchait ces cles n'importe ou dans le fichier. Nommer
+    HOME_SEARCH_VEL dans un COMMENTAIRE qui explique son absence le faisait
+    donc echouer : meme faute que chercher un import par grep au lieu de
+    l'AST. On cherche une AFFECTATION, pas une chaine.
+    """
     cfg = build_config(machine)
-    assert "HOME_OFFSET" not in cfg.ini
-    assert "HOME_SEARCH_VEL" not in cfg.ini
+    affectations = {l.split("=")[0].strip() for l in cfg.ini.splitlines()
+                    if "=" in l and not l.lstrip().startswith("#")}
+    for cle in ("HOME_OFFSET", "HOME_SEARCH_VEL", "HOME_LATCH_VEL",
+                "HOME_USE_INDEX"):
+        assert cle not in affectations, f"{cle} est renseignee"
+    # ce qui EST renseigne doit l'etre : sans HOME_SEQUENCE, aucune
+    # articulation ne peut etre prise en origine, meme sur place
+    assert "HOME_SEQUENCE" in affectations
     assert "WIRING_TEST" in cfg.ini
 
 
