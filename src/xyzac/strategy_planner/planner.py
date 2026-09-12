@@ -313,10 +313,17 @@ class FinishingOpReport:
     pass_total_points: int = 0
     n_inaccessible: int = 0
     detail: str = ""
+    #: Verdict d'indexation VERIFIE sur la passe entiere (jalon M10). Present
+    #: seulement quand ``plan_finishing`` a ete appele avec ``verify=True``.
+    #: Quand il est la, ``coverage`` vaut 1.0 et le mode n'est plus celui d'un
+    #: prefixe.
+    verdict: object | None = None
 
     @property
     def coverage(self) -> float:
-        """Part de la passe reelle que le segment evalue represente."""
+        """Part de la passe reelle sur laquelle le mode annonce porte."""
+        if self.verdict is not None:
+            return float(self.verdict.coverage)
         return self.n_points / max(self.pass_total_points, 1)
 
     def describe(self) -> str:
@@ -324,9 +331,26 @@ class FinishingOpReport:
                 f"mode {self.mode}")
         if self.mode == "3+2":
             head += f" (A={self.a_deg:.2f} C={self.c_deg:.2f})"
-        head += (f", ouverture du segment {self.normal_spread_deg:.0f} deg"
-                 f", marge min {self.min_margin:.3f} mm")
-        if self.coverage < 0.999:
+        head += f", ouverture du segment {self.normal_spread_deg:.0f} deg"
+        if self.verdict is None:
+            # La marge tous tronçons confondus est dominee par l'arete de
+            # coupe, tangente par construction. Ne l'afficher que faute de
+            # mieux, et jamais a cote du degagement hors coupe qui, lui, veut
+            # dire quelque chose.
+            head += f", marge min {self.min_margin:.3f} mm"
+        if self.verdict is not None and self.verdict.min_clearance_mm is not None:
+            head += (f", degagement hors coupe min "
+                     f"{self.verdict.min_clearance_mm:.2f} mm")
+        if self.verdict is not None:
+            if self.verdict.basis == "verification":
+                head += (f" | VERIFIE sur les {self.pass_total_points} points "
+                         f"de la passe ({self.verdict.n_verified} orientations "
+                         f"essayees)")
+            elif self.verdict.conclusive:
+                head += (f" | DEFINITIF sur la passe entiere, etabli sur "
+                         f"{self.verdict.n_probe} points sondes "
+                         f"({self.verdict.basis})")
+        if self.verdict is None and self.coverage < 0.999:
             head += (f" | MAQUETTE : {self.coverage * 100:.1f} % de la passe "
                      f"({self.pass_total_points} points, ouverture totale "
                      f"{self.group_spread_deg:.0f} deg) — le mode annonce ne "
@@ -361,6 +385,9 @@ def plan_finishing(
     group_tol_deg: float = 20.0,
     stride: int = 8,
     accessibility_config=None,
+    verify: bool = True,
+    n_probe: int = 24,
+    max_candidates: int = 6,
 ):
     """Construit les operations de FINITION, face par face.
 
@@ -401,6 +428,7 @@ def plan_finishing(
     """
     from ..accessibility_solver.solver import AccessibilityConfig, AccessibilitySolver
     from ..orientation_solver.solver import OrientationSolver
+    from .indexed_pass import decide_indexed_pass
     from ..subtractive_slicer.finishing import (
         generate_finishing_passes,
         group_faces_by_normal,
@@ -431,6 +459,44 @@ def plan_finishing(
         pts, nrm = fp.points, fp.normals
         total_points = len(pts)
         group_spread = fp.normal_spread_deg()
+
+        if verify:
+            # Voie du jalon M10 : le verdict 3+2 porte sur la passe ENTIERE.
+            # On ne tronque rien, et le mode annonce n'est plus celui d'un
+            # prefixe. Voir ``indexed_pass.decide_indexed_pass``.
+            v = decide_indexed_pass(solver, pts, nrm, n_probe=n_probe,
+                                    max_candidates=max_candidates)
+            if v.indexable:
+                reports.append(FinishingOpReport(
+                    face_indices=faces, n_points=total_points, mode="3+2",
+                    a_deg=v.a_deg, c_deg=v.c_deg, indexed_fraction=1.0,
+                    normal_spread_deg=group_spread, group_spread_deg=group_spread,
+                    pass_total_points=total_points, verdict=v))
+                plan.operations.append(Operation(
+                    op_id=f"finition-{'-'.join(str(f) for f in faces)}",
+                    kinematic=Kinematic.MILLING_3PLUS2, tool=tool,
+                    toolpath=Toolpath(points=pts, normals=nrm, depth_of_cut=0.0,
+                                      label=f"finition faces {faces} (3+2)"),
+                    notes=(f"pas {fp.stepover:.3f} mm, crete {scallop_mm:.3f} mm, "
+                           f"{fp.n_stripes} passes ; A={v.a_deg:.2f} "
+                           f"C={v.c_deg:.2f} verifie sur {total_points} points"),
+                ))
+                continue
+            # Pas indexable : le verdict porte quand meme, et il nomme la
+            # cause. Aucune operation n'est emise — une trajectoire simultanee
+            # demande le champ admissible complet en chaque point, ce que ce
+            # jalon ne rend PAS abordable. Emettre une operation ici
+            # laisserait croire le contraire.
+            reports.append(FinishingOpReport(
+                face_indices=faces, n_points=total_points,
+                mode=("inaccessible" if v.verdict == "inatteignable"
+                      else "simultane"),
+                normal_spread_deg=group_spread, group_spread_deg=group_spread,
+                pass_total_points=total_points,
+                n_inaccessible=v.n_probe_unreachable, verdict=v,
+                detail=v.detail))
+            continue
+
         if len(pts) > max_points_per_pass:
             # Segment CONTIGU, et non un echantillonnage reparti.
             #

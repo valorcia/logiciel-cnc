@@ -9,7 +9,7 @@ d'appeler qui**.
 logiciel-cnc/
 ├── pyproject.toml
 ├── docs/
-│   ├── adr/ADR-001-architecture-fondatrice.md … ADR-009-jalon-M9.md
+│   ├── adr/ADR-001-architecture-fondatrice.md … ADR-010-jalon-M10.md
 │   ├── banc-de-debug.md
 │   ├── audit/dependencies-licenses.md
 │   ├── algorithms/accessibility-solver.md
@@ -631,3 +631,47 @@ ne pouvait jamais être mise en marche — sans un seul message d'erreur.
 Ce que rien de cela ne dit : le **signe** des offsets.
 `verification_command()` donne la commande à passer sur la machine de
 l'utilisateur.
+
+
+## 12. Ajouts du jalon M10 — décider une passe complète
+
+### accessibility_solver : vérifier au lieu d'explorer
+
+```python
+AccessibilitySolver.verify_direction(contacts, normals, direction,
+                                     *, block=16, allow_singular=True,
+                                     with_clearance=False) -> DirectionVerdict
+```
+
+`AccessibilityMap` décrit **toutes les orientations en un point** ;
+`DirectionVerdict` décrit **une orientation en tous les points**. Les deux sont
+nécessaires : l'un pour découvrir, l'autre pour conclure. Découvrir coûte
+65 ms/pt, conclure 1,6 ms/pt.
+
+`block` est un réglage de **coût** : le préfiltre d'obstacles se rabat sur une
+sphère de rayon « portée + étendue du bloc », donc à 256 la vérification est
+aussi lente que le champ complet. Un test exige que le verdict soit invariant.
+
+`min_margin()` porte dans sa documentation la raison de sa propre inutilité :
+l'arête de coupe est tangente par construction. `min_clearance()` est la marge
+qui répond à « le porte-outil est-il passé loin ? ».
+
+### strategy_planner/indexed_pass
+
+```python
+decide_indexed_pass(solver, points, normals, *, n_probe=24,
+                    max_candidates=6) -> IndexedPassVerdict
+```
+
+Sondage réparti → candidats par intersection → vérification de chaque candidat
+sur la passe **entière**. On retient celui dont le dégagement **minimal** est le
+plus grand, pas le premier qui passe.
+
+`IndexedPassVerdict.basis` dit sur quoi la conclusion repose — `verification`,
+`contre-exemple` ou `intersection-vide` — et `conclusive` porte la réserve qui
+va avec : les négatifs épuisent une **grille** de 642 directions, donc ils
+valent à sa résolution. Le positif, lui, exhibe une orientation.
+
+`plan_finishing(..., verify=True)` n'émet **aucune opération** pour une passe
+non indexable : la trajectoire simultanée n'est pas devenue abordable, et
+émettre une opération laisserait croire le contraire.

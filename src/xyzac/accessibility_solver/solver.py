@@ -194,6 +194,96 @@ def tcp_from_contact(
 
 
 @dataclass
+class DirectionVerdict:
+    """Ce qu'une orientation donne sur une passe COMPLETE.
+
+    A ne pas confondre avec ``AccessibilityMap``, qui decrit toutes les
+    orientations en UN point. Ici c'est l'inverse : une orientation, tous les
+    points. Les deux sont necessaires — l'un pour decouvrir, l'autre pour
+    conclure.
+    """
+
+    direction: np.ndarray
+    a_deg: float | None
+    c_deg: float | None
+    ok: np.ndarray                 # (N,) bool
+    margin: np.ndarray             # (N,) mm, -inf si non teste
+    reason: np.ndarray             # (N,) RejectReason
+    block: int
+    #: Marge des tronçons NON COUPANTS (col, tige, porte-outil, nez de broche),
+    #: calculee seulement sur demande. C'est la seule marge qui veuille dire
+    #: quelque chose : voir ``min_margin`` ci-dessous.
+    clearance: np.ndarray | None = None
+
+    @property
+    def n_points(self) -> int:
+        return int(len(self.ok))
+
+    @property
+    def clears_all(self) -> bool:
+        """Vrai seulement si l'orientation degage en CHAQUE point."""
+        return bool(self.ok.all()) and self.n_points > 0
+
+    @property
+    def clear_fraction(self) -> float:
+        return float(self.ok.mean()) if self.n_points else 0.0
+
+    def min_margin(self) -> float:
+        """Marge minimale TOUS TRONÇONS CONFONDUS. A lire avec prudence.
+
+        Elle vaut presque toujours ~0, et ce n'est pas un resultat serre : le
+        tronçon COUPANT est tangent a la surface **par construction**, puisque
+        c'est lui qui coupe. Le minimum sur tous les tronçons est donc domine
+        par une distance nulle voulue.
+
+        C'est exactement le defaut qui rendait le certificat de gouge du jalon
+        M6 vide de contenu, et il se reproduit ici : une grandeur plausible,
+        stable, et qui ne mesure pas ce qu'on croit. ``min_clearance`` est la
+        marge qui repond a la question « le porte-outil est-il passe loin ? ».
+        """
+        m = self.margin[self.ok]
+        m = m[np.isfinite(m)]
+        return float(m.min()) if m.size else float("inf")
+
+    def min_clearance(self) -> float | None:
+        """Marge minimale des tronçons NON COUPANTS, sur les points degages.
+
+        ``None`` si elle n'a pas ete demandee (``with_clearance=False``).
+        """
+        if self.clearance is None:
+            return None
+        m = self.clearance[self.ok]
+        m = m[np.isfinite(m)]
+        return float(m.min()) if m.size else float("inf")
+
+    def first_failure(self) -> int | None:
+        bad = np.flatnonzero(~self.ok)
+        return int(bad[0]) if bad.size else None
+
+    def reason_counts(self) -> dict[str, int]:
+        """Motifs de blocage, pour nommer ce qui s'oppose a l'indexation."""
+        out: dict[str, int] = {}
+        for r in np.unique(self.reason[~self.ok]):
+            out[RejectReason(int(r)).name] = int((self.reason[~self.ok] == r).sum())
+        return out
+
+    def describe(self) -> str:
+        if self.a_deg is None:
+            return (f"orientation hors courses : aucun couple (A, C) ne la "
+                    f"realise ({self.n_points} points non testes)")
+        head = (f"A={self.a_deg:.2f} C={self.c_deg:.2f} : degage en "
+                f"{int(self.ok.sum())}/{self.n_points} points "
+                f"({self.clear_fraction * 100:.1f} %)")
+        if self.clears_all:
+            deg = self.min_clearance()
+            m = (f"degagement hors coupe min {deg:.3f} mm" if deg is not None
+                 else "degagement hors coupe NON CALCULE")
+            return head + f", {m} — PASSE ENTIERE"
+        return (head + f", premier echec au point {self.first_failure()}, "
+                f"motifs {self.reason_counts()}")
+
+
+@dataclass
 class AccessibilityConfig:
     """Reglages du solveur. Les valeurs par defaut sont volontairement prudentes."""
 
@@ -563,6 +653,175 @@ class AccessibilitySolver:
         """Champ d'accessibilite pour une sequence de points (une trajectoire)."""
         return [self.solve_point(p, n) for p, n in zip(np.asarray(contacts), np.asarray(normals))]
 
+
+    # -- verification d'UNE orientation ------------------------------------
+
+    #: Taille de bloc de la verification. Ce n'est pas un reglage de confort :
+    #: le prefiltre d'obstacles de ``check_many`` se rabat sur une sphere de
+    #: rayon ``portee + etendue du bloc``, donc un bloc large rend le prefiltre
+    #: inoperant. Mesure sur la face plane du dome C10, meme verdict a toutes
+    #: les tailles (2 630 points degages sur 3 000) mais :
+    #:
+    #:     bloc   8 : 1,92 ms/pt      bloc 128 : 11,79 ms/pt
+    #:     bloc  16 : 1,60 ms/pt      bloc 256 : 25,93 ms/pt
+    #:     bloc  32 : 1,84 ms/pt      bloc 512 : 29,65 ms/pt
+    #:
+    #: Un bloc de 256 annule tout le gain — c'est la valeur qu'avait le premier
+    #: prototype, et elle le rendait aussi lent que le champ complet. La taille
+    #: de bloc change le COÛT et jamais le verdict ; un test le verifie.
+    VERIFY_BLOCK = 16
+
+    def _non_cutting_checker(self):
+        """Verificateur portant l'outil PRIVE de son tronçon coupant.
+
+        Construit une fois et garde : c'est ce qui permet de mesurer le
+        degagement du porte-outil sans le confondre avec la tangence voulue de
+        l'arete de coupe.
+        """
+        if getattr(self, "_nc_checker", None) is None:
+            from ..collision_engine.exact_gouge import NON_CUTTING_ROLES
+            segs = [g for g in self.tool.segments if g.role in NON_CUTTING_ROLES]
+            if not segs:
+                self._nc_checker = False      # rien a mesurer
+            else:
+                nc = self.tool.model_copy(update={"segments": segs})
+                self._nc_checker = ToolCollisionChecker(nc)
+        return self._nc_checker or None
+
+    def verify_direction(
+        self, contacts: np.ndarray, normals: np.ndarray, direction: np.ndarray,
+        *, block: int | None = None, allow_singular: bool = True,
+        with_clearance: bool = False,
+    ) -> "DirectionVerdict":
+        """UNE orientation, TOUS les points. Verdict complet, pas un echantillon.
+
+        Pourquoi cette fonction existe. ``solve_point`` explore l'ensemble
+        admissible : 642 directions filtrees puis testees. C'est ce qu'il faut
+        pour DECOUVRIR les orientations possibles, et cela coûte 65 ms par
+        point — soit prés de trois heures pour les 159 899 points d'une gamme de
+        finition du dome C10. Le plan restait donc une maquette : un prefixe
+        contigu, dont le mode annonce n'etait que le mode de ce prefixe.
+
+        Mais une fois un candidat connu, la question change : il ne s'agit plus
+        d'explorer, il s'agit de VERIFIER. Une orientation en un point coûte un
+        seul test exact au lieu de cent, et le test est vectorise sur les
+        points. La verification d'une orientation sur la gamme complete coûte
+        alors ~4 min au lieu de ~3 h.
+
+        Ce que cela change dans le raisonnement du moteur : la decision
+        3+2/simultane sort de l'INTERSECTION des ensembles admissibles, et une
+        intersection ne peut que retrecir quand on ajoute des points. Un
+        candidat trouve sur un sous-echantillon est donc une HYPOTHESE, jamais
+        une conclusion — mais elle se verifie sur la passe entiere, et le
+        verdict qui en sort porte sur la passe entiere.
+
+        Ce que cela ne change pas : la trajectoire SIMULTANEE. Elle demande le
+        champ admissible complet en chaque point, et reste hors de portee.
+        Cette fonction rend donc decidable le 3+2 — positivement comme
+        negativement — et rien de plus.
+
+        ``allow_singular`` vaut True parce qu'en 3+2 le plateau C est bloque :
+        A = 0 est alors une POSITION utilisable, et la singularite est un
+        probleme de MOUVEMENT (ADR-001 / D6). Le refuser ici ecarterait
+        l'orientation verticale, qui est la plus utile de toutes.
+        """
+        contacts = np.asarray(contacts, dtype=np.float64).reshape(-1, 3)
+        normals = np.asarray(normals, dtype=np.float64).reshape(-1, 3)
+        if len(contacts) != len(normals):
+            raise ValueError(
+                f"verify_direction : {len(contacts)} points pour "
+                f"{len(normals)} normales")
+        d = normalize(np.asarray(direction, dtype=np.float64))
+        n = normals / np.linalg.norm(normals, axis=1, keepdims=True)
+        blk = int(block or self.VERIFY_BLOCK)
+        if blk < 1:
+            raise ValueError("verify_direction : bloc >= 1")
+
+        reason = np.full(len(contacts), RejectReason.OK, dtype=np.int8)
+        margin = np.full(len(contacts), -np.inf)
+        ok = np.zeros(len(contacts), dtype=bool)
+
+        # E1 — filtre geometrique, par point : l'inclinaison admissible depend
+        # de la normale locale, donc une meme direction est licite en un point
+        # et illicite en un autre.
+        cos_lead = float(np.cos(np.radians(self.cfg.max_lead_deg)))
+        geo = (n @ d) >= min(cos_lead, 1.0)
+        reason[~geo] = RejectReason.LEAD_LIMIT
+
+        # E2 — cinematique, UNE FOIS : la direction est la meme partout, donc
+        # le couple (A, C) l'est aussi.
+        sols = self.kin.ik_branches(d)
+        # ``AxisSolution.feasible`` vaut ``within_limits and not singular`` :
+        # s'en servir ici rendrait ``allow_singular`` inoperant, et ecarterait
+        # silencieusement l'orientation verticale. On teste donc les deux
+        # conditions separement.
+        usable = [t for t in sols
+                  if t.within_limits and (allow_singular or not t.singular)]
+        if not usable:
+            reason[geo] = RejectReason.AXIS_LIMITS
+            return DirectionVerdict(direction=d, a_deg=None, c_deg=None,
+                                    ok=ok, margin=margin, reason=reason,
+                                    block=blk)
+        clearance = (np.full(len(contacts), -np.inf) if with_clearance else None)
+        sol = max(usable, key=lambda t: abs(np.sin(np.radians(t.a_deg))))
+        a_deg, c_deg = float(sol.a_deg), float(sol.c_deg)
+
+        tcps = self._tcps_for_direction(contacts, n, d)
+        idx = np.flatnonzero(geo)
+        for s0 in range(0, len(idx), blk):
+            sel = idx[s0:s0 + blk]
+            axes = np.repeat(d[None, :], len(sel), axis=0)
+            feas, marg, block_v = self.checker.check_many(
+                tcps[sel], axes, self.obstacles,
+                cutting_depth=self.cfg.cutting_depth,
+                cutting_allowance=self._cut_allow)
+            margin[sel] = marg
+            if clearance is not None:
+                nc = self._non_cutting_checker()
+                if nc is not None:
+                    _, cmarg, _ = nc.check_many(
+                        tcps[sel], axes, self.obstacles,
+                        cutting_depth=self.cfg.cutting_depth,
+                        cutting_allowance=0.0)
+                    clearance[sel] = cmarg
+            for k in np.flatnonzero(~feas):
+                si = int(block_v[k])
+                reason[sel[k]] = (_ROLE_TO_REASON[self.tool.segments[si].role]
+                                  if si >= 0 else RejectReason.COLLISION_CUTTING)
+            keep = sel[feas]
+            if keep.size and self.guard is not None:
+                tm = np.array([
+                    self.kin.part_to_machine_point(tcps[k] + self.mount_offset,
+                                                   a_deg, c_deg) + self.work_offset
+                    for k in keep])
+                ac = np.tile([a_deg, c_deg], (len(keep), 1))
+                gok, within = self.guard.check_many(tm, ac, return_travel=True)
+                bad = np.flatnonzero(~gok)
+                if bad.size:
+                    reason[keep[bad]] = np.where(
+                        within[bad], RejectReason.MACHINE_COLLISION,
+                        RejectReason.MACHINE_TRAVEL)
+                keep = keep[gok]
+            ok[keep] = True
+        return DirectionVerdict(direction=d, a_deg=a_deg, c_deg=c_deg,
+                                ok=ok, margin=margin, reason=reason, block=blk,
+                                clearance=clearance)
+
+    def _tcps_for_direction(self, contacts: np.ndarray, normals: np.ndarray,
+                            d: np.ndarray) -> np.ndarray:
+        """``tcp_from_contact`` vectorise sur les points, a direction fixe.
+
+        Meme formule torique, terme pour terme. Un test compare les deux sur
+        des cas varies : une reecriture vectorisee est exactement le genre
+        d'endroit ou un signe se perd sans que rien ne le signale.
+        """
+        R = self.tool.radius
+        cr = min(self.tool.corner_radius, self.tool.radius)
+        q = contacts + cr * normals
+        perp = normals - (normals @ d)[:, None] * d[None, :]
+        npn = np.linalg.norm(perp, axis=1, keepdims=True)
+        e = np.where(npn > 1e-9, perp / np.maximum(npn, 1e-12), 0.0)
+        return q - cr * d[None, :] - (R - cr) * e
 
     # -- resolution adaptative --------------------------------------------
 

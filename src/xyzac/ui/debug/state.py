@@ -138,6 +138,14 @@ class BenchState:
     #: la meme vue sans transport produit une image fausse — plateau traversant
     #: le brut, axes passant a cote des pivots reels. Laisser (0, 0, 0)
     #: encastrerait la piece dans le plateau (voir ``Setup.part_to_table_mm``).
+    #: Valeur par defaut REMPLACEE au chargement de la piece, par
+    #: ``suggested_mount``. Un montage fixe est un piege : (0, 0, 25) place la
+    #: piece a cheval sur le bord du plateau des qu'elle n'est pas centree sur
+    #: son propre repere, et la moitie de ses faces deviennent « inaccessibles »
+    #: pour une raison qui n'a rien de geometrique. Mesure sur le dome C10 :
+    #: deux des quatre parois verticales etaient declarees inatteignables a
+    #: (0, 0, 25) et le sont toutes accessibles, avec 35 a 38 orientations
+    #: admissibles, une fois la piece centree et rehaussee.
     mount_offset_mm: list[float] = field(default_factory=lambda: [0.0, 0.0, 25.0])
     messages: list[str] = field(default_factory=list)
     #: Champ d'obstacles mis en cache : son echantillonnage coute plusieurs
@@ -182,10 +190,59 @@ class BenchState:
         if auto_stock:
             self.stock = stock_from_part(bb, margin_xy=2.0, margin_z_top=2.0,
                                          margin_z_bottom=2.0)
+        # Montage DERIVE de la piece, et non laisse a une valeur fixe. Voir
+        # ``suggested_mount`` : un montage fixe fait declarer inaccessibles des
+        # faces qui ne le sont pas.
+        self.mount_offset_mm = list(self.suggested_mount(bb))
+        self.messages.append(
+            f"Montage propose : piece centree sur l'axe C, rehaussee de "
+            f"{self.mount_offset_mm[2]:.0f} mm. Valeur DECLAREE, a verifier "
+            f"contre le montage reel.")
         # Pose d'inspection par defaut : au-dessus du centre de la piece, ce qui
         # montre l'outil entier sans le faire traverser la matiere.
         self.inspect_tcp = np.array([bb.center[0], bb.center[1], bb.hi[2]])
         return info
+
+    @staticmethod
+    def suggested_mount(bb, *, riser_mm: float = 25.0) -> tuple[float, float, float]:
+        """Montage PROPOSE : piece centree sur l'axe C, posee sur un rehausseur.
+
+        Ce n'est pas un detail d'affichage. Sur une machine table/table, une
+        piece decentree de d tourne a d du centre du plateau : ses faces
+        eloignees sortent des courses ou balaient le berceau, et le solveur les
+        declare inaccessibles a bon droit — pour une raison qui n'est pas celle
+        de la piece.
+
+        Mesure sur le dome C10 (60 x 60 mm, repere au coin) : a (0, 0, 25),
+        deux des quatre parois verticales sont declarees inatteignables et deux
+        accessibles — une asymetrie qui n'a aucune cause geometrique, seulement
+        celle du decentrage. Centree et rehaussee de 60 mm, les quatre parois
+        offrent 35 a 38 orientations admissibles.
+
+        Le rehausseur est une HYPOTHESE de montage, affichee comme telle : le
+        banc ne connait pas le montage reel de l'utilisateur. Ce qu'il ne doit
+        pas faire, c'est en choisir un mauvais en silence.
+
+        **Pourquoi 25 mm.** Valeur choisie par mesure, et le critere n'est pas
+        « le plus de degagement possible » mais « n'introduire aucune limite
+        nouvelle ». Sur le dome C10, verdict des quatre parois verticales et
+        cause du blocage sur le dome lui-meme :
+
+            rehausseur 10 mm : 2 parois inatteignables (plateau), 2 a 99,6 %
+            rehausseur 25 mm : 4 parois 3+2, degagement 12,7 a 14,1 mm
+            rehausseur 40 mm : 4 parois 3+2, degagement 14,4 a 16,8 mm
+            rehausseur 60 mm : 4 parois 3+2, mais le dome bute en COURSE
+
+        A 60 mm la course lineaire se met a buter et MASQUE la vraie cause du
+        rejet sur le dome, qui est COLLISION_CUTTING — l'arete de coupe ne
+        rentre pas dans le rayon local, et aucun montage n'y changera rien.
+        Monter plus haut achete du degagement au prix d'un diagnostic faux.
+        """
+        cx = -0.5 * float(bb.lo[0] + bb.hi[0])
+        cy = -0.5 * float(bb.lo[1] + bb.hi[1])
+        # Le rehausseur porte le DESSOUS de la piece, pas son origine.
+        cz = riser_mm - float(bb.lo[2])
+        return (cx, cy, cz)
 
     def set_default_tool(self, kind: str = "ballnose", *, diameter: float = 6.0,
                          stickout: float = 45.0,

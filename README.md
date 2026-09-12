@@ -8,7 +8,7 @@ Ce n'est **pas** un CAM généraliste : l'utilisateur ne programme pas
 d'opérations. Ce n'est **pas** un portage d'OrcaSlicer : l'inspiration est
 l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 
-> **État : jalon M9.** Ébauche indexée, finition à crête contrôlée — le pas
+> **État : jalon M10.** Ébauche indexée, finition à crête contrôlée — le pas
 > venant de la **courbure locale mesurée** — et tournage sur l'axe C. La gouge
 > du porte-outil est **prouvée sur toute la passe**, et non sondée. La machine
 > se **mesure** : localisation des axes A et C au palpeur, erreurs compensées,
@@ -23,13 +23,21 @@ l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 > articulations existent. Cette épreuve a révélé **cinq défauts**, dont deux
 > silencieux — voir [la note de validation](docs/validation-linuxcnc.md).
 >
+> La finition est désormais décidée sur la **passe complète** et non sur un
+> préfixe : le mode annoncé n'est plus celui d'un échantillon. La gamme du dôme
+> C10 (159 899 points) est tranchée en **208 s**, contre 1 091 s pour 18 % de
+> couverture auparavant — quatre passes prouvées 3+2 **en chacun de leurs
+> points**, quatre rejetées définitivement avec leur motif et leur remède.
+>
 > Les deux cinématiques ont été **recoupées chiffre par chiffre**, jusqu'au
 > bout : `part_to_machine_point` et `xyzacKinematicsInverse` s'accordent à
 > **7,1·10⁻¹⁵ mm** contre la fonction compilée, et à **1,4·10⁻¹⁴ mm** sur
 > **LinuxCNC en marche** — 56 poses commandées en MDI, articulations relues.
 > La correspondance de broches d'avant correction donnait **10,286 mm**.
 >
-> Ce qui n'est **pas** acquis : le **signe** des offsets de pivot, qu'aucun
+> Ce qui n'est **pas** acquis : la **trajectoire simultanée** sur une passe
+> complète, qui demande le champ admissible en chaque point et reste à trois
+> heures. Le **signe** des offsets de pivot, qu'aucun
 > calcul n'établit — il faut commander un déplacement et regarder. Le HAL
 > produit est de **simulation**. Aucun lancement de cycle n'existe, **par
 > décision**. Le dépôt vers une cible matérielle reste refusé tant que la
@@ -42,7 +50,8 @@ l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 > [ADR-006](docs/adr/ADR-006-jalon-M6.md),
 > [ADR-007](docs/adr/ADR-007-jalon-M7.md),
 > [ADR-008](docs/adr/ADR-008-jalon-M8.md),
-> [ADR-009](docs/adr/ADR-009-jalon-M9.md).
+> [ADR-009](docs/adr/ADR-009-jalon-M9.md),
+> [ADR-010](docs/adr/ADR-010-jalon-M10.md).
 
 ---
 
@@ -70,7 +79,7 @@ pip install -e ".[viz,dev]"
 
 python tools/make_corpus.py                  # 20 géométries STEP synthétiques
 python tools/make_degraded_corpus.py         # 3 STEP volontairement abîmés
-python -m pytest tests/ -q                   # 366 tests
+python -m pytest tests/ -q                   # 384 tests
 
 # M1 — accessibilité + orientation + visualisation
 python tools/demo_vertical_slice.py C08
@@ -123,11 +132,12 @@ Le prototype produit quatre images dans `out/` :
 | [ADR-007](docs/adr/ADR-007-jalon-M7.md) | jalon M7 : calibration mesurée, compensation, post-processeur sous scellés |
 | [ADR-008](docs/adr/ADR-008-jalon-M8.md) | jalon M8 : recettes de coupe, approche et dégagement, un programme exécutable |
 | [ADR-009](docs/adr/ADR-009-jalon-M9.md) | jalon M9 : configuration LinuxCNC dérivée, dépôt de programme, pas de lancement de cycle |
+| [ADR-010](docs/adr/ADR-010-jalon-M10.md) | jalon M10 : décider une passe de finition complète — explorer coûte 65 ms, vérifier 1,6 ms |
 | [Banc de debug](docs/banc-de-debug.md) | interface de contrôle visuel : ce qu'elle montre, comment la lancer |
 | [Validation LinuxCNC](docs/validation-linuxcnc.md) | compiler LinuxCNC, lui donner la configuration, les sept défauts trouvés, et le recoupement chiffré des deux cinématiques jusqu'à l'exécution |
 | [Accessibility Solver](docs/algorithms/accessibility-solver.md) | algorithme, garantie conservative, performance mesurée |
 | [Orientation Solver](docs/algorithms/orientation-solver.md) | Viterbi, segmentation 3+2, raffinement |
-| [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 366 tests, ce qui n'est pas testé |
+| [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 384 tests, ce qui n'est pas testé |
 
 ---
 

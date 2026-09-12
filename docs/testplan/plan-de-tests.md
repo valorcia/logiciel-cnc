@@ -1,4 +1,4 @@
-# Plan de tests — jalons M1 à M9
+# Plan de tests — jalons M1 à M10
 
 ## 1. Principe
 
@@ -376,11 +376,32 @@ L'étage qui compare à la fonction **compilée** vit dans
 il n'a pas sa place dans la suite. Son résultat est consigné dans
 [la note de validation](../validation-linuxcnc.md).
 
+## 11 ter. Suite ajoutée au jalon M10
+
+### `test_m10_complete_pass.py` — le verdict porte sur la passe entière
+
+| Test | Ce qu'il protège |
+|---|---|
+| **`block_size_changes_the_cost_never_the_verdict`** (5 tailles) | **le préfiltre d'obstacles se rabat sur « portée + étendue du bloc » : à 256 la vérification est aussi lente que le champ complet (25,9 contre 1,6 ms/pt). Ce test interdit que la taille de bloc devienne un réglage de résultat** |
+| `vectorised_tcp_matches_the_scalar_formula` (3 directions) | une réécriture vectorisée est l'endroit exact où un signe se perd sans bruit |
+| **`the_all_segment_margin_is_dominated_by_the_cutting_edge`** | **régression du défaut de M6 : l'arête de coupe est tangente par construction, donc la marge tous tronçons vaut ~0. Quatre ordres de grandeur d'écart avec le dégagement utile** |
+| `clearance_is_none_unless_asked` | l'absence se lit `None`, jamais 0.0 — un zéro passerait pour une mesure serrée |
+| `a_verified_verdict_covers_the_whole_pass` | le verdict positif exhibe une orientation et la teste partout |
+| **`the_candidate_kept_is_the_one_with_the_most_clearance`** | **pas le premier qui passe : 12,0 mm contre 16,1 mm sur les parois du dôme** |
+| `an_unreachable_probe_point_is_a_verdict_against_simultaneous_too` | un point qu'aucune orientation n'atteint n'est pas davantage atteint par du simultané |
+| **`a_negative_verdict_is_conclusive_not_a_sample`** | **le rapport annonçait « MAQUETTE 0,2 % » pour un verdict définitif : une phrase trop prudente est fausse comme une phrase trop affirmative** |
+| `a_positive_verdict_rests_on_an_example_a_negative_on_exhaustion` | l'asymétrie est structurelle, et la réserve sur la grille de 642 directions doit rester écrite |
+| `probe_points_are_spread_not_a_prefix` (3 positions) | choix inverse de celui de la maquette, et juste pour son usage |
+| `the_verdict_names_a_remedy_for_each_blocking_reason` | un rejet muet n'aide personne, et le remède doit être celui que la géométrie autorise |
+| `a_vertical_orientation_is_usable_when_the_table_is_locked` | en 3+2 le plateau est bloqué : A = 0 est une position, la singularité est un problème de mouvement |
+| `an_empty_pass_is_refused_not_declared_indexable` | une passe vide n'est pas indexable |
+| `mismatched_lengths_raise` | points et normales de tailles différentes |
+
 ## 11. État actuel
 
 ```
 $ python -m pytest tests/ -q
-366 passed
+384 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -602,6 +623,32 @@ d'indisponibilité.** `apt` ne trouvait pas le paquet et le dépôt répondait 4
 — les deux constats étaient exacts, la conclusion « inaccessible » ne l'était
 pas. Le second canal coûtait quelques minutes à essayer.
 
+**Trois de plus au jalon M10 :**
+
+41. **Un montage de banc fixe faisait paraître la machine incapable.** À
+    `(0, 0, 25)`, le dôme C10 (repère au coin, 60 × 60 mm) était à cheval sur
+    le bord du plateau : deux des quatre parois verticales étaient déclarées
+    inatteignables et deux accessibles — **une asymétrie sans aucune cause
+    géométrique**. Troisième fois que ce banc le fait par un défaut.
+    Et **ma propre mesure de sensibilité était aveugle** : j'avais fait varier
+    la hauteur de 25 à 120 mm en concluant « insensible », parce que je ne
+    regardais que les quatre plus *grandes* passes, qui butent sur autre
+    chose. *Faire varier le paramètre ne suffit pas : il faut aussi mesurer la
+    bonne grandeur.*
+42. **Le rapport sous-estimait son propre résultat** : « MAQUETTE : 0,2 % de la
+    passe » pour un verdict définitif. `coverage` confondait la part des points
+    *examinés* et la portée de la *conclusion*. **Une phrase trop prudente est
+    fausse comme une phrase trop affirmative.**
+43. **La marge vide de contenu, revenue de M6** : le minimum sur tous les
+    tronçons est dominé par l'arête de coupe, tangente par construction. Marge
+    affichée 0,0004 mm, dégagement réel du porte-outil 14 mm.
+
+Et le chiffre qui justifie tout le jalon : à un rehausseur de 10 mm, deux
+parois rendent « pas-3+2, le meilleur candidat couvre **99,6 %** » — une
+douzaine de points sur 3 213. Un préfixe de 400 ou 4 000 points les aurait
+manqués et aurait annoncé 3+2. **Ce n'est pas une question de précision, c'est
+la différence entre un plan juste et un plan faux.**
+
 **Deux de plus, en recoupant les cinématiques :**
 
 39. **La configuration ne se mettait pas en marche** — `[EMCIO]EMCIO`
@@ -641,13 +688,15 @@ s'est mis à nommer la clé dont il expliquait l'absence.
 | ~~Gamme complète~~ | **levé M3** (ébauche indexée validée) |
 | ~~Finition : passes à crête contrôlée, 3+2 et 5 axes~~ | **levé M4** |
 | ~~Crête réelle sur surface courbe~~ | **levée M5** (forme fermée exacte, et le sens de l'erreur était l'inverse de ce qu'annonçait M4) |
-| Finition d'une passe **complète** | **réduite ×5,5 M6**, pas levée : couverture 2 % → 18 % mesurée sur le dôme (159 899 points). Le mode rapporté dépend de la couverture |
+| ~~Finition d'une passe **complète**~~ | **levée M10** pour le verdict 3+2 : gamme du dôme décidée en 208 s au lieu de 1 091 s pour 18 %. Explorer coûte 65 ms/pt, vérifier 1,6 ms/pt |
+| **Trajectoire simultanée sur une passe complète** | demande le champ admissible en chaque point : trois heures pour le dôme. M10 rend décidable le 3+2, rien de plus, et n'émet aucune opération quand la réponse est « simultané » |
 | ~~Gouge fine sur toute la passe~~ | **levée M6** côté porte-outil (preuve par majoration) |
 | Gouge de l'arête **entre** deux poses | exige une enveloppe balayée exacte |
-| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M10 |
+| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M11 |
 | ~~Collision du porte-plaquette en tournage~~ | **levée M6** (silhouette (z, r), test majorant) |
-| **Gorgeage** comme opération (plongée, non contour) | M10 |
-| Ordonnancement hybride fraisage + tournage dans une même gamme | M10 |
+| **Gorgeage** comme opération (plongée, non contour) | M11 |
+| Ordonnancement hybride fraisage + tournage dans une même gamme | M11 |
+| **Ordonnancement de plusieurs montages** | quatre passes du dôme demandent un retournement, et le verdict le dit ; rien ne l'ordonnance |
 | Erreurs non géométriques (thermique, flexion, hystérésis) | hors budget, non modélisées |
 | Erreurs d'échelle des vis | modélisées et compensables, aucune procédure ne les mesure |
 | ~~Approche et dégagement dans le G-code~~ | **levée M8** : portées par la trajectoire et validées au balayage |
