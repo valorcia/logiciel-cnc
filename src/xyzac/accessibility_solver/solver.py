@@ -236,6 +236,29 @@ class AccessibilityConfig:
     #: quand meme envoyer le nez de broche dans le berceau.
     check_machine: bool = True
 
+    #: Ordre des deux tests exacts : garde machine AVANT test piece.
+    #:
+    #: La faisabilite est le ET de deux masques independants, donc elle ne
+    #: depend pas de l'ordre — un test le verifie. Ce qui depend de l'ordre,
+    #: c'est la completude du DIAGNOSTIC : le test place en second n'est evalue
+    #: que sur les candidats ayant survecu au premier, donc les autres n'ont pas
+    #: de marge geometrique a afficher.
+    #:
+    #: Mesure qui impose ce defaut : sur une calotte, le test piece coûte 58 %
+    #: du temps et ne rejette que 2 candidats sur 114, tandis que la garde
+    #: machine en rejette 105. L'ordre inverse fait donc porter le test cher sur
+    #: 7 candidats au lieu de 114.
+    #:
+    #: Effet sur la CAUSE rapportee, pour un candidat bloque par les deux : la
+    #: machine gagne. C'est deliberement le bon sens de la priorite — allonger
+    #: la jauge ne rend pas atteignable une orientation hors du volume machine,
+    #: alors que la contrainte machine, elle, ne se contourne que par une
+    #: reindexation ou un repositionnement de la piece sur le plateau.
+    #:
+    #: Mettre a ``False`` pour obtenir le champ de marges complet, ce dont la
+    #: visualisation des orientations rejetees a besoin.
+    guard_first: bool = True
+
     #: Tolerance de penetration de l'arete de coupe dans la piece (mm).
     #: ``None`` = deduite de l'inflation du champ d'obstacles, ce qui rend le
     #: fraisage de flanc possible sans faux positif. Voir ToolCollisionChecker
@@ -452,48 +475,69 @@ class AccessibilitySolver:
             else:
                 counts["E3_tranche_par_bornes"] = 0
 
-            # E4 : un seul appel vectorise pour TOUTES les orientations restantes.
-            # Le voisinage d'obstacles est extrait une fois au lieu d'une fois
-            # par direction : c'est la ou se joue le temps de calcul.
-            counts["E4_tests_exacts"] = int(len(live))
-            feas_v, marg_v, block_v = self.checker.check_many(
-                tcps, dirs[live], self.obstacles,
-                cutting_depth=self.cfg.cutting_depth,
-                cutting_allowance=self._cut_allow,
-            )
-            feasible[live] = feas_v
-            margin[live] = marg_v
-            bad = np.flatnonzero(~feas_v)
-            for k in bad:
-                si = int(block_v[k])
-                reason[live[k]] = (_ROLE_TO_REASON[self.tool.segments[si].role]
-                                   if si >= 0 else RejectReason.COLLISION_CUTTING)
-
-            # E4b — organes machine et courses lineaires.
+            # E4 / E4b : les DEUX tests exacts, chacun vectorise sur tous les
+            # candidats qu'on lui soumet.
             #
-            # Teste dans le repere MACHINE, ou l'axe outil vaut toujours +Z. On
-            # n'evalue que les orientations ayant survecu au test piece : une
-            # orientation deja rejetee n'a pas besoin d'une seconde raison.
-            if self.guard is not None:
-                still = np.flatnonzero(feasible[live])
-                if still.size:
-                    tcps_m = np.array([
-                        self.kin.part_to_machine_point(
-                            tcps[k] + self.mount_offset, a_deg[live[k]], c_deg[live[k]])
-                        + self.work_offset for k in still])
-                    ac = np.stack([a_deg[live[still]], c_deg[live[still]]], axis=1)
-                    ok_m = self.guard.check_many(tcps_m, ac)
-                    counts["E4b_rejets_machine"] = int((~ok_m).sum())
-                    for k, okk in zip(still, ok_m):
-                        if okk:
-                            continue
-                        j = live[k]
-                        feasible[j] = False
-                        chk = self.guard.check_pose(tcps_m[list(still).index(k)],
-                                                    float(a_deg[j]), float(c_deg[j]))
-                        reason[j] = (RejectReason.MACHINE_TRAVEL
-                                     if not chk.axis_limits_ok
-                                     else RejectReason.MACHINE_COLLISION)
+            # E4  : outil complet contre piece, brut, bridages.
+            # E4b : outil complet contre les organes machine, plus les courses
+            #       lineaires. Teste dans le repere MACHINE, ou l'axe outil vaut
+            #       invariablement +Z.
+            #
+            # La faisabilite est le ET des deux masques, donc l'ordre ne la
+            # change pas. L'ordre change le COÛT, et beaucoup : voir
+            # ``AccessibilityConfig.guard_first``.
+            counts["E4_tests_exacts"] = 0
+            counts["E4b_rejets_machine"] = 0
+
+            def _part_stage(sel: np.ndarray) -> np.ndarray:
+                """Test piece sur les positions ``sel`` de ``live``. Rend le masque."""
+                counts["E4_tests_exacts"] += int(len(sel))
+                feas_v, marg_v, block_v = self.checker.check_many(
+                    tcps[sel], dirs[live[sel]], self.obstacles,
+                    cutting_depth=self.cfg.cutting_depth,
+                    cutting_allowance=self._cut_allow,
+                )
+                margin[live[sel]] = marg_v
+                for k in np.flatnonzero(~feas_v):
+                    si = int(block_v[k])
+                    reason[live[sel[k]]] = (
+                        _ROLE_TO_REASON[self.tool.segments[si].role]
+                        if si >= 0 else RejectReason.COLLISION_CUTTING)
+                return feas_v
+
+            def _machine_stage(sel: np.ndarray) -> np.ndarray:
+                """Garde machine sur les positions ``sel`` de ``live``."""
+                if self.guard is None or sel.size == 0:
+                    return np.ones(len(sel), dtype=bool)
+                tcps_m = np.array([
+                    self.kin.part_to_machine_point(
+                        tcps[k] + self.mount_offset, a_deg[live[k]], c_deg[live[k]])
+                    + self.work_offset for k in sel])
+                ac = np.stack([a_deg[live[sel]], c_deg[live[sel]]], axis=1)
+                ok_m, within_m = self.guard.check_many(tcps_m, ac, return_travel=True)
+                counts["E4b_rejets_machine"] += int((~ok_m).sum())
+
+                # La cause vient du masque de courses rendu par le garde, et non
+                # d'un second test pose par pose. C'est la meme information,
+                # calculee une seule fois : sur une calotte le garde rejette 105
+                # orientations sur 112, et les re-tester une par une coûtait
+                # 57 % du temps total du solveur.
+                bad_m = np.flatnonzero(~ok_m)
+                if bad_m.size:
+                    reason[live[sel[bad_m]]] = np.where(
+                        within_m[bad_m],
+                        RejectReason.MACHINE_COLLISION,
+                        RejectReason.MACHINE_TRAVEL)
+                return ok_m
+
+            stages = ([_machine_stage, _part_stage] if self.cfg.guard_first
+                      else [_part_stage, _machine_stage])
+            sel = np.arange(len(live))
+            for stage in stages:
+                if sel.size == 0:
+                    break
+                sel = sel[stage(sel)]
+            feasible[live[sel]] = True
 
         reason[feasible] = RejectReason.OK
         counts["E5_admissibles"] = int(feasible.sum())

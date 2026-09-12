@@ -206,6 +206,151 @@ class TurningTool:
 
 
 @dataclass
+class TurningToolBody:
+    """Silhouette du porte-plaquette dans le plan (z, r), bec a l'origine.
+
+    Limite explicitement ouverte au jalon M5 : le profil de revolution etait
+    verifie contre le BEC seul. Or ce qui interdit de finir une gorge etroite
+    n'est pas le bec, c'est le corps derriere lui. Le cas se produit des qu'une
+    gorge est plus etroite que la plaquette, et il ne se voit sur aucun
+    indicateur de pente.
+
+    **Le moteur ne devine pas la geometrie d'un porte-plaquette.** Il verifie
+    celle qu'on lui donne. ``iso_external`` fournit une silhouette par defaut
+    plausible pour un outil de tournage exterieur, mais un outil reel se decrit
+    par son catalogue, et une silhouette inventee qui passerait pour mesuree
+    serait pire que pas de verification du tout.
+
+    Convention : ``outline`` est une polyligne ``(K, 2)`` en ``(dz, dr)``
+    relative au bec. ``dr > 0`` s'eloigne de l'axe (vers l'outil), ``dz`` suit
+    l'axe de la piece. ``feed`` dit de quel cote le corps traine.
+    """
+
+    outline: np.ndarray
+    label: str = "porte-plaquette"
+
+    def __post_init__(self):
+        self.outline = np.asarray(self.outline, float).reshape(-1, 2)
+
+    @staticmethod
+    def external(*, nose_offset_mm: float = 6.0, width_front_mm: float = 1.5,
+                 width_back_mm: float = 25.0, height_mm: float = 20.0,
+                 feed: int = -1) -> "TurningToolBody":
+        """Corps d'un outil de tournage exterieur sur queue carree.
+
+        ``nose_offset_mm`` est la hauteur radiale de la PLAQUETTE : le corps
+        commence au-dela. ``width_front_mm`` est le debord du corps du cote de
+        l'avance (petit sur un outil de tournage : c'est le cote qui doit
+        degager), ``width_back_mm`` du cote qui traine.
+
+        **La plaquette elle-meme n'est pas dans la silhouette, et c'est
+        deliberé.** Son flanc contre la pente locale du profil est deja mesure
+        par ``TurningTool.max_followable_slope_deg`` et rapporte en
+        ``too_steep_zones``. L'y remettre fait mesurer deux fois la meme limite
+        physique : la premiere version de ce constructeur incluait le flanc, et
+        tout devenait infaisable — y compris un outil a gorge de 2 mm dans une
+        gorge de 3 mm. Le signe qui l'a revele est que la penetration rapportee
+        ne dependait PAS de la taille du corps, alors que c'est le seul
+        parametre qui devrait la faire varier.
+        """
+        sgn = -1.0 if feed < 0 else 1.0
+        front, back = float(width_front_mm), float(width_back_mm)
+        lo, hi = float(nose_offset_mm), float(nose_offset_mm + height_mm)
+        # dz > 0 du cote qui traine (oppose a l'avance).
+        z_lead, z_trail = -sgn * front, sgn * back
+        return TurningToolBody(
+            np.array([(z_lead, lo), (z_trail, lo), (z_trail, hi), (z_lead, hi)],
+                     float),
+            label=f"corps exterieur {height_mm:.0f} mm, debord avant "
+                  f"{front:.1f} mm")
+
+    @staticmethod
+    def grooving(*, blade_width_mm: float = 3.0, nose_offset_mm: float = 1.0,
+                 depth_mm: float = 15.0) -> "TurningToolBody":
+        """Lame a gorger : etroite en z, profonde en radial.
+
+        C'est l'outil qui rend une gorge faisable, et le seul cas ou le debord
+        avant est symetrique du debord arriere.
+        """
+        h = float(blade_width_mm) / 2.0
+        lo, hi = float(nose_offset_mm), float(nose_offset_mm + depth_mm)
+        return TurningToolBody(
+            np.array([(-h, lo), (h, lo), (h, hi), (-h, hi)], float),
+            label=f"lame a gorger {blade_width_mm:.1f} mm")
+
+    def sampled(self, spacing: float = 0.5) -> tuple[np.ndarray, float]:
+        """Polyligne echantillonnee a pas borne, et le pas effectif.
+
+        Tester les seuls SOMMETS laisserait une arete traverser un epaulement
+        sans qu'aucun sommet n'y entre. On echantillonne donc les aretes, et le
+        pas retourne sert a majorer le test — meme discipline que le champ
+        d'obstacles discret (ADR-001 / D2).
+        """
+        pts = self.outline
+        closed = np.vstack([pts, pts[:1]])
+        out = []
+        eff = 0.0
+        for a, b in zip(closed[:-1], closed[1:]):
+            L = float(np.linalg.norm(b - a))
+            n = max(int(np.ceil(L / max(spacing, 1e-6))), 1)
+            eff = max(eff, L / n)
+            for k in range(n):
+                out.append(a + (b - a) * (k / n))
+        return np.array(out, float), eff
+
+
+@dataclass
+class BodyInterference:
+    """Zone ou le corps de l'outil entre dans la matiere a conserver."""
+
+    z_contact: float             # cote du point de contact du bec
+    z_hit: float                 # cote ou le corps touche
+    penetration_mm: float
+
+    def describe(self) -> str:
+        return (f"bec en z={self.z_contact:.2f} : le corps entre de "
+                f"{self.penetration_mm:.3f} mm dans la matiere en z={self.z_hit:.2f}")
+
+
+def check_body_clearance(
+    profile: RevolutionProfile, body: TurningToolBody,
+    z: np.ndarray, r: np.ndarray,
+    *, clearance_mm: float = 0.2, spacing: float = 0.5,
+) -> list[BodyInterference]:
+    """Le corps de l'outil degage-t-il, le bec etant sur ``(z, r)`` ?
+
+    Test dans le plan (z, r), donc exact a la discretisation de la silhouette
+    pres. Chaque point echantillonne du corps est compare au rayon du profil a
+    sa cote : il interfere si son rayon passe sous ``profil + clearance_mm``.
+
+    Le pas d'echantillonnage de la silhouette est ajoute a la penetration
+    mesuree, de sorte que le resultat MAJORE l'interference reelle. Un test qui
+    sous-estimerait l'interference donnerait le mauvais sens d'erreur, celui qui
+    laisse passer un talonnage.
+    """
+    pts, eff = body.sampled(spacing)
+    z = np.asarray(z, float).ravel()
+    r = np.asarray(r, float).ravel()
+    z0, z1 = float(profile.z[0]), float(profile.z[-1])
+
+    hits: list[BodyInterference] = []
+    for zc, rc in zip(z, r):
+        zz = zc + pts[:, 0]
+        rr = rc + pts[:, 1]
+        inside = (zz >= z0) & (zz <= z1)
+        if not inside.any():
+            continue
+        need = profile.radius_at(zz[inside]) + clearance_mm
+        pen = need - rr[inside]
+        k = int(np.argmax(pen))
+        if pen[k] > 0.0:
+            hits.append(BodyInterference(
+                z_contact=float(zc), z_hit=float(zz[inside][k]),
+                penetration_mm=float(pen[k] + eff * 0.5)))
+    return hits
+
+
+@dataclass
 class TurningPass:
     """Une passe de tournage, en coordonnees (z, r)."""
 
@@ -237,6 +382,11 @@ class TurningPlanReport:
     #: tranches — sans compter le bruit.
     out_of_round_p95_mm: float = 0.0
     out_of_round_max_mm: float = 0.0
+    #: Interferences du CORPS de l'outil, quand une silhouette a ete fournie.
+    #: Vide ne signifie pas « degage » si aucune silhouette n'a ete donnee :
+    #: voir ``body_checked``.
+    body_interferences: list = field(default_factory=list)
+    body_checked: bool = False
     feasible: bool = True
     detail: str = ""
 
@@ -260,6 +410,14 @@ class TurningPlanReport:
                 "la piece n'est pas de revolution a cette cote (meplat, lumiere, "
                 "percage lateral). Le tour degrossira, mais la finition de cette "
                 "zone releve du fraisage")
+        if not self.body_checked:
+            lines.append("  corps de l'outil NON verifie : aucune silhouette de "
+                         "porte-plaquette fournie (le bec seul est degage)")
+        elif self.body_interferences:
+            lines.append(f"  corps de l'outil en interference sur "
+                         f"{len(self.body_interferences)} positions de bec :")
+            for b in self.body_interferences[:3]:
+                lines.append("    " + b.describe())
         for z0, z1 in self.too_steep_zones[:5]:
             lines.append(f"  pente trop raide entre z={z0:.2f} et z={z1:.2f} : "
                          "outil inadapte, pas un probleme de trajectoire")
@@ -274,6 +432,8 @@ def plan_turning_passes(
     stock_radius: float,
     finish_allowance: float = 0.2,
     depth_of_cut: float | None = None,
+    body: "TurningToolBody | None" = None,
+    body_clearance_mm: float = 0.2,
 ) -> TurningPlanReport:
     """Genere des passes d'ebauche a rayon decroissant, puis une finition.
 
@@ -284,6 +444,10 @@ def plan_turning_passes(
     Le controle de pente est fait AVANT de generer quoi que ce soit : un profil
     plus raide que l'outil ne peut pas etre suivi, et proposer des passes qui le
     traversent serait produire un programme qui talonne.
+
+    ``body`` donne la silhouette du porte-plaquette. Sans elle, seul le bec est
+    verifie, et le rapport le DIT au lieu de laisser croire a un degagement : une
+    gorge plus etroite que la plaquette passe tous les controles de pente.
     """
     doc = depth_of_cut or tool.max_depth_of_cut_mm
     target = profile.r + finish_allowance
@@ -352,9 +516,26 @@ def plan_turning_passes(
     report.removed_area_mm2 = float(np.trapezoid(
         np.maximum(stock_radius - profile.r, 0.0), profile.z))
 
+    # Degagement du CORPS, sur la passe de finition : c'est elle qui approche le
+    # profil final, donc elle qui contraint. Les ebauches restent en retrait.
+    if body is not None:
+        report.body_checked = True
+        fin = next((p for p in report.passes if p.kind == "finition"), None)
+        if fin is not None:
+            report.body_interferences = check_body_clearance(
+                profile, body, fin.z, fin.r, clearance_mm=body_clearance_mm)
+
     if report.too_steep_zones:
         report.feasible = False
         report.detail = (
             f"l'outil suit au plus {tool.max_followable_slope_deg():.0f} deg de "
             f"pente (degagement {tool.clearance_angle_deg:.0f} deg)")
+    elif report.body_interferences:
+        worst = max(report.body_interferences, key=lambda b: b.penetration_mm)
+        report.feasible = False
+        report.detail = (
+            f"le corps de l'outil ({body.label}) talonne : au pire "
+            f"{worst.penetration_mm:.3f} mm dans la matiere a conserver. "
+            "Il faut un outil plus etroit ou une reprise au fraisage, pas une "
+            "autre trajectoire")
     return report

@@ -1,4 +1,4 @@
-# Plan de tests — jalons M1 à M5
+# Plan de tests — jalons M1 à M6
 
 ## 1. Principe
 
@@ -244,11 +244,30 @@ Génération : `python tools/make_degraded_corpus.py`.
 | `c_mode_switch_is_a_locked_transition` | ADR-001 / D8 : le basculement invalide l'approbation |
 | `turning_candidate_still_rejects_off_axis_revolution` | régression M1 : C15 est de révolution, mais autour du mauvais axe |
 
-## 8. État actuel
+## 8. Suite ajoutée au jalon M6
+
+### `test_m6_perf_certificate.py`
+
+| Test | Ce qu'il protège |
+|---|---|
+| **`stage_order_does_not_change_the_feasible_set`** (dôme, rainure, poche) | **le seul test qui autorise l'inversion garde/pièce : zéro divergence orientation par orientation, sinon l'optimisation qui vaut ×2,5 serait un assouplissement** |
+| `guard_first_shrinks_the_expensive_stage` | mesure l'effet sur un **compteur** et non un chronomètre : le test cher doit porter sur moins de la moitié des candidats |
+| **`travel_mask_agrees_with_the_scalar_check`** (24 poses) | **le masque de courses porte désormais la distinction « hors course » / « collision organe » : il doit être exactement celui que `check_pose` déduisait** |
+| `certificate_proves_a_clear_pass_with_few_queries` | la majoration doit décorréler le nombre de requêtes du nombre de poses (3 requêtes pour 120 poses) |
+| **`certificate_catches_the_gouge_the_sparse_probe_misses`** | **LE test qui justifie le module : une pose sur 120 enfoncée de 4 mm (113 mm³) que le sondage à douze poses ne voit pas** |
+| `certificate_does_not_cry_wolf_on_a_near_miss` | une pose à 0,05 mm ne touche pas ; un vérificateur qui la signale est inutilisable en finition |
+| `certificate_reports_its_budget_instead_of_concluding` | budget épuisé = certificat **incomplet**, jamais optimiste |
+| **`certificate_separates_the_two_physics`** | **régression du défaut qui rendait le certificat vide : l'arête tangente mettait la garde à zéro partout** |
+| `body_not_given_is_reported_as_not_checked` | une liste d'interférences vide ne doit pas passer pour un dégagement |
+| **`body_interference_depends_on_the_dimensions_that_decide_it`** | **fait varier les trois cotes : deux doivent changer le verdict, une ne doit rien changer. C'est ce qui a révélé le double comptage du flanc de plaquette** |
+| `body_check_majorises_with_coarser_sampling` | le pas d'échantillonnage est **ajouté** à la pénétration : un pas grossier ne doit jamais rapporter moins |
+| `a_smooth_shaft_clears_a_normal_body` | sans quoi la vérification refuserait tout et serait inutilisable |
+
+## 9. État actuel
 
 ```
 $ python -m pytest tests/ -q
-232 passed
+246 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -356,7 +375,28 @@ la marge du mauvais côté. D'où la règle tirée de ce jalon : **toute affirma
 de sens — « optimiste », « conservatif », « majore » — doit être adossée à un
 test**, et le test qui la porte nomme la rectification.
 
-## 9. Ce qui n'est PAS testé, et doit l'être
+Trois de plus au jalon M6, et deux d'entre eux dans du code écrit pour
+**vérifier** — la place la plus coûteuse :
+
+22. **Garde du certificat prise sur le mauvais ensemble de tronçons** : arête de
+    coupe incluse, donc distance nulle par construction, donc aucun intervalle
+    jamais certifié. Un certificat vide qui tournait sans erreur.
+23. **Deux tests de la même limite physique** : le flanc de plaquette mesuré à
+    la fois par la pente suivable et par le corps de l'outil. Tout devenait
+    infaisable, y compris une lame de 2 mm dans une gorge de 3 mm.
+24. **Une information calculée, jetée, puis recalculée** : 105 tests scalaires
+    par point de contact pour retrouver un masque que la fonction appelée avait
+    déjà en main. 57 % du temps total.
+
+Le signe qui a révélé les trois est le même : **une grandeur qui ne varie pas
+quand le paramètre qui la commande varie.** Pénétration indépendante de la
+taille du corps ; garde à 0,0000 mm sur une passe manifestement dégagée ;
+nombre de requêtes égal au nombre de poses alors que la majoration devait le
+décorréler. D'où la règle ajoutée par ce jalon : **faire varier le paramètre
+qui doit commander le résultat, et vérifier qu'il le commande** — y compris en
+exigeant qu'un paramètre ne change rien.
+
+## 10. Ce qui n'est PAS testé, et doit l'être
 
 | Manque | État |
 |---|---|
@@ -367,16 +407,18 @@ test**, et le test qui la porte nomme la rectification.
 | ~~Gamme complète~~ | **levé M3** (ébauche indexée validée) |
 | ~~Finition : passes à crête contrôlée, 3+2 et 5 axes~~ | **levé M4** |
 | ~~Crête réelle sur surface courbe~~ | **levée M5** (forme fermée exacte, et le sens de l'erreur était l'inverse de ce qu'annonçait M4) |
-| Finition d'une passe **complète** (aujourd'hui : maquette contiguë) | M6 |
-| Gouge fine sur toute la passe (sondage épars) | M6 |
-| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M6 |
-| Collision du porte-plaquette en tournage (profil 2D exact, porte-outil non modélisé) | M6 |
-| Ordonnancement hybride fraisage + tournage dans une même gamme | M6 |
+| ~~Finition d'une passe **complète**~~ | **levée M6** (88 s pour 3 213 points ; plafond redevenu garde-fou) |
+| ~~Gouge fine sur toute la passe~~ | **levée M6** côté porte-outil (preuve par majoration) |
+| Gouge de l'arête **entre** deux poses | exige une enveloppe balayée exacte |
+| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M7 |
+| ~~Collision du porte-plaquette en tournage~~ | **levée M6** (silhouette (z, r), test majorant) |
+| **Gorgeage** comme opération (plongée, non contour) | M7 |
+| Ordonnancement hybride fraisage + tournage dans une même gamme | M7 |
 | ~~Tournage : génération de trajectoires~~ | **levée M5** (profil, ovalité robuste, passes, refus motivé) |
 | Poids d'orientation calibrés | exige une machine |
 | Tout ce qui touche une machine réelle | après qualification |
 
-## 10. Précision — ce que les tests ne disent pas
+## 11. Précision — ce que les tests ne disent pas
 
 Aucun test de ce dépôt ne dit quoi que ce soit de la précision d'une pièce
 usinée. Ils portent sur la **justesse numérique** du moteur.

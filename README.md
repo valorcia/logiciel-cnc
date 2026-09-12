@@ -8,17 +8,19 @@ Ce n'est **pas** un CAM généraliste : l'utilisateur ne programme pas
 d'opérations. Ce n'est **pas** un portage d'OrcaSlicer : l'inspiration est
 l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 
-> **État : jalon M5.** Ébauche indexée, finition à crête contrôlée — le pas
+> **État : jalon M6.** Ébauche indexée, finition à crête contrôlée — le pas
 > venant de la **courbure locale mesurée** et non d'une formule plane — et
-> tournage sur l'axe C : profil de révolution, ovalité robuste, passes, refus
-> motivé. En 3+2 ou en 5 axes simultané selon ce que la géométrie permet.
-> Aucun G-code n'est généré : le verrou tient, et son motif n'est pas logiciel —
-> **la machine n'est pas calibrée**. Voir
+> tournage sur l'axe C : profil de révolution, ovalité robuste, passes, corps
+> de l'outil vérifié, refus motivé. En 3+2 ou en 5 axes simultané selon ce que
+> la géométrie permet. La gouge du porte-outil est **prouvée sur toute la
+> passe**, et non sondée. Aucun G-code n'est généré : le verrou tient, et son
+> motif n'est pas logiciel — **la machine n'est pas calibrée**. Voir
 > [ADR-001 §6](docs/adr/ADR-001-architecture-fondatrice.md),
 > [ADR-002](docs/adr/ADR-002-jalon-M2.md),
 > [ADR-003](docs/adr/ADR-003-jalon-M3.md),
 > [ADR-004](docs/adr/ADR-004-jalon-M4.md),
-> [ADR-005](docs/adr/ADR-005-jalon-M5.md).
+> [ADR-005](docs/adr/ADR-005-jalon-M5.md),
+> [ADR-006](docs/adr/ADR-006-jalon-M6.md).
 
 ---
 
@@ -46,7 +48,7 @@ pip install -e ".[viz,dev]"
 
 python tools/make_corpus.py                  # 20 géométries STEP synthétiques
 python tools/make_degraded_corpus.py         # 3 STEP volontairement abîmés
-python -m pytest tests/ -q                   # 232 tests
+python -m pytest tests/ -q                   # 246 tests
 
 # M1 — accessibilité + orientation + visualisation
 python tools/demo_vertical_slice.py C08
@@ -85,6 +87,7 @@ Le prototype produit quatre images dans `out/` :
 | [ADR-003](docs/adr/ADR-003-jalon-M3.md) | jalon M3 : slicer, planificateur de gammes, import réel |
 | [ADR-004](docs/adr/ADR-004-jalon-M4.md) | jalon M4 : finition, coût du calcul, cinq défauts de repère |
 | [ADR-005](docs/adr/ADR-005-jalon-M5.md) | jalon M5 : courbure locale, tournage, et la rectification d'une erreur de D31 |
+| [ADR-006](docs/adr/ADR-006-jalon-M6.md) | jalon M6 : coût du calcul (×5,5), preuve de gouge, corps de l'outil de tour |
 | [Accessibility Solver](docs/algorithms/accessibility-solver.md) | algorithme, garantie conservative, performance mesurée |
 | [Orientation Solver](docs/algorithms/orientation-solver.md) | Viterbi, segmentation 3+2, raffinement |
 | [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 108 tests, ce qui n'est pas testé |
@@ -140,6 +143,27 @@ mesure par secteur angulaire et par quantile (P95 − P5), sans quoi un
 
 Le basculement indexation ↔ broche continue **n'est pas un réglage** : il
 invalide l'approbation de sécurité et exige une nouvelle simulation.
+
+## Ce que la vérification couvre, et ce qu'elle ne couvre pas
+
+Un vérificateur qui se tait doit dire s'il a regardé. C'est la différence entre
+un sondage et une preuve, et elle a été mesurée : une pose sur 120 enfoncée de
+4 mm dans un bloc — 113 mm³ de gouge — n'est **pas vue** par un sondage à douze
+poses, dont le silence ressemble pourtant à un verdict.
+
+`certify_plan_exact` rend donc une preuve sur toute la passe, en deux volets
+parce qu'il y a deux physiques :
+
+- **tronçons non coupants** (col, tige, porte-outil, nez de broche) : ils
+  doivent garder une distance, donc une majoration du déplacement suffit à
+  couvrir tout un intervalle sans rien y calculer. Une passe de 120 poses avec
+  20 mm de garde est prouvée en **3 requêtes exactes** ;
+- **arête de coupe** : tangente à la surface par construction, donc
+  incertifiable par la distance. Vérifiée en **chaque pose**.
+
+Ce qui reste non prouvé est écrit dans le certificat : rien entre deux poses
+consécutives pour l'arête, et les intervalles non couverts sortent avec leur
+position. Un budget épuisé rend un certificat *incomplet*, jamais optimiste.
 
 ## Ce que valide le moteur
 

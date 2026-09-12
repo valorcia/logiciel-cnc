@@ -9,7 +9,7 @@ d'appeler qui**.
 logiciel-cnc/
 ├── pyproject.toml
 ├── docs/
-│   ├── adr/ADR-001-architecture-fondatrice.md … ADR-005-jalon-M5.md
+│   ├── adr/ADR-001-architecture-fondatrice.md … ADR-006-jalon-M6.md
 │   ├── audit/dependencies-licenses.md
 │   ├── algorithms/accessibility-solver.md
 │   ├── algorithms/orientation-solver.md
@@ -39,7 +39,7 @@ logiciel-cnc/
 │   ├── recipe_profiles/      interfaces.py        ← stub M1
 │   ├── assembly_calibration/ interfaces.py        ← stub M1
 │   └── ui/                   render.py
-├── tests/         conftest, 10 fichiers, corpus/ (20 STEP sains + 3 dégradés)
+├── tests/         conftest, 11 fichiers, corpus/ (20 STEP sains + 3 dégradés)
 ├── tools/         make_corpus.py, make_degraded_corpus.py,
 │               demo_vertical_slice.py, demo_m2_pipeline.py, demo_m3_pipeline.py
 └── out/           rendus PNG (non versionnés)
@@ -353,3 +353,73 @@ invalide l'approbation de sécurité (ADR-001 / D8).
 `generate_finishing_passes(..., use_curvature=True)` prend désormais le pas dans
 la courbure mesurée du groupe de faces. Sur le dôme C10 le pas se resserre de
 6,2 %, dans la cavité C11 il s'élargit de 8,5 %.
+
+## 8. Ajouts du jalon M6
+
+### collision_engine/machine_guard
+
+```python
+MachineGuard.check_many(tcps_machine, ac, *, return_travel=False)
+    -> mask | (mask, travel_mask)
+```
+
+`return_travel=True` rend le masque des poses **dans les courses linéaires**,
+la seule information qui distingue « hors course » de « collision organe ». Le
+solveur d'accessibilité la re-dérivait par un test scalaire par rejet — 105
+appels par point de contact, 57 % du temps total, pour retrouver ce que la
+fonction appelée avait déjà en main.
+
+### accessibility_solver — ordre des étages
+
+`AccessibilityConfig.guard_first` (défaut `True`) place la garde machine
+**avant** le test pièce. La faisabilité étant le ET de deux masques
+indépendants, elle ne dépend pas de l'ordre — et un test différentiel l'exige,
+orientation par orientation. Ce qui dépend de l'ordre :
+
+- le **coût** : le test pièce porte sur 7 candidats au lieu de 114 sur une
+  calotte ;
+- la **cause rapportée** pour un candidat bloqué par les deux : la machine
+  gagne, parce que c'est la contrainte liante ;
+- la **complétude du champ de marges** : mettre `False` pour l'obtenir en
+  entier, ce dont la visualisation des rejets a besoin.
+
+### collision_engine/exact_gouge
+
+```python
+certify_plan_exact(part_shape, tool, tcps, axes, *, cutting_depth,
+                   tolerance_mm, max_queries, check_cutting) -> GougeCertificate
+```
+
+Remplace le **sondage** de `verify_plan_sparse` par une **preuve**, en deux
+volets parce qu'il y a deux physiques :
+
+- `holder_proven` : aucun tronçon non coupant ne touche la pièce, sur tout le
+  parcours. Obtenu par majoration du déplacement (`|Δtcp| + reach·angle`), donc
+  avec un nombre de requêtes gouverné par la garde disponible et non par le
+  nombre de poses — 3 requêtes pour 120 poses au-dessus d'un bloc.
+- `cutting_tested` : l'arête de coupe, tangente à la surface par construction
+  et donc incertifiable par la distance, est vérifiée **en chaque pose**.
+
+`complete` exige les deux. Les intervalles non couverts sortent en
+`uncertified` **avec leur position** ; un budget épuisé rend un certificat
+incomplet, jamais optimiste.
+
+### turning_engine/profile — corps de l'outil
+
+```python
+TurningToolBody.external(nose_offset_mm, width_front_mm, width_back_mm,
+                         height_mm, feed) -> TurningToolBody
+TurningToolBody.grooving(blade_width_mm, nose_offset_mm, depth_mm)
+check_body_clearance(profile, body, z, r, *, clearance_mm, spacing)
+    -> list[BodyInterference]
+plan_turning_passes(..., body=None, body_clearance_mm=0.2)
+```
+
+La silhouette ne contient que le **corps**, à partir de la hauteur de
+plaquette : le flanc de la plaquette contre la pente locale est déjà mesuré par
+`too_steep_zones`, et l'y remettre faisait mesurer deux fois la même limite
+physique — tout devenait infaisable.
+
+`TurningPlanReport.body_checked` distingue « dégagé » de « non vérifié ». Sans
+silhouette fournie, le rapport l'écrit au lieu de laisser une liste vide passer
+pour un verdict.

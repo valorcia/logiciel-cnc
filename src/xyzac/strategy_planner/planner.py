@@ -342,7 +342,7 @@ def plan_finishing(
     shape, setup: Setup, obstacles, tool: ToolAssembly,
     *,
     scallop_mm: float = 0.01,
-    max_points_per_pass: int = 400,
+    max_points_per_pass: int = 4000,
     group_tol_deg: float = 20.0,
     stride: int = 8,
     accessibility_config=None,
@@ -356,15 +356,24 @@ def plan_finishing(
     donne une intuition, mais elle ne decide pas : seul l'accessibility solver
     connait le porte-outil, et c'est lui qui tranche.
 
-    ``max_points_per_pass`` limite chaque passe a un SEGMENT CONTIGU de tete.
-    Ce n'est pas une approximation de confort mais une contrainte de coût
-    assumee : a ~25 ms/point, une passe de finition complete sur une calotte
-    (plusieurs centaines de milliers de points au pas de crete demande)
-    demanderait des heures de calcul d'accessibilite.
+    ``max_points_per_pass`` limite chaque passe a un SEGMENT CONTIGU de tete,
+    et le rapport annonce la couverture obtenue.
 
-    Le plan produit est donc une MAQUETTE — une portion reelle de la passe,
-    avec sa continuite — et non la passe complete. Il faut le lire comme tel :
-    il prouve que le debut de la passe est realisable, pas toute la passe.
+    **Valeur revue au jalon M6, sans que la limite soit levee.** Elle valait 400
+    quand un point coûtait ~380 ms en resolution complete. Apres
+    reordonnancement des deux tests exacts (voir
+    ``AccessibilityConfig.guard_first``), un point coûte 68 ms en complet et
+    ~28 ms en adaptatif — donc **×5,5 de couverture a budget egal**, et le
+    plafond passe a 4 000.
+
+    Ce que cela ne suffit PAS a faire : la gamme de finition du dome C10 compte
+    **159 899 points** repartis sur huit groupes de faces, soit environ 75 min
+    en mono-thread. Au plafond de 400 la couverture rapportee valait 2 % ; a
+    4 000 elle vaut AU PLUS 20 %, borne ``8 x 4000 / 159899``. Le plan reste
+    donc une MAQUETTE — une portion
+    reelle de la passe, avec sa continuite — et ``FinishingOpReport`` l'annonce
+    par sa couverture. La lire est le seul moyen de savoir ce que le plan
+    prouve.
     """
     from ..accessibility_solver.solver import AccessibilityConfig, AccessibilitySolver
     from ..orientation_solver.solver import OrientationSolver

@@ -189,22 +189,30 @@ class MachineGuard:
         rep = self.checker.check(tcp_machine, np.array([0.0, 0.0, 1.0]), field_)
         return MachineCheck(not rep.collided, True, rep, tcp_machine)
 
-    def check_many(self, tcps_machine: np.ndarray, ac: np.ndarray) -> np.ndarray:
+    def check_many(self, tcps_machine: np.ndarray, ac: np.ndarray,
+                   *, return_travel: bool = False):
         """Masque de validite pour M poses. ``ac`` est (M, 2) en degres.
 
         Un appel de collision par ORGANE, et non par couple (A, C) : le nuage
         d'un organe est statique dans son propre repere, donc partageable entre
         toutes les poses. Voir ``_pose_in_volume_frame``.
+
+        ``return_travel=True`` rend en plus le masque des poses DANS les courses
+        lineaires. C'est l'information qui distingue « hors course » de
+        « collision organe », et elle est de toute facon calculee ici : la
+        rendre evite a l'appelant de re-tester pose par pose pour retrouver une
+        cause que cette fonction connaissait deja. Le solveur d'accessibilite le
+        faisait, au prix de 105 appels scalaires par point de contact.
         """
         tcps_machine = np.asarray(tcps_machine, float).reshape(-1, 3)
         ac = np.asarray(ac, float).reshape(-1, 2)
-        M = len(tcps_machine)
 
-        ok = (self.m.x.contains(tcps_machine[:, 0])
-              & self.m.y.contains(tcps_machine[:, 1])
-              & self.m.z.contains(tcps_machine[:, 2]))
+        within = (self.m.x.contains(tcps_machine[:, 0])
+                  & self.m.y.contains(tcps_machine[:, 1])
+                  & self.m.z.contains(tcps_machine[:, 2]))
+        ok = within.copy()
         if not self._vols or not ok.any():
-            return ok
+            return (ok, within) if return_travel else ok
 
         live = np.flatnonzero(ok)
         for frame, pts in self._vols:
@@ -221,4 +229,4 @@ class MachineGuard:
             live = np.flatnonzero(ok)
             if live.size == 0:
                 break
-        return ok
+        return (ok, within) if return_travel else ok
