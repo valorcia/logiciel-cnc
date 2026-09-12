@@ -1,4 +1,4 @@
-# Plan de tests — jalons M1 à M10
+# Plan de tests — jalons M1 à M11
 
 ## 1. Principe
 
@@ -399,11 +399,33 @@ il n'a pas sa place dans la suite. Son résultat est consigné dans
 | **`the_benchmark_kernels_use_the_measured_sizes`** | **le banc a d'abord mesuré ses noyaux à N = 34 146 (avant préfiltre) puis 1 980 (avant la bande par coquille) : surestimations de ×17 et ×3,5. Mesurer une taille qui n'existe pas donne un chiffre exact et faux** |
 | `the_benchmark_never_prints_an_extrapolation` | il mesure, il ne prédit pas — sinon il redevient la phrase qu'il remplace |
 
+## 11 quater. Suite ajoutée au jalon M11
+
+### `test_m11_setups.py` — ordonnancer les montages
+
+| Test | Ce qu'il protège |
+|---|---|
+| **`no_mount_is_a_rotation_about_z_because_the_c_axis_does_that`** | **ce qui réduit l'espace de 24 à 6 : l'axe C continu rend identiques deux poses qui ne diffèrent que par une rotation en Z. C'est la cinématique qui le dit, pas une heuristique** |
+| `the_six_mounts_are_proper_rotations` | orthogonales, déterminant +1 |
+| `the_rotated_box_uses_all_eight_corners` | tourner `lo` et `hi` seuls donne une boîte fausse, donc un montage décalé |
+| `the_mount_centres_the_part_and_raises_it` | le rehausseur porte le **dessous** de la pièce, pas son origine |
+| `the_orientation_rotates_points_and_keeps_normals_unit` | la rotation est orthogonale : pas de transposée inverse à sortir, et c'est l'erreur classique sur les normales |
+| `the_field_rotates_but_keeps_classes_and_inflation` | le gonflement conservatif ne doit pas se perdre dans un remontage |
+| `the_ideal_machine_removes_limits_and_organs_without_mutating` | sans quoi le dépistage se comparerait à lui-même |
+| **`a_downward_face_is_mount_limited_and_the_flip_opens_it`** | **le cas physique : une face qui regarde le plateau est un problème de MONTAGE, jamais d'outil** |
+| **`the_probe_tool_declares_itself_inconclusive_when_too_fine`** | **troisième régression de la même famille : un bec de 0,1 mm contre un champ gonflé de 1,26 mm est bloqué par le gonflement seul. Un diagnostic qui ne peut pas discriminer doit le dire** |
+| `a_probe_tool_larger_than_the_inflation_is_conclusive` | le pendant : au-dessus du gonflement, le test a un sens |
+| `the_plan_prefers_no_remount_on_a_tie` | à égalité, « tel quel » d'abord |
+| **`two_opposite_faces_can_share_one_setup`** | **résultat contre-intuitif : couchée sur le côté, une seule pose atteint les deux faces. Le test avait d'abord été écrit avec l'attente naïve, et c'est elle qui était fausse** |
+| **`more_than_one_setup_refuses_to_quote_a_tolerance`** | **les budgets se composent, le moteur ne sait pas les chiffrer, il refuse le chiffre** |
+| `the_plan_says_that_screening_is_optimistic` | 8 points sondés, sans bridage : la portée doit être écrite |
+| `the_screens_are_kept_so_the_plan_can_be_argued` | un plan qui ne dit pas ce qu'il a essayé ne peut pas être discuté |
+
 ## 11. État actuel
 
 ```
 $ python -m pytest tests/ -q
-386 passed
+401 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -625,6 +647,22 @@ d'indisponibilité.** `apt` ne trouvait pas le paquet et le dépôt répondait 4
 — les deux constats étaient exacts, la conclusion « inaccessible » ne l'était
 pas. Le second canal coûtait quelques minutes à essayer.
 
+**Un de plus au jalon M11, et c'est la troisième fois la même famille :**
+
+44. **Un diagnostic dominé par une autre grandeur.** Pour séparer « l'outil ne
+    rentre pas » de « ce montage ne présente pas la face », j'ai d'abord
+    éprouvé les points durs avec un bec de **0,1 mm** — pour conclure
+    « aucun rayon ne lève ce point, donc c'est la géométrie ». Or le champ
+    d'obstacles est gonflé d'au moins **1,26 mm** au pas courant : douze fois
+    le rayon sondé. L'outil était bloqué par le gonflement seul, et son échec
+    ne prouvait rien — au pas de 0,5 mm, le même point devient atteignable.
+
+    Marge du certificat de gouge en M6, marge tous tronçons en M10, bec de
+    sondage en M11. **Trois fois la même faute : lire une grandeur comme si
+    elle mesurait ce qu'on voulait, alors qu'une autre la domine.** Le remède
+    est chaque fois le même — nommer le rapport des deux grandeurs et refuser
+    de conclure quand il est défavorable, ce que fait `probe_conclusive`.
+
 **Trois de plus au jalon M10 :**
 
 41. **Un montage de banc fixe faisait paraître la machine incapable.** À
@@ -698,7 +736,10 @@ s'est mis à nommer la clé dont il expliquait l'absence.
 | ~~Collision du porte-plaquette en tournage~~ | **levée M6** (silhouette (z, r), test majorant) |
 | **Gorgeage** comme opération (plongée, non contour) | M11 |
 | Ordonnancement hybride fraisage + tournage dans une même gamme | M11 |
-| **Ordonnancement de plusieurs montages** | quatre passes du dôme demandent un retournement, et le verdict le dit ; rien ne l'ordonnance |
+| ~~Ordonnancement de plusieurs montages~~ | **levé M11** : six candidats dépistés, séparation montage/outil par machine idéale. Il corrige M10 : quatre passes « rejetées » sont atteignables à 75–88 % |
+| **Bridages** | le banc n'en connaît pas : toute couverture est **optimiste**, et le plan le dit |
+| **Transfert d'origine entre montages** | non modélisé : aucune tolérance ne peut être annoncée d'un montage à l'autre |
+| **Ordre des montages** | le plan donne un ensemble, pas une séquence : l'ordre dépend de la rigidité et des appuis restants, non modélisés |
 | Erreurs non géométriques (thermique, flexion, hystérésis) | hors budget, non modélisées |
 | Erreurs d'échelle des vis | modélisées et compensables, aucune procédure ne les mesure |
 | ~~Approche et dégagement dans le G-code~~ | **levée M8** : portées par la trajectoire et validées au balayage |

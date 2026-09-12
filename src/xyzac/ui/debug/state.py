@@ -204,45 +204,20 @@ class BenchState:
         return info
 
     @staticmethod
-    def suggested_mount(bb, *, riser_mm: float = 25.0) -> tuple[float, float, float]:
-        """Montage PROPOSE : piece centree sur l'axe C, posee sur un rehausseur.
+    def suggested_mount(bb, *, riser_mm: float | None = None):
+        """Montage propose. DELEGUE au moteur, ne calcule rien.
 
-        Ce n'est pas un detail d'affichage. Sur une machine table/table, une
-        piece decentree de d tourne a d du centre du plateau : ses faces
-        eloignees sortent des courses ou balaient le berceau, et le solveur les
-        declare inaccessibles a bon droit — pour une raison qui n'est pas celle
-        de la piece.
-
-        Mesure sur le dome C10 (60 x 60 mm, repere au coin) : a (0, 0, 25),
-        deux des quatre parois verticales sont declarees inatteignables et deux
-        accessibles — une asymetrie qui n'a aucune cause geometrique, seulement
-        celle du decentrage. Centree et rehaussee de 60 mm, les quatre parois
-        offrent 35 a 38 orientations admissibles.
-
-        Le rehausseur est une HYPOTHESE de montage, affichee comme telle : le
-        banc ne connait pas le montage reel de l'utilisateur. Ce qu'il ne doit
-        pas faire, c'est en choisir un mauvais en silence.
-
-        **Pourquoi 25 mm.** Valeur choisie par mesure, et le critere n'est pas
-        « le plus de degagement possible » mais « n'introduire aucune limite
-        nouvelle ». Sur le dome C10, verdict des quatre parois verticales et
-        cause du blocage sur le dome lui-meme :
-
-            rehausseur 10 mm : 2 parois inatteignables (plateau), 2 a 99,6 %
-            rehausseur 25 mm : 4 parois 3+2, degagement 12,7 a 14,1 mm
-            rehausseur 40 mm : 4 parois 3+2, degagement 14,4 a 16,8 mm
-            rehausseur 60 mm : 4 parois 3+2, mais le dome bute en COURSE
-
-        A 60 mm la course lineaire se met a buter et MASQUE la vraie cause du
-        rejet sur le dome, qui est COLLISION_CUTTING — l'arete de coupe ne
-        rentre pas dans le rayon local, et aucun montage n'y changera rien.
-        Monter plus haut achete du degagement au prix d'un diagnostic faux.
+        Ce calcul vivait ici, et c'etait une faute d'architecture : la regle du
+        projet interdit a l'interface de contenir de la logique metier, et
+        « ou poser la piece sur le plateau » en est — le module
+        ``strategy_planner.setups`` s'en sert pour ordonnancer plusieurs
+        montages. Le garder en double aurait garanti qu'un jour les deux
+        divergent, comme JOINT_AXIS et la liste des blocs au jalon M9.
         """
-        cx = -0.5 * float(bb.lo[0] + bb.hi[0])
-        cy = -0.5 * float(bb.lo[1] + bb.hi[1])
-        # Le rehausseur porte le DESSOUS de la piece, pas son origine.
-        cz = riser_mm - float(bb.lo[2])
-        return (cx, cy, cz)
+        from ...strategy_planner.setups import RISER_MM, derive_mount
+
+        return derive_mount(bb.lo, bb.hi,
+                            riser_mm=RISER_MM if riser_mm is None else riser_mm)
 
     def set_default_tool(self, kind: str = "ballnose", *, diameter: float = 6.0,
                          stickout: float = 45.0,

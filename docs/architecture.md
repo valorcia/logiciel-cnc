@@ -675,3 +675,38 @@ valent à sa résolution. Le positif, lui, exhibe une orientation.
 `plan_finishing(..., verify=True)` n'émet **aucune opération** pour une passe
 non indexable : la trajectoire simultanée n'est pas devenue abordable, et
 émettre une opération laisserait croire le contraire.
+
+## 13. Ajouts du jalon M11 — ordonnancer les montages
+
+### strategy_planner/setups
+
+```python
+derive_mount(bbox_lo, bbox_hi, *, riser_mm=25.0) -> (dx, dy, dz)
+CANONICAL_MOUNTS: tuple[PartOrientation, ...]          # SIX, pas vingt-quatre
+ideal_machine(machine) -> MachineKinematics            # sans butees ni organes
+screen_orientation(orientation, passes, field, make_solver, machine, tool,
+                   *, probe_tool=None, bbox_lo, bbox_hi, n_probe=8)
+plan_setups(passes, field, make_solver, machine, tool, *, probe_tool=None, ...)
+    -> SetupPlan
+```
+
+Un remontage est une **rotation du repère pièce** : le champ d'obstacles ne
+contient que pièce, brut et bridages — tout ce qui tourne avec la pièce — donc
+il suffit de le faire tourner. Aucune modification du solveur.
+
+**Six candidats.** L'axe C étant continu, deux poses qui ne diffèrent que par
+une rotation autour du Z du montage sont la même pose. C'est la cinématique qui
+réduit l'espace de recherche.
+
+`ideal_machine` est le discriminant : si un point échoue même sans butées ni
+organes, aucun montage n'y changera rien. Et `probe_conclusive` refuse de
+conclure quand le bec de sondage ne dépasse pas le gonflement du champ — le
+test discret ne décide pas au-dessous de sa propre marge (ADR-001 / D2).
+
+`SetupPlan.tolerance_warning()` refuse d'annoncer un chiffre dès qu'il y a plus
+d'un montage : chaque remontage reréférence la pièce et les budgets se
+composent, ce que le moteur ne sait pas encore modéliser.
+
+`derive_mount` vivait dans `ui/debug/state.py` — de la logique métier dans
+l'interface, ce que la règle de dépendance interdit. L'interface délègue
+désormais.

@@ -8,7 +8,7 @@ Ce n'est **pas** un CAM généraliste : l'utilisateur ne programme pas
 d'opérations. Ce n'est **pas** un portage d'OrcaSlicer : l'inspiration est
 l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 
-> **État : jalon M10.** Ébauche indexée, finition à crête contrôlée — le pas
+> **État : jalon M11.** Ébauche indexée, finition à crête contrôlée — le pas
 > venant de la **courbure locale mesurée** — et tournage sur l'axe C. La gouge
 > du porte-outil est **prouvée sur toute la passe**, et non sondée. La machine
 > se **mesure** : localisation des axes A et C au palpeur, erreurs compensées,
@@ -23,6 +23,14 @@ l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 > articulations existent. Cette épreuve a révélé **cinq défauts**, dont deux
 > silencieux — voir [la note de validation](docs/validation-linuxcnc.md).
 >
+> Quand une seule pose ne suffit pas, le moteur **ordonnance les montages** :
+> six candidats — et non vingt-quatre, l'axe C continu rendant identiques les
+> poses qui ne diffèrent que par une rotation en Z. Pour chaque face non
+> couverte il sépare ce qui tient au **montage** de ce qui tient à l'**outil**,
+> en éprouvant le point sur une **machine idéale**. Sur le dôme, quatre passes
+> que M10 déclarait rejetées sont en réalité atteignables à 75–88 %, le résidu
+> se comptant en un ou deux points.
+>
 > La finition est désormais décidée sur la **passe complète** et non sur un
 > préfixe : le mode annoncé n'est plus celui d'un échantillon. La gamme du dôme
 > C10 (159 899 points) est tranchée en **208 s**, contre 1 091 s pour 18 % de
@@ -35,7 +43,11 @@ l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 > **LinuxCNC en marche** — 56 poses commandées en MDI, articulations relues.
 > La correspondance de broches d'avant correction donnait **10,286 mm**.
 >
-> Ce qui n'est **pas** acquis : la **trajectoire simultanée** sur une passe
+> Ce qui n'est **pas** acquis : les **bridages** (le banc n'en connaît pas, donc
+> toute couverture est optimiste) et le **transfert d'origine** entre montages —
+> chaque remontage reréférence la pièce, les budgets se composent, et le moteur
+> refuse d'annoncer une tolérance d'un montage à l'autre. La **trajectoire
+> simultanée** sur une passe
 > complète, qui demande le champ admissible en chaque point et reste à trois
 > heures. Le **signe** des offsets de pivot, qu'aucun
 > calcul n'établit — il faut commander un déplacement et regarder. Le HAL
@@ -51,7 +63,8 @@ l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 > [ADR-007](docs/adr/ADR-007-jalon-M7.md),
 > [ADR-008](docs/adr/ADR-008-jalon-M8.md),
 > [ADR-009](docs/adr/ADR-009-jalon-M9.md),
-> [ADR-010](docs/adr/ADR-010-jalon-M10.md).
+> [ADR-010](docs/adr/ADR-010-jalon-M10.md),
+> [ADR-011](docs/adr/ADR-011-jalon-M11.md).
 
 ---
 
@@ -79,7 +92,7 @@ pip install -e ".[viz,dev]"
 
 python tools/make_corpus.py                  # 20 géométries STEP synthétiques
 python tools/make_degraded_corpus.py         # 3 STEP volontairement abîmés
-python -m pytest tests/ -q                   # 386 tests
+python -m pytest tests/ -q                   # 401 tests
 
 # M1 — accessibilité + orientation + visualisation
 python tools/demo_vertical_slice.py C08
@@ -137,12 +150,13 @@ Le prototype produit quatre images dans `out/` :
 | [ADR-008](docs/adr/ADR-008-jalon-M8.md) | jalon M8 : recettes de coupe, approche et dégagement, un programme exécutable |
 | [ADR-009](docs/adr/ADR-009-jalon-M9.md) | jalon M9 : configuration LinuxCNC dérivée, dépôt de programme, pas de lancement de cycle |
 | [ADR-010](docs/adr/ADR-010-jalon-M10.md) | jalon M10 : décider une passe de finition complète — explorer coûte 65 ms, vérifier 1,6 ms |
+| [ADR-011](docs/adr/ADR-011-jalon-M11.md) | jalon M11 : ordonnancer les montages, et séparer ce qui tient au montage de ce qui tient à l'outil |
 | [Banc de debug](docs/banc-de-debug.md) | interface de contrôle visuel : ce qu'elle montre, comment la lancer |
 | [Performance et Pi 5](docs/bench/README.md) | où passe le temps, la référence x86_64, et la procédure sur Raspberry Pi 5 |
 | [Validation LinuxCNC](docs/validation-linuxcnc.md) | compiler LinuxCNC, lui donner la configuration, les sept défauts trouvés, et le recoupement chiffré des deux cinématiques jusqu'à l'exécution |
 | [Accessibility Solver](docs/algorithms/accessibility-solver.md) | algorithme, garantie conservative, performance mesurée |
 | [Orientation Solver](docs/algorithms/orientation-solver.md) | Viterbi, segmentation 3+2, raffinement |
-| [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 386 tests, ce qui n'est pas testé |
+| [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 401 tests, ce qui n'est pas testé |
 
 ---
 
