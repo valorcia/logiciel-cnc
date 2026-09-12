@@ -3,10 +3,91 @@
 Outil de contrôle pour le porteur du projet : **voir** ce que le moteur calcule
 au lieu d'en lire les journaux. Ce n'est pas l'IHM destinée au client.
 
-## Installation
+## Installation pas à pas
+
+Prérequis : **Python 3.11 ou plus**, et **git**. Sur Windows, remplacer
+`python3` par `python` dans toutes les commandes.
 
 ```bash
+# 1. Récupérer le code
+git clone https://github.com/valorcia/logiciel-cnc
+cd logiciel-cnc
+git checkout claude/amazing-lovelace-a85fl3
+
+# 2. Créer un environnement isolé (évite de polluer le Python du système)
+python3 -m venv .venv
+source .venv/bin/activate          # Windows : .venv\Scripts\activate
+
+# 3. Installer
 pip install -e ".[ui,viz,dev]"
+```
+
+Le corpus de 20 pièces STEP est **déjà dans le dépôt** : rien à générer.
+
+### Vérification en trois marches
+
+Monter dans cet ordre. Si une marche échoue, la suivante ne dira rien d'utile.
+
+**Marche 1 — le moteur seul** (aucune image, aucune fenêtre) :
+
+```bash
+python3 -m pytest -q
+```
+
+Attendu : `290 passed`. Si des tests d'image sont sautés (`skipped`), c'est
+normal sur une machine sans rendu 3D — voir la section « Rendu sans écran ».
+
+**Marche 2 — une image, sans fenêtre** :
+
+```bash
+python3 -m xyzac.ui.debug --step tests/corpus/step/C10_dome_convexe.step \
+    --capture out/essai.png
+```
+
+Attendu : les cotes de la pièce s'affichent, puis `capture : .../out/essai.png`.
+Ouvrir l'image : on doit voir le dôme ambre, le brut transparent et l'outil
+complet. **Si cette marche passe, le moteur et le rendu fonctionnent** — ce qui
+reste n'est plus qu'une question d'affichage.
+
+**Marche 3 — la fenêtre** :
+
+```bash
+python3 -m xyzac.ui.debug --step tests/corpus/step/C10_dome_convexe.step
+```
+
+### Ce qu'il faut essayer dans la fenêtre
+
+| Geste | Attendu |
+|---|---|
+| Glisser avec le bouton gauche | la scène tourne |
+| Molette | zoom |
+| Décocher « Brut » à gauche | la boîte transparente disparaît |
+| Décocher « Porte-outil » | l'écrou et le nez de broche disparaissent, la fraise reste |
+| Onglet « Axes » à droite | X, Y, Z, A, C, et la mention « pose d'inspection » |
+| `IMPORTER STEP` | choisir un autre fichier de `tests/corpus/step/` |
+| `Voir tout` | recule jusqu'aux limites de course |
+| `CAPTURE DEBUG` | le chemin de l'image s'écrit en bas de la fenêtre |
+| Fermer la fenêtre | le programme rend la main, sans processus restant |
+
+Pièces intéressantes à charger : `C01_bloc_simple` (le plus simple),
+`C02_poche_droite`, `C06_contre_depouille`, `C10_dome_convexe`,
+`C13_arbre_gorge_torique`.
+
+### Si quelque chose ne marche pas
+
+Envoyez-moi **la commande lancée et le message d'erreur complet**, plus le
+résultat de :
+
+```bash
+python3 -c "import sys, platform; print(sys.version, platform.platform())"
+python3 -c "import PySide6, pyvista, vtk; print('ui ok')"
+```
+
+Sur Linux, une fenêtre qui refuse de s'ouvrir demande souvent des
+bibliothèques système absentes :
+
+```bash
+sudo apt-get install -y libegl1 libxkbcommon-x11-0 libdbus-1-3 libfontconfig1
 ```
 
 L'extra `ui` est **optionnel** : le moteur s'installe et tourne sans lui, et un
