@@ -1,0 +1,23 @@
+[
+  {
+    "id": "D01",
+    "name": "shell_ouvert",
+    "defect": "face manquante : volume non calculable",
+    "expect": "diagnostic doit signaler volume nul et topologie suspecte",
+    "file": "D01_shell_ouvert.step"
+  },
+  {
+    "id": "D02",
+    "name": "unites_pouces",
+    "defect": "piece modelisee en pouces, lue en mm (x1/25,4)",
+    "expect": "diagnostic doit signaler un encombrement suspect (< 2 mm)",
+    "file": "D02_unites_pouces.step"
+  },
+  {
+    "id": "D03",
+    "name": "trop_grande",
+    "defect": "piece de 2,5 m : hors volume d'une machine maker",
+    "expect": "diagnostic doit signaler un encombrement hors machine",
+    "file": "D03_trop_grande.step"
+  }
+]

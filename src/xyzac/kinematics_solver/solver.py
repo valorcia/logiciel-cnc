@@ -88,14 +88,39 @@ class KinematicsSolver:
         out.sort(key=lambda s: (not s.feasible, s.singularity_severity, abs(s.a_deg)))
         return out
 
-    def ik_best(self, d_part: np.ndarray) -> AxisSolution | None:
+    def ik_best(self, d_part: np.ndarray, *, allow_singular: bool = False
+                ) -> AxisSolution | None:
         """Meilleure branche isolee. A n'utiliser que hors sequence.
 
         Pour une trajectoire, passer par ``orientation_solver`` : un choix
         point par point produit des retournements de plateau.
+
+        ``allow_singular=True`` accepte une solution dans la bande de
+        singularite, et cette option n'est pas un relachement de surete — elle
+        corrige une confusion.
+
+        **La singularite A -> 0 est un probleme de MOUVEMENT, pas de POSITION.**
+        Quand A s'annule, l'axe C devient indetermine : une variation
+        infinitesimale de l'axe outil peut exiger une rotation de 180 deg du
+        plateau. Cela rend le suivi d'une trajectoire simultanee impraticable.
+
+        Mais dans une operation INDEXEE (3+2), C ne bouge pas : il est bloque
+        pour toute la passe. Il n'y a donc rien a suivre, et rien de mal
+        conditionne. Refuser A = 0 en indexation reviendrait a interdire
+        l'usinage vertical — la prise la plus courante et la plus rigide d'une
+        machine XYZAC, et la premiere qu'un utilisateur attend.
+
+        C'est exactement ce qui se produisait avant cette correction : le
+        planificateur de gammes ne proposait jamais +Z ni -Z, et laissait donc
+        intacte toute poche ouverte vers le haut.
         """
         br = self.ik_branches(d_part)
-        return br[0] if br and br[0].feasible else None
+        if not br:
+            return None
+        if allow_singular:
+            ok = [b for b in br if b.within_limits]
+            return ok[0] if ok else None
+        return br[0] if br[0].feasible else None
 
     def singularity_severity(self, a_deg: float) -> float:
         """Severite de singularite dans [0, 1].

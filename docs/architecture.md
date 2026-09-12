@@ -16,7 +16,8 @@ logiciel-cnc/
 │   ├── testplan/plan-de-tests.md
 │   └── architecture.md
 ├── src/xyzac/
-│   ├── geometry_core/        types.py, brep.py, sphere.py, voxelize.py
+│   ├── geometry_core/        types.py, brep.py, sphere.py, voxelize.py,
+│   │                         healing.py
 │   ├── machine_model/        machine.py, setup.py
 │   ├── tool_model/           assembly.py
 │   ├── stock_engine/         stock.py, material.py
@@ -29,8 +30,8 @@ logiciel-cnc/
 │   ├── simulation_engine/    scene.py, validator.py
 │   ├── turning_engine/       interfaces.py
 │   ├── safety_state_machine/ machine.py
-│   ├── subtractive_slicer/   interfaces.py        ← stub M1
-│   ├── strategy_planner/     interfaces.py        ← stub M1
+│   ├── subtractive_slicer/   interfaces.py, slicer.py
+│   ├── strategy_planner/     interfaces.py, planner.py
 │   ├── vision_service/       interfaces.py        ← stub M1
 │   ├── probing_service/      interfaces.py        ← stub M1
 │   ├── postprocessor_linuxcnc/ interfaces.py      ← stub M1, verrouillé
@@ -38,8 +39,9 @@ logiciel-cnc/
 │   ├── recipe_profiles/      interfaces.py        ← stub M1
 │   ├── assembly_calibration/ interfaces.py        ← stub M1
 │   └── ui/                   render.py
-├── tests/         conftest, 7 fichiers, corpus/ (20 STEP + manifeste)
-├── tools/         make_corpus.py, demo_vertical_slice.py, demo_m2_pipeline.py
+├── tests/         conftest, 8 fichiers, corpus/ (20 STEP sains + 3 dégradés)
+├── tools/         make_corpus.py, make_degraded_corpus.py,
+│               demo_vertical_slice.py, demo_m2_pipeline.py, demo_m3_pipeline.py
 └── out/           rendus PNG (non versionnés)
 ```
 
@@ -196,5 +198,63 @@ Les portes ne peuvent pas être sautées : le graphe de transitions les refuse.
 | feature_engine (révolution), ui (rendu) | **implémenté** |
 | safety_state_machine | **implémenté** |
 | turning_engine | détection implémentée, génération **non** |
-| subtractive_slicer, strategy_planner, vision, probing, recipes, calibration | **interfaces seules** |
+| subtractive_slicer (ébauche indexée), strategy_planner (couverture gloutonne) | **implémenté** |
+| geometry_core/healing (diagnostic + réparation gardée) | **implémenté** |
+| vision, probing, recipes, calibration | **interfaces seules** |
 | postprocessor_linuxcnc, linuxcnc_gateway | **verrouillés** (ADR-001 §6, motif mis à jour en M2) |
+
+
+## 5. Ajouts du jalon M3
+
+### subtractive_slicer
+
+```python
+slice_for_direction(material, direction, tool, layer_thickness, stepover_ratio,
+                    safety_clearance) -> SliceResult
+continuous_path(result, point_spacing, layers=None) -> (points, is_rapid)
+toolpath_points(result, point_spacing) -> (cut_points, normals)
+simulate_removal(material, result, tool) -> RemovalStats
+indexed_frame(direction) -> (3,3)     # R @ direction = +Z
+```
+
+`continuous_path` inclut les **liaisons** (remontée au plan de dégagement,
+déplacement, replongée) ; `toolpath_points` ne rend que les points de coupe,
+puisqu'une liaison n'enlève rien.
+
+### strategy_planner
+
+```python
+candidate_directions(shape, setup) -> list[np.ndarray]
+evaluate_candidates(directions, material, setup) -> list[DirectionCandidate]
+plan_roughing(shape, setup, material, tool, ...) -> (ProcessPlan, PlanReport)
+indexed_orientation_plan(points, direction, setup) -> OrientationPlan
+```
+
+### stock_engine (matière)
+
+```python
+MaterialState.reachable_from(direction) -> mask
+MaterialState.protect_fixtures(setup) -> int      # les bridages sont protégés
+MaterialState.protected_boundary_points() -> (points, inflation)
+```
+
+### geometry_core/healing
+
+```python
+load_step_checked(path) -> (shape, StepDiagnosis, HealingResult)
+require_usable(shape, diagnosis)                  # lève UnusableShapeError
+```
+
+`StepDiagnosis` sépare `geometry_issues` (réparables) de
+`plausibility_warnings` (à trancher par l'utilisateur). `HealingResult.resolved`
+dit si la réparation a **réellement** agi.
+
+### simulation_engine
+
+```python
+validate_roughing_progressive(setup, material, slice_result, tool, ...) -> OperationReport
+```
+
+Valide couche par couche en enlevant la matière au fur et à mesure : c'est
+l'ordre dans lequel la machine travaille, et le seul état contre lequel la
+question a un sens.

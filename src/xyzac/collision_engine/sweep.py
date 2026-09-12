@@ -147,13 +147,72 @@ class SweepChecker:
 
     def check_path(
         self, tcps: np.ndarray, axes: np.ndarray, a_seq: np.ndarray, c_seq: np.ndarray,
-        obstacles: ObstacleField, **kw,
+        obstacles: ObstacleField, *, chunk: int = 96, **kw,
     ) -> list[SweepReport]:
-        """Verifie tous les segments d'une trajectoire. Un rapport par segment."""
-        out = []
-        for i in range(len(tcps) - 1):
-            out.append(self.check_segment(
+        """Verifie tous les segments d'une trajectoire. Un rapport par segment.
+
+        **Traitement par lots.** Une premiere version appelait ``check_segment``
+        segment par segment. Chaque appel reextrait son voisinage d'obstacles,
+        travail proportionnel a la taille du nuage et repete des centaines de
+        fois pour une poignee de poses a chaque tour : la validation d'une
+        ebauche ne se terminait pas en un temps utile.
+
+        On interpole donc tous les segments d'abord, puis on teste les poses par
+        paquets. L'extraction de voisinage est amortie sur ~400 poses au lieu de
+        ~12, et la taille des paquets borne la memoire des tableaux (N x M).
+        """
+        n_seg = len(tcps) - 1
+        if n_seg <= 0:
+            return []
+
+        all_tcps: list[np.ndarray] = []
+        all_axes: list[np.ndarray] = []
+        owner: list[np.ndarray] = []
+        counts = np.zeros(n_seg, dtype=np.int64)
+
+        for i in range(n_seg):
+            n = self.n_subdivisions(tcps[i], axes[i], tcps[i + 1], axes[i + 1])
+            t_i, a_i, _, _ = self.interpolate(
                 tcps[i], axes[i], float(a_seq[i]), float(c_seq[i]),
-                tcps[i + 1], axes[i + 1], float(a_seq[i + 1]), float(c_seq[i + 1]),
-                obstacles, **kw))
+                tcps[i + 1], axes[i + 1], float(a_seq[i + 1]), float(c_seq[i + 1]), n)
+            all_tcps.append(t_i)
+            all_axes.append(a_i)
+            owner.append(np.full(len(t_i), i, dtype=np.int64))
+            counts[i] = len(t_i)
+
+        T = np.vstack(all_tcps)
+        A = np.vstack(all_axes)
+        own = np.concatenate(owner)
+
+        feas = np.ones(len(T), dtype=bool)
+        marg = np.full(len(T), np.inf)
+        radius = self.checker.reach + float(obstacles.inflation.max(initial=0.0))
+
+        # Blocs de poses CONSECUTIVES : elles sont spatialement compactes, ce
+        # qui preserve l'effet des pre-filtres de ``check_many`` (voir
+        # ``check_path_poses``).
+        for s0 in range(0, len(T), chunk):
+            s1 = min(s0 + chunk, len(T))
+            sub = obstacles.subset_capsule(T[s0:s1].min(axis=0) - radius,
+                                           T[s0:s1].max(axis=0) + radius, radius)
+            if len(sub) == 0:
+                continue
+            f, m, _ = self.checker.check_many(T[s0:s1], A[s0:s1], sub, **kw)
+            feas[s0:s1], marg[s0:s1] = f, m
+
+        out: list[SweepReport] = []
+        for i in range(n_seg):
+            sel = own == i
+            ok = bool(feas[sel].all())
+            mm = marg[sel]
+            worst = float(np.min(mm)) if np.isfinite(mm).any() else np.inf
+            if ok:
+                out.append(SweepReport(True, int(counts[i]), worst))
+                continue
+            k = int(np.argmax(~feas[sel]))
+            idx = np.flatnonzero(sel)[k]
+            rep = self.checker.check(T[idx], A[idx], obstacles, **kw)
+            out.append(SweepReport(False, int(counts[i]), worst,
+                                   first_failure_t=float(k) / max(counts[i] - 1, 1),
+                                   detail=rep))
         return out

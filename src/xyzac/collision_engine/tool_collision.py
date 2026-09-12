@@ -114,6 +114,30 @@ class ToolCollisionChecker:
         ]
         self._reach = float(np.hypot(tool.total_length, tool.max_radius))
 
+        # Troncons qui SUIVENT l'outil dans le canal qu'il vient de couper.
+        #
+        # Regle physique, et elle manquait : un troncon dont le rayon ne depasse
+        # pas le rayon de coupe tient forcement dans le passage ouvert par
+        # l'arete, des lors que l'outil progresse le long de son propre chemin.
+        # La tige d'une fraise 2 tailles est dans ce cas — elle a exactement le
+        # diametre de coupe.
+        #
+        # Sans cette regle, le test discret la declare en collision avec le brut
+        # a chaque passe profonde : elle se trouve au bord EXACT du canal, et la
+        # moindre inflation d'echantillonnage suffit a la faire toucher. Mesuree
+        # sur une poche : 4 couches sur 12 refusees pour 0,226 mm de penetration
+        # d'une tige qui, en realite, descend dans un trou qu'elle remplit.
+        #
+        # La condition sur le rayon est essentielle : un porte-outil, lui, ne
+        # tient pas dans le canal, et reste donc un obstacle a part entiere.
+        eps = 1e-6
+        self._trails_in_cut = tuple(
+            seg.role is not SegmentRole.SPINDLE_NOSE
+            and seg.role is not SegmentRole.HOLDER
+            and seg.r_max <= tool.radius + eps
+            for seg in tool.segments
+        )
+
     @property
     def reach(self) -> float:
         """Rayon de la sphere contenant l'outil place. Pre-filtre spatial."""
@@ -176,12 +200,15 @@ class ToolCollisionChecker:
         violations: dict[SegmentRole, int] = {}
         collided = False
 
-        for role, z0, z1, r0, r1 in self._segs:
+        for si, (role, z0, z1, r0, r1) in enumerate(self._segs):
             d = signed_clearance_to_segment(ri, zi, z0, z1, r0, r1) - inf_i
 
+            trails = self._trails_in_cut[si] if si < len(self._trails_in_cut) else False
             for oc in ObstacleClass:
                 if PENETRATION_ALLOWED[(role, oc)]:
                     continue  # penetration toleree : ce couple n'est pas une contrainte
+                if trails and oc is ObstacleClass.STOCK:
+                    continue  # le troncon suit l'outil dans le canal deja coupe
 
                 sel = cls_i == int(oc)
                 if role is SegmentRole.CUTTING and oc is ObstacleClass.PART and cutting_depth > 0:
@@ -329,10 +356,14 @@ class ToolCollisionChecker:
         dist_mean = np.linalg.norm(pts - center, axis=1)  # (N,), calcule une fois
 
         for si, (role, z0, z1, r0, r1) in enumerate(self._segs):
+            trails = self._trails_in_cut[si] if si < len(self._trails_in_cut) else False
             forbidden = np.zeros(len(sub), dtype=bool)
             for oc in ObstacleClass:
-                if not PENETRATION_ALLOWED[(role, oc)]:
-                    forbidden |= sub.classes == int(oc)
+                if PENETRATION_ALLOWED[(role, oc)]:
+                    continue
+                if trails and oc is ObstacleClass.STOCK:
+                    continue
+                forbidden |= sub.classes == int(oc)
             if not forbidden.any():
                 continue
 
@@ -361,3 +392,36 @@ class ToolCollisionChecker:
         feasible = margin >= 0.0
         blocking = np.where(feasible, -1, blocking).astype(np.int8)
         return feasible, margin, blocking
+
+
+def check_path_poses(
+    checker: ToolCollisionChecker, tcps: np.ndarray, axes: np.ndarray,
+    obstacles: ObstacleField, *, chunk: int = 64, **kw,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Teste les poses d'un CHEMIN, par blocs de points consecutifs.
+
+    ``check_many`` amortit l'extraction du voisinage sur toutes les poses qu'on
+    lui donne — mais deux de ses pre-filtres, le cone et la coquille radiale par
+    troncon, sont elargis de ``spread``, l'etendue spatiale des TCP fournis.
+
+    Lui passer une trajectoire entiere est donc contre-productif : sur une
+    couche d'ebauche, les poses couvrent 60 mm, le ``spread`` atteint 35 mm, et
+    les deux pre-filtres ne prunent plus rien. Mesure : 4,1 s pour 368 poses
+    contre 13 520 obstacles.
+
+    Les points d'un chemin etant ordonnes, des blocs de points CONSECUTIFS sont
+    spatialement compacts. On retrouve un ``spread`` de quelques millimetres, et
+    donc tout l'effet des pre-filtres.
+    """
+    tcps = np.asarray(tcps, float).reshape(-1, 3)
+    axes = np.asarray(axes, float).reshape(-1, 3)
+    n = len(tcps)
+    feas = np.ones(n, dtype=bool)
+    marg = np.full(n, np.inf)
+    blk = np.full(n, -1, np.int8)
+
+    for i0 in range(0, n, chunk):
+        i1 = min(i0 + chunk, n)
+        f, m, b = checker.check_many(tcps[i0:i1], axes[i0:i1], obstacles, **kw)
+        feas[i0:i1], marg[i0:i1], blk[i0:i1] = f, m, b
+    return feas, marg, blk

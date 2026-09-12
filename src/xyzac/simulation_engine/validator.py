@@ -29,7 +29,7 @@ from ..accessibility_solver.solver import tcp_from_contact
 from ..collision_engine.field import ObstacleField
 from ..collision_engine.machine_guard import MachineGuard
 from ..collision_engine.sweep import SweepChecker, SweepReport
-from ..collision_engine.tool_collision import ToolCollisionChecker
+from ..collision_engine.tool_collision import ToolCollisionChecker, check_path_poses
 from ..kinematics_solver.solver import KinematicsSolver
 from ..machine_model.setup import Setup
 from ..orientation_solver.solver import OrientationPlan
@@ -135,8 +135,8 @@ class TrajectoryValidator:
 
     def _check_poses(self, plan, tcps, rep) -> None:
         rep.checks_run.append("poses")
-        feas, margin, blocking = self.checker.check_many(
-            tcps, plan.directions, self.obstacles,
+        feas, margin, blocking = check_path_poses(
+            self.checker, tcps, plan.directions, self.obstacles,
             cutting_depth=self.cutting_depth, cutting_allowance=self.cutting_allowance)
         finite = margin[np.isfinite(margin)]
         rep.min_margin_poses = float(finite.min()) if finite.size else np.inf
@@ -273,3 +273,136 @@ def make_pose_verifier(setup: Setup, obstacles: ObstacleField, tool,
         return True, rep.min_margin
 
     return verify
+
+
+@dataclass
+class OperationReport:
+    """Validation d'une operation d'ebauche, couche par couche."""
+
+    op_id: str
+    n_layers: int
+    n_points: int
+    layers_ok: int
+    issues: list[ValidationIssue] = field(default_factory=list)
+    min_margin: float = np.inf
+    removed_mm3: float = 0.0
+
+    @property
+    def passed(self) -> bool:
+        return not [i for i in self.issues if i.severity == "erreur"]
+
+    def describe(self) -> str:
+        head = (f"Operation {self.op_id} : "
+                f"{'ACCEPTEE' if self.passed else 'REFUSEE'} — "
+                f"{self.layers_ok}/{self.n_layers} couches valides, "
+                f"{self.n_points} points, marge min {self.min_margin:.3f} mm, "
+                f"{self.removed_mm3:.0f} mm3 enleves")
+        for i in self.issues[:5]:
+            head += f"\n      [{i.severity}] {i.check} couche {i.index} : {i.message}"
+        if len(self.issues) > 5:
+            head += f"\n      ... {len(self.issues) - 5} de plus"
+        return head
+
+
+def validate_roughing_progressive(
+    setup: Setup, material, slice_result, tool, *,
+    point_spacing: float = 1.5, sweep_step_mm: float = 2.0,
+    fixture_points=None, fixture_spacing: float = 2.0, safety_clearance: float = 0.3,
+    op_id: str = "ebauche",
+) -> OperationReport:
+    """Valide une ebauche indexee en suivant l'etat REEL de la matiere.
+
+    Point qui n'a rien d'accessoire : valider toute l'operation contre l'etat
+    INITIAL de la matiere serait a la fois trop severe et faux. Pendant une
+    ebauche profonde, la tige de l'outil occupe l'espace que les couches
+    superieures viennent de liberer. Contre le brut intact, elle serait declaree
+    en collision a chaque passe — le moteur refuserait toute ebauche de plus
+    d'une couche.
+
+    On valide donc **couche par couche**, en enlevant la matiere au fur et a
+    mesure : c'est l'ordre dans lequel la machine travaille, et c'est le seul
+    etat contre lequel la question a un sens.
+    """
+    from ..collision_engine.field import ObstacleField
+    from ..stock_engine.material import MaterialState  # noqa: F401
+
+    if abs(getattr(slice_result, "safety_clearance", safety_clearance)
+           - safety_clearance) > 1e-9:
+        raise ValueError(
+            "le tranchage et la validation n'emploient pas la meme marge de "
+            "securite : les deux modeles conservatifs divergeraient et le "
+            "validateur refuserait des trajectoires jugees sûres par le slicer")
+
+    rep = OperationReport(op_id=op_id, n_layers=len(slice_result.layers),
+                          n_points=0, layers_ok=0)
+    d = np.asarray(slice_result.direction, float)
+    d = d / np.linalg.norm(d)
+    part_pts = None
+    part_inf = 0.0
+    removed_total = 0
+
+    from ..subtractive_slicer.slicer import continuous_path
+
+    for layer in slice_result.layers:
+        # Chemin CONTINU de la couche : passes de coupe ET liaisons. Ne valider
+        # que les passes laisserait hors controle les mouvements qui les
+        # relient — precisement ceux qui traversent la matiere quand ils sont
+        # implicites.
+        P, is_rapid = continuous_path(slice_result, point_spacing, layers=[layer])
+        if len(P) == 0:
+            rep.layers_ok += 1
+            continue
+        rep.n_points += len(P)
+
+        # Obstacles vus par CETTE couche : peau de la matiere encore en place.
+        skin, skin_inf = material.boundary_points()
+        if part_pts is None:
+            part_pts, part_inf = material.protected_boundary_points()
+        field_ = ObstacleField.build(
+            part_pts, part_spacing=part_inf,
+            stock_points=skin, stock_spacing=skin_inf,
+            fixture_points=fixture_points, fixture_spacing=fixture_spacing,
+            safety_clearance=safety_clearance)
+
+        plan = _fixed_plan(P, d, setup)
+        v = TrajectoryValidator(setup, field_, tool, max_sweep_step_mm=sweep_step_mm,
+                                cutting_allowance=float(field_.inflation.max()),
+                                cutting_depth=slice_result.layer_thickness)
+        sub = v.validate(plan, P, np.tile(d, (len(P), 1)))
+
+        rep.min_margin = min(rep.min_margin, sub.min_margin_poses)
+        errs = [i for i in sub.errors]
+        if errs:
+            rep.issues.append(ValidationIssue(
+                errs[0].check, layer.index, "erreur",
+                f"{len(errs)} erreur(s), premiere : {errs[0].message}"))
+        else:
+            rep.layers_ok += 1
+
+        # Seuls les points de COUPE enlevent de la matiere : une liaison au
+        # plan de degagement passe dans le vide.
+        cut = P[~is_rapid]
+        if len(cut):
+            removed_total += material.remove_tool_sweep(
+                cut, np.tile(d, (len(cut), 1)), tool, only_cutting=True)
+
+    rep.removed_mm3 = float(removed_total) * material.grid.voxel_volume
+    return rep
+
+
+def _fixed_plan(points: np.ndarray, direction: np.ndarray, setup: Setup):
+    from ..kinematics_solver.solver import KinematicsSolver
+    from ..orientation_solver.solver import OrientationPlan, OrientationSegment
+
+    kin = KinematicsSolver(setup.machine)
+    sol = kin.ik_best(direction, allow_singular=True)
+    if sol is None:
+        raise ValueError(f"direction {direction} hors des courses A/C")
+    n = len(points)
+    plan = OrientationPlan(directions=np.tile(direction, (n, 1)),
+                           a_deg=np.full(n, sol.a_deg), c_deg=np.full(n, sol.c_deg),
+                           margin=np.zeros(n), feasible=True)
+    plan.segments = [OrientationSegment(0, max(0, n - 1), "3+2",
+                                        a_deg=sol.a_deg, c_deg=sol.c_deg,
+                                        reason="operation indexee")]
+    return plan

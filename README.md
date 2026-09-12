@@ -8,12 +8,14 @@ Ce n'est **pas** un CAM généraliste : l'utilisateur ne programme pas
 d'opérations. Ce n'est **pas** un portage d'OrcaSlicer : l'inspiration est
 l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 
-> **État : jalon M2.** Les quatre portes de sécurité existent et **vérifient
-> réellement** quelque chose. Aucun G-code n'est généré et aucune connexion
-> machine n'est possible : le verrou tient, mais son motif a changé — ce n'est
-> plus la chaîne de sécurité qui manque, c'est une machine calibrée.
-> Voir [ADR-001 §6](docs/adr/ADR-001-architecture-fondatrice.md) et
-> [ADR-002](docs/adr/ADR-002-jalon-M2.md).
+> **État : jalon M3.** La chaîne va de bout en bout sans passe construite à la
+> main : le planificateur choisit les indexations, le slicer produit les
+> trajectoires, et chaque opération est validée couche par couche. Aucun G-code
+> n'est généré : le verrou tient, et son motif n'est plus logiciel — **la machine
+> n'est pas calibrée**. Voir
+> [ADR-001 §6](docs/adr/ADR-001-architecture-fondatrice.md),
+> [ADR-002](docs/adr/ADR-002-jalon-M2.md),
+> [ADR-003](docs/adr/ADR-003-jalon-M3.md).
 
 ---
 
@@ -40,7 +42,8 @@ remède (« le porte-outil touche → allonge la jauge »).
 pip install -e ".[viz,dev]"
 
 python tools/make_corpus.py                  # 20 géométries STEP synthétiques
-python -m pytest tests/ -q                   # 151 tests
+python tools/make_degraded_corpus.py         # 3 STEP volontairement abîmés
+python -m pytest tests/ -q                   # 182 tests
 
 # M1 — accessibilité + orientation + visualisation
 python tools/demo_vertical_slice.py C08
@@ -48,7 +51,9 @@ python tools/demo_vertical_slice.py C10 --ballnose --face 6   # 5 axes simultan�
 
 # M2 — pipeline complet jusqu'aux portes de sécurité
 python tools/demo_m2_pipeline.py C02 --face 2 --ballnose --material finished
-python tools/demo_m2_pipeline.py C08 --material intact        # comparaison
+
+# M3 — STEP -> GAMME -> validation, sans passe écrite à la main
+python tools/demo_m3_pipeline.py C02 --max-setups 1
 ```
 
 Le pipeline M2 enchaîne : scène → accessibilité → orientation (+ vérification
@@ -74,11 +79,30 @@ Le prototype produit quatre images dans `out/` :
 | [Audit dépendances & licences](docs/audit/dependencies-licenses.md) | ce qui est réutilisable, et ce qui ne l'est pas |
 | [Architecture](docs/architecture.md) | arborescence, règles de dépendance, interfaces |
 | [ADR-002](docs/adr/ADR-002-jalon-M2.md) | jalon M2 : ce qui a levé les limites de M1, et ce qui reste |
+| [ADR-003](docs/adr/ADR-003-jalon-M3.md) | jalon M3 : slicer, planificateur de gammes, import réel |
 | [Accessibility Solver](docs/algorithms/accessibility-solver.md) | algorithme, garantie conservative, performance mesurée |
 | [Orientation Solver](docs/algorithms/orientation-solver.md) | Viterbi, segmentation 3+2, raffinement |
 | [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 108 tests, ce qui n'est pas testé |
 
 ---
+
+## Ce que produit le moteur
+
+À partir d'un STEP et d'un brut, sans que l'utilisateur programme quoi que ce
+soit :
+
+1. **import contrôlé** — diagnostic, réparation seulement si un défaut
+   géométrique le justifie, refus si la forme n'a pas d'intérieur ;
+2. **suivi de matière** sur grille voxel (la pièce et les bridages sont
+   protégés, le reste est à enlever) ;
+3. **choix des indexations** par couverture gloutonne du volume atteignable,
+   filtrée par les courses A/C ;
+4. **tranchage** en couches perpendiculaires à chaque indexation, avec liaisons
+   explicites au plan de dégagement ;
+5. **validation couche par couche** contre l'état réel de la matière.
+
+Mesure sur une poche débouchante : 12/12 couches acceptées, marge minimale
+0,700 mm, 52 % du volume enlevé en une seule indexation.
 
 ## Ce que valide le moteur
 

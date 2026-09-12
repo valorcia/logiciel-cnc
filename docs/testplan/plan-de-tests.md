@@ -167,11 +167,49 @@ détectée.
 - `refinement_does_not_blow_up_rotary_travel` — borne l'augmentation de course
   A+C, après avoir mesuré un +59° pour +0,26 mm de marge.
 
-## 5. État actuel
+## 5. Suites ajoutées au jalon M3
+
+### Corpus DÉGRADÉ — `tests/corpus/step_degraded/`
+
+Le corpus principal est généré par OCCT : cousu, orienté, aux tolérances par
+défaut. Il ne prouve donc rien sur la robustesse à un fichier venu d'ailleurs.
+Ces cas ne se collectent pas facilement (licences, confidentialité) : on les
+**fabrique**, ce qui a l'avantage de connaître exactement le défaut injecté.
+
+| ID | Défaut injecté | Comportement attendu |
+|---|---|---|
+| D01 | pavé privé d'une face (shell ouvert) | détecté par l'absence de solide, **refusé** |
+| D02 | pièce en pouces lue en mm (×1/25,4) | alerte de plausibilité, **pas** de réparation |
+| D03 | pièce de 2,5 m | alerte de plausibilité, **pas** de réparation |
+
+Génération : `python tools/make_degraded_corpus.py`.
+
+### `test_m3_slicer_planner.py`
+
+| Test | Ce qu'il protège |
+|---|---|
+| **`finish_allowance_is_independent_of_grid_pitch`** (3 pas) | une surépaisseur de 0,2 mm devenait 1,5 / 1,0 / 0,6 mm selon le pas |
+| `reachability_is_direction_dependent_and_sensible` | une poche ouverte en haut se voit d'en haut |
+| `protected_material_blocks_rays_but_removable_does_not` | compter le brut comme obstacle déclarerait tout inaccessible |
+| `disc_covers_diagonals_that_the_l1_ball_misses` | la dilatation 4-connexe donne un losange PLUS PETIT que le disque |
+| **`roughing_never_gouges_the_protected_part`** | **le slicer peut laisser de la matière, jamais entamer la pièce** |
+| `grid_extends_beyond_the_stock_for_profiling` | pour profiler un flanc, le centre d'outil est HORS du brut |
+| **`link_moves_are_explicit_and_flagged`** | **sans liaisons, le validateur relie en ligne droite — à travers la matière** |
+| `link_moves_are_sparse` | densifier les liaisons gonflait le programme de 94 % de points inutiles |
+| **`vertical_indexation_is_a_valid_candidate`** | **la singularité gêne le MOUVEMENT, pas l'indexation** |
+| `candidates_are_filtered_by_machine_travel` | −Z demande A = 180° : hors courses, donc pas proposé |
+| `greedy_plan_covers_most_of_the_material` | + aucun voxel gougé |
+| `plan_report_keeps_the_full_candidate_list` | la liste était vidée pendant la boucle, faussant le bilan |
+| **`fixtures_are_protected_material`** | **sinon le slicer planifie des passes dans l'étau** |
+| `open_shell_is_detected_and_refused` | un shell ouvert est « valide » et OCCT lui calcule un volume |
+| `unit_confusion_is_flagged_as_plausibility_not_defect` | ne pas lancer ShapeFix sur une pièce intacte |
+| `healing_refuses_to_change_the_part` | une réparation qui déplace la matière n'est pas une réparation |
+
+## 6. État actuel
 
 ```
 $ python -m pytest tests/ -q
-151 passed
+182 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -213,21 +251,44 @@ Les défauts 4 et 6 relèvent de la même erreur — **optimiser un proxy au lie
 critère réel** — ce qui en fait un point de vigilance permanent plutôt qu'un
 incident isolé.
 
-## 6. Ce qui n'est PAS testé, et doit l'être
+Six de plus au jalon M3, dont plusieurs n'auraient pas été trouvés sans la
+simulation d'enlèvement de matière :
+
+7. **Surépaisseur pilotée par le pas de grille** : 0,2 mm demandés devenaient
+   1,5 mm. Un paramètre utilisateur décidé par un réglage numérique sans rapport.
+8. **Dilatation en losange** : la boule L1 est plus PETITE que le disque dans les
+   diagonales. Appliquée à la zone interdite, elle autorisait des gouges.
+9. **Marge de cellule manquante** : une dilatation ne marque que les cellules
+   dont le centre est à moins de R, alors qu'un centre d'outil peut être partout
+   dans sa cellule. 108 poses sur 3 428 touchaient la paroi.
+10. **Grille calée sur le brut** : pas de cellule pour poser le centre d'outil
+    hors matière, donc aucun profilage de flanc — 8 000 mm³ jamais touchés.
+11. **Liaisons implicites** : le zigzag émettait des segments isolés, et le
+    validateur les reliait à travers la pièce. Les collisions étaient réelles.
+12. **Bridages invisibles au slicer** : des passes planifiées dans l'étau.
+
+Le point commun des défauts 8, 9 et du désaccord slicer/validateur (0,226 mm sur
+une pose sur 270) : **deux modèles conservatifs indépendants divergent s'ils ne
+partagent pas leurs marges.** C'est désormais vérifié par construction — le
+validateur refuse un tranchage qui n'a pas employé la même clearance.
+
+## 7. Ce qui n'est PAS testé, et doit l'être
 
 | Manque | État |
 |---|---|
 | ~~Collision sur le balayage~~ | **levé M2** |
 | ~~Volumes machine~~ | **levé M2** |
 | ~~Suivi de matière enlevée~~ | **levé M2** |
-| Gouge fine sur **toute** la passe (aujourd'hui : sondage épars) | M3 |
-| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M3 |
-| Import de STEP réels (mal cousus, tolérances hétérogènes, unités en pouces) | M3 |
-| Gamme complète (`strategy_planner`, `subtractive_slicer`) | M3 |
+| ~~Import de STEP dégradés~~ | **levé M3** (corpus D01–D03) |
+| ~~Gamme complète~~ | **levé M3** (ébauche indexée validée) |
+| Gouge fine sur **toute** la passe (aujourd'hui : sondage épars) | M4 |
+| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M4 |
+| Finition : contour-parallèle, passes 5 axes simultanées | M4 |
+| Tournage : génération de trajectoires | M4/M5 |
 | Poids d'orientation calibrés | exige une machine |
 | Tout ce qui touche une machine réelle | après qualification |
 
-## 7. Précision — ce que les tests ne disent pas
+## 8. Précision — ce que les tests ne disent pas
 
 Aucun test de ce dépôt ne dit quoi que ce soit de la précision d'une pièce
 usinée. Ils portent sur la **justesse numérique** du moteur.
