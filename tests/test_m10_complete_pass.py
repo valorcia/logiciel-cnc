@@ -265,3 +265,55 @@ def test_probe_points_are_spread_not_a_prefix(solver):
         v = decide_indexed_pass(solver, pts, nrm, n_probe=120, max_candidates=1)
         assert v.verdict == "inatteignable", (mauvais, v.describe())
         assert mauvais in v.unreachable_points
+
+
+# ------------------------------------------- le banc de performance
+
+def test_the_benchmark_kernels_use_the_measured_sizes():
+    """Le banc a d'abord mesure ses micro-noyaux a N = 34 146 — la taille du
+    champ AVANT prefiltre — puis a 1 980, la taille avant la bande par
+    coquille. Les deux surestimaient, d'un facteur 17 et 3,5.
+
+    Mesurer une taille qui n'existe pas donne un chiffre exact et faux. Les
+    constantes sont donc celles qui ont ete OBSERVEES dans la boucle chaude,
+    et ce test les y attache.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    chemin = Path(__file__).resolve().parents[1] / "tools" / "bench_platform.py"
+    spec = importlib.util.spec_from_file_location("bench_platform", chemin)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    assert mod.N_OBST == 1980, "mediane du champ apres prefiltre spherique"
+    assert mod.N_ROWS == 691, "mediane des lignes apres la bande par coquille"
+    assert mod.M_POSES == 16, "taille de bloc de verify_direction"
+    assert mod.N_ROWS < mod.N_OBST, (
+        "la bande par coquille filtre : l'inverse signalerait qu'elle ne sert "
+        "a rien, ou que la mesure porte sur la mauvaise etape")
+    # le banc doit tourner sans corpus, sinon il est inutilisable la ou il
+    # importe le plus : sur une machine qu'on vient de mettre en service
+    res = mod.micro()
+    assert res[f"clearance_{mod.N_ROWS}x{mod.M_POSES}_us"] > 0.0
+    assert res["triade_4Mo_Go_par_s"] > 0.0
+    assert "surcout_appel_numpy_us" in res
+
+
+def test_the_benchmark_never_prints_an_extrapolation():
+    """Le banc mesure ; il ne predit pas. Aucun facteur d'extrapolation ne
+    doit y figurer, faute de quoi il redeviendrait la phrase qu'il remplace."""
+    from pathlib import Path
+
+    lignes = (Path(__file__).resolve().parents[1] / "tools" / "bench_platform.py"
+              ).read_text(encoding="utf-8").lower().splitlines()
+    # Fenetre de +/-2 lignes et non la ligne seule : la prose passe a la ligne,
+    # et un test ligne par ligne sur du texte enroule est la meme faute que
+    # chercher un import par grep au lieu de l'AST. Elle vient de se reproduire.
+    marqueurs = ("ne predit", "pas extrapol", "reste une extrapolation",
+                 "n'apparait", "aucun chiffre", "mesures, pas extrapoles")
+    for i, ligne in enumerate(lignes):
+        if "extrapol" not in ligne:
+            continue
+        fenetre = " ".join(lignes[max(0, i - 2):i + 3])
+        assert any(m in fenetre for m in marqueurs), lignes[i]

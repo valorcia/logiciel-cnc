@@ -1,0 +1,39 @@
+{
+  "plateforme": {
+    "machine": "x86_64",
+    "processeur": "x86_64",
+    "systeme": "Linux 6.18.44-fc-v24",
+    "python": "3.11.15",
+    "numpy": "2.4.6",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "coeurs": 4,
+    "ram_go": 16.5,
+    "blas": "scipy-openblas 0.3.31.188.0"
+  },
+  "micro": {
+    "clearance_691x16_us": 691.4656912334051,
+    "clearance_1368x16_us": 1485.4191759950481,
+    "z_all_us": 319.62879764568885,
+    "d2_us": 451.32290502989343,
+    "r_all_us": 273.29759239093494,
+    "min_axis0_us": 78.27469372076393,
+    "norm_axis1_us": 65.54903379134873,
+    "surcout_appel_numpy_us": 3.4934875002363697,
+    "triade_4Mo_Go_par_s": 23.245333006064925,
+    "triade_64Mo_Go_par_s": 7.250477813598394
+  },
+  "macro": {
+    "import_step_s": 0.019074992997047957,
+    "champ_obstacles_s": 0.7108125310041942,
+    "n_obstacles": 34146,
+    "echantillonnage_surface_s": 4.387623017995793,
+    "n_echantillons": 1239974,
+    "generation_passes_s": 1.8735623549946467,
+    "n_points_gamme": 159899,
+    "solve_point_ms_par_point": 75.14090212498559,
+    "verify_ms_par_point": 1.5263257680004851,
+    "verdict_passe_3213_s": 17.309478840994416,
+    "verdict": "3+2",
+    "pic_memoire_mo": 788.7421875
+  }
+}

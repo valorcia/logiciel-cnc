@@ -79,7 +79,7 @@ pip install -e ".[viz,dev]"
 
 python tools/make_corpus.py                  # 20 géométries STEP synthétiques
 python tools/make_degraded_corpus.py         # 3 STEP volontairement abîmés
-python -m pytest tests/ -q                   # 384 tests
+python -m pytest tests/ -q                   # 386 tests
 
 # M1 — accessibilité + orientation + visualisation
 python tools/demo_vertical_slice.py C08
@@ -96,6 +96,10 @@ python tools/demo_m7_calibration.py C10 --out /tmp/piece.ngc
 
 # M9 — configuration LinuxCNC dérivée, dépôt simulation accepté / matériel refusé
 python tools/demo_m9_linuxcnc.py --out out/config-xyzac
+
+# Performance : référence x86_64, ou comparaison sur la machine cible
+python tools/bench_platform.py --json mesure.json
+python tools/bench_platform.py --compare docs/bench/x86_64.json
 
 # Recoupement des deux cinématiques (étage 2 : avec un arbre source LinuxCNC)
 python tools/verify_kinematics_linuxcnc.py --exagere                     # étage 1
@@ -134,10 +138,11 @@ Le prototype produit quatre images dans `out/` :
 | [ADR-009](docs/adr/ADR-009-jalon-M9.md) | jalon M9 : configuration LinuxCNC dérivée, dépôt de programme, pas de lancement de cycle |
 | [ADR-010](docs/adr/ADR-010-jalon-M10.md) | jalon M10 : décider une passe de finition complète — explorer coûte 65 ms, vérifier 1,6 ms |
 | [Banc de debug](docs/banc-de-debug.md) | interface de contrôle visuel : ce qu'elle montre, comment la lancer |
+| [Performance et Pi 5](docs/bench/README.md) | où passe le temps, la référence x86_64, et la procédure sur Raspberry Pi 5 |
 | [Validation LinuxCNC](docs/validation-linuxcnc.md) | compiler LinuxCNC, lui donner la configuration, les sept défauts trouvés, et le recoupement chiffré des deux cinématiques jusqu'à l'exécution |
 | [Accessibility Solver](docs/algorithms/accessibility-solver.md) | algorithme, garantie conservative, performance mesurée |
 | [Orientation Solver](docs/algorithms/orientation-solver.md) | Viterbi, segmentation 3+2, raffinement |
-| [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 384 tests, ce qui n'est pas testé |
+| [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 386 tests, ce qui n'est pas testé |
 
 ---
 
@@ -306,11 +311,18 @@ Python 3.11+ · **OCCT 8.0.1** via `cadquery-ocp` (wheels x86_64 **et aarch64**,
 donc `pip install` sur Raspberry Pi 5) · NumPy/SciPy · pydantic · matplotlib
 (rendu hors-ligne).
 
-Performance mesurée (x86_64) : **51 ms/point** d'accessibilité avec le garde
-machine actif, contre 199 ms avant l'inversion de son transport. La résolution
-adaptative donne ×1,8 à ×4,3 selon la contrainte géométrique, en rendant le même
-verdict de faisabilité que le calcul complet. **Jamais mesuré sur Pi 5** :
-l'extrapolation ×3–5 reste une extrapolation.
+Performance mesurée (x86_64, Xeon 2,8 GHz) : **explorer** l'ensemble
+admissible en un point coûte **75 ms**, **vérifier** une orientation déjà
+connue **1,5 ms** — c'est ce rapport de 50 qui rend décidable une passe de
+finition complète (M10). Pic mémoire de la décision complète : **789 Mo**,
+donc un Pi 5 de 4 Go suffit.
+
+**Toujours pas mesuré sur Pi 5** — l'environnement de développement est
+x86_64 et une mesure sous émulation ne vaudrait rien. Mais la mesure est
+désormais *franchissable* plutôt que repoussée : `tools/bench_platform.py`
+produit les mêmes chiffres sur les deux machines, la référence x86_64 est
+enregistrée, et la roue `cadquery-ocp` aarch64 est vérifiée. Voir
+[docs/bench](docs/bench/README.md).
 
 Aucune dépendance AGPL dans le paquet distribué — voir
 [l'audit](docs/audit/dependencies-licenses.md).

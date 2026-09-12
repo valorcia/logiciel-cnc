@@ -396,12 +396,14 @@ il n'a pas sa place dans la suite. Son résultat est consigné dans
 | `a_vertical_orientation_is_usable_when_the_table_is_locked` | en 3+2 le plateau est bloqué : A = 0 est une position, la singularité est un problème de mouvement |
 | `an_empty_pass_is_refused_not_declared_indexable` | une passe vide n'est pas indexable |
 | `mismatched_lengths_raise` | points et normales de tailles différentes |
+| **`the_benchmark_kernels_use_the_measured_sizes`** | **le banc a d'abord mesuré ses noyaux à N = 34 146 (avant préfiltre) puis 1 980 (avant la bande par coquille) : surestimations de ×17 et ×3,5. Mesurer une taille qui n'existe pas donne un chiffre exact et faux** |
+| `the_benchmark_never_prints_an_extrapolation` | il mesure, il ne prédit pas — sinon il redevient la phrase qu'il remplace |
 
 ## 11. État actuel
 
 ```
 $ python -m pytest tests/ -q
-384 passed
+386 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -692,7 +694,7 @@ s'est mis à nommer la clé dont il expliquait l'absence.
 | **Trajectoire simultanée sur une passe complète** | demande le champ admissible en chaque point : trois heures pour le dôme. M10 rend décidable le 3+2, rien de plus, et n'émet aucune opération quand la réponse est « simultané » |
 | ~~Gouge fine sur toute la passe~~ | **levée M6** côté porte-outil (preuve par majoration) |
 | Gouge de l'arête **entre** deux poses | exige une enveloppe balayée exacte |
-| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M11 |
+| Performance sur le matériel cible (Pi 5) — **toujours pas mesurée** | procédure, référence x86_64 et prérequis aarch64 vérifiés ([docs/bench](../bench/README.md)) ; il manque un Pi 5, l'émulation ne vaudrait rien |
 | ~~Collision du porte-plaquette en tournage~~ | **levée M6** (silhouette (z, r), test majorant) |
 | **Gorgeage** comme opération (plongée, non contour) | M11 |
 | Ordonnancement hybride fraisage + tournage dans une même gamme | M11 |
