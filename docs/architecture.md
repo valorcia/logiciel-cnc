@@ -9,7 +9,7 @@ d'appeler qui**.
 logiciel-cnc/
 ├── pyproject.toml
 ├── docs/
-│   ├── adr/ADR-001-architecture-fondatrice.md … ADR-006-jalon-M6.md
+│   ├── adr/ADR-001-architecture-fondatrice.md … ADR-007-jalon-M7.md
 │   ├── audit/dependencies-licenses.md
 │   ├── algorithms/accessibility-solver.md
 │   ├── algorithms/orientation-solver.md
@@ -18,7 +18,7 @@ logiciel-cnc/
 ├── src/xyzac/
 │   ├── geometry_core/        types.py, brep.py, sphere.py, voxelize.py,
 │   │                         healing.py, curvature.py
-│   ├── machine_model/        machine.py, setup.py
+│   ├── machine_model/        machine.py, setup.py, geometry.py
 │   ├── tool_model/           assembly.py
 │   ├── stock_engine/         stock.py, material.py
 │   ├── feature_engine/       revolution.py
@@ -26,22 +26,23 @@ logiciel-cnc/
 │   ├── orientation_solver/   solver.py            ← différenciateur (2/2)
 │   ├── collision_engine/     field.py, tool_collision.py, spatial.py,
 │   │                         machine_guard.py, sweep.py, exact_gouge.py
-│   ├── kinematics_solver/    solver.py
+│   ├── kinematics_solver/    solver.py, compensation.py
 │   ├── simulation_engine/    scene.py, validator.py
 │   ├── turning_engine/       interfaces.py, profile.py
 │   ├── safety_state_machine/ machine.py
 │   ├── subtractive_slicer/   interfaces.py, slicer.py, finishing.py
 │   ├── strategy_planner/     interfaces.py, planner.py
 │   ├── vision_service/       interfaces.py        ← stub M1
-│   ├── probing_service/      interfaces.py        ← stub M1
-│   ├── postprocessor_linuxcnc/ interfaces.py      ← stub M1, verrouillé
+│   ├── probing_service/      interfaces.py, fitting.py, simulator.py
+│   ├── postprocessor_linuxcnc/ interfaces.py, emit.py
 │   ├── linuxcnc_gateway/     interfaces.py        ← stub M1, verrouillé
 │   ├── recipe_profiles/      interfaces.py        ← stub M1
-│   ├── assembly_calibration/ interfaces.py        ← stub M1
+│   ├── assembly_calibration/ interfaces.py, procedures.py, record.py
 │   └── ui/                   render.py
-├── tests/         conftest, 11 fichiers, corpus/ (20 STEP sains + 3 dégradés)
+├── tests/         conftest, 12 fichiers, corpus/ (20 STEP sains + 3 dégradés)
 ├── tools/         make_corpus.py, make_degraded_corpus.py,
-│               demo_vertical_slice.py, demo_m2_pipeline.py, demo_m3_pipeline.py
+│               demo_vertical_slice.py, demo_m2_pipeline.py,
+│               demo_m3_pipeline.py, demo_m7_calibration.py
 └── out/           rendus PNG (non versionnés)
 ```
 
@@ -423,3 +424,96 @@ physique — tout devenait infaisable.
 `TurningPlanReport.body_checked` distingue « dégagé » de « non vérifié ». Sans
 silhouette fournie, le rapport l'écrit au lieu de laisser une liste vide passer
 pour un verdict.
+
+## 9. Ajouts du jalon M7
+
+### machine_model/geometry
+
+```python
+MachineGeometry.nominal(machine_id) -> MachineGeometry          # measured=False
+MachineGeometry.real_rotation(a_deg, c_deg) -> ndarray          # axes MESURES
+MachineGeometry.real_part_to_machine(machine, p_part, a, c) -> ndarray
+MachineGeometry.linear_matrix() -> ndarray                      # équerrage + échelle
+MachineGeometry.position_uncertainty_mm(reach_mm, worst_case=True) -> float
+```
+
+`measured=False` signifie **« aucune mesure »** et non « erreurs nulles ».
+`position_uncertainty_mm` **lève** dans cet état : lire des zéros reviendrait à
+croire une machine parfaite, ce qui est l'erreur que six jalons de marges
+géométriques ont rendue facile.
+
+### kinematics_solver/compensation
+
+```python
+solve_real_orientation(geom, d_target, a_seed, c_seed) -> (a, c, résidu, ok, n)
+compensate_pose(machine, geom, p_part, d_part, *, a_nominal, c_nominal, ...)
+    -> CompensatedMove
+realised_pose(machine, geom, move, *, work_offset) -> (point_pièce, axe_outil)
+```
+
+La position se corrige **exactement** (les axes linéaires sont une translation
+dans le repère machine) ; l'orientation par re-résolution sur les axes mesurés.
+Les valeurs nominales sont **exigées** en entrée parce que l'amorce choisit
+entre deux solutions séparées de 180° de plateau, et que ce choix est une
+décision de trajectoire.
+
+`realised_pose` existe pour les tests : compenser, puis rejouer la cinématique
+réelle sur la commande produite, et comparer à la cible.
+
+### probing_service
+
+```python
+fit_sphere(points) -> SphereFit                    # refuse une seule latitude
+fit_circle_3d(points) -> (centre, normale, rayon, résidu)
+fit_plane_normal(points) -> (normale, résidu)      # refuse des points colinéaires
+fit_axis_from_rotation(centres, angles, p_nom, u_nom) -> AxisFit
+ProbeSimulator(machine, geometry, noise_mm, seed)  # palpeur sur le jumeau
+```
+
+Les ajustements **refusent** les configurations dégénérées au lieu de rendre un
+nombre qui ressemble à une mesure. Les incertitudes d'`AxisFit` viennent d'un
+**jackknife**, qui voit l'étendue angulaire réelle — 160° pour C, 80° pour A —
+que les formules fermées ignorent.
+
+Le palpeur simulé rend des **coordonnées d'axes**, pas des positions
+euclidiennes idéales : sans cela le jumeau ne porterait aucun défaut du trièdre
+linéaire.
+
+### assembly_calibration
+
+```python
+calibrate_on_twin(machine, true_geometry, ...) -> (CalibrationReport, MachineGeometry)
+record_from_report(machine_id, geometry, report) -> CalibrationRecord
+HARDWARE_ONLY: frozenset[CalibrationStep]          # 5 étapes, jamais simulées
+```
+
+`true_geometry` est la machine réelle que le jumeau simule ; la procédure ne la
+lit jamais, elle ne fait que palper à travers elle. La géométrie rendue est
+construite **à partir des mesures**, jamais recopiée.
+
+`CalibrationRecord` distingue trois états qu'il ne faut pas confondre :
+`geometry.measured` (la cinématique n'est plus provisoire), `geometry_complete`
+(les étapes non matérielles sont faites), `qualified` (pièce d'épreuve mesurée).
+`tolerance_statement()` est le **seul endroit du projet autorisé à énoncer une
+précision**, et il refuse tant que `qualified` est faux.
+
+### postprocessor_linuxcnc
+
+```python
+post_process(plan, safety, current_setup_hash, calibration, *, feed_mm_min)
+    -> (gcode: str, EmitReport)
+parse_poses(gcode) -> list[dict]
+```
+
+Trois gardes, dans cet ordre — et l'ordre est testé : la porte de sécurité,
+puis la géométrie mesurée, puis la correspondance du dossier de calibration avec
+celui de l'approbation.
+
+L'en-tête porte l'énoncé de tolérance mot pour mot, le budget géométrique, et
+les manques (avances non qualifiées, approche et dégagement non générés).
+
+`parse_poses` sert à l'**aller-retour** : un émetteur vérifié contre son propre
+calcul ne vérifie rien.
+
+`linuxcnc_gateway` reste verrouillé : poster exige une géométrie mesurée,
+envoyer exige une machine qualifiée.

@@ -23,11 +23,22 @@ class ProbeResult:
 
 
 def probe_work_offset(*args, **kw) -> ProbeResult:
+    """Palpage d'origine piece sur la MACHINE REELLE.
+
+    Les ajustements et la propagation d'incertitude sont implementes et
+    verifies depuis le jalon M7 (``fitting``, ``simulator``). Ce qui manque
+    n'est pas le calcul mais le mouvement : ``linuxcnc_gateway`` est verrouille.
+    """
     raise NotImplementedError(
-        "probing_service non implemente au jalon M1 : le palpage exige des "
-        "mouvements reels, donc les portes de securite (ADR-001 §6)."
+        "palpage d'origine sur machine reelle : linuxcnc_gateway est verrouille. "
+        "Les ajustements sont disponibles et testes dans probing_service.fitting, "
+        "et ProbeSimulator permet de les verifier sur le jumeau."
     )
 
 
 def probe_tool_length(*args, **kw) -> ProbeResult:
-    raise NotImplementedError("probing_service non implemente au jalon M1")
+    """Mesure de longueur d'outil sur la MACHINE REELLE. Voir ci-dessus."""
+    raise NotImplementedError(
+        "mesure de longueur d'outil sur machine reelle : linuxcnc_gateway est "
+        "verrouille."
+    )

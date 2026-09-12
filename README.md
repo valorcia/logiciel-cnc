@@ -8,19 +8,21 @@ Ce n'est **pas** un CAM généraliste : l'utilisateur ne programme pas
 d'opérations. Ce n'est **pas** un portage d'OrcaSlicer : l'inspiration est
 l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 
-> **État : jalon M6.** Ébauche indexée, finition à crête contrôlée — le pas
-> venant de la **courbure locale mesurée** et non d'une formule plane — et
-> tournage sur l'axe C : profil de révolution, ovalité robuste, passes, corps
-> de l'outil vérifié, refus motivé. En 3+2 ou en 5 axes simultané selon ce que
-> la géométrie permet. La gouge du porte-outil est **prouvée sur toute la
-> passe**, et non sondée. Aucun G-code n'est généré : le verrou tient, et son
-> motif n'est pas logiciel — **la machine n'est pas calibrée**. Voir
+> **État : jalon M7.** Ébauche indexée, finition à crête contrôlée — le pas
+> venant de la **courbure locale mesurée** — et tournage sur l'axe C. La gouge
+> du porte-outil est **prouvée sur toute la passe**, et non sondée. La machine
+> se **mesure** désormais : localisation des axes A et C au palpeur, erreurs
+> compensées, incertitude budgétée. Le G-code est généré **dans un fichier**,
+> derrière les quatre portes, et vérifié par aller-retour. Ce qui reste
+> verrouillé est l'envoi réel : poster exige une géométrie mesurée, **envoyer
+> exige une machine qualifiée**, et aucune machine n'existe. Voir
 > [ADR-001 §6](docs/adr/ADR-001-architecture-fondatrice.md),
 > [ADR-002](docs/adr/ADR-002-jalon-M2.md),
 > [ADR-003](docs/adr/ADR-003-jalon-M3.md),
 > [ADR-004](docs/adr/ADR-004-jalon-M4.md),
 > [ADR-005](docs/adr/ADR-005-jalon-M5.md),
-> [ADR-006](docs/adr/ADR-006-jalon-M6.md).
+> [ADR-006](docs/adr/ADR-006-jalon-M6.md),
+> [ADR-007](docs/adr/ADR-007-jalon-M7.md).
 
 ---
 
@@ -48,7 +50,7 @@ pip install -e ".[viz,dev]"
 
 python tools/make_corpus.py                  # 20 géométries STEP synthétiques
 python tools/make_degraded_corpus.py         # 3 STEP volontairement abîmés
-python -m pytest tests/ -q                   # 246 tests
+python -m pytest tests/ -q                   # 276 tests
 
 # M1 — accessibilité + orientation + visualisation
 python tools/demo_vertical_slice.py C08
@@ -59,6 +61,9 @@ python tools/demo_m2_pipeline.py C02 --face 2 --ballnose --material finished
 
 # M3 — STEP -> GAMME -> validation, sans passe écrite à la main
 python tools/demo_m3_pipeline.py C02 --max-setups 1
+
+# M7 — erreur injectée -> calibration -> compensation -> G-code -> envoi refusé
+python tools/demo_m7_calibration.py C10 --out /tmp/piece.ngc
 ```
 
 Le pipeline M2 enchaîne : scène → accessibilité → orientation (+ vérification
@@ -88,6 +93,7 @@ Le prototype produit quatre images dans `out/` :
 | [ADR-004](docs/adr/ADR-004-jalon-M4.md) | jalon M4 : finition, coût du calcul, cinq défauts de repère |
 | [ADR-005](docs/adr/ADR-005-jalon-M5.md) | jalon M5 : courbure locale, tournage, et la rectification d'une erreur de D31 |
 | [ADR-006](docs/adr/ADR-006-jalon-M6.md) | jalon M6 : coût du calcul (×5,5), preuve de gouge, corps de l'outil de tour |
+| [ADR-007](docs/adr/ADR-007-jalon-M7.md) | jalon M7 : calibration mesurée, compensation, post-processeur sous scellés |
 | [Accessibility Solver](docs/algorithms/accessibility-solver.md) | algorithme, garantie conservative, performance mesurée |
 | [Orientation Solver](docs/algorithms/orientation-solver.md) | Viterbi, segmentation 3+2, raffinement |
 | [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 108 tests, ce qui n'est pas testé |
@@ -164,6 +170,38 @@ parce qu'il y a deux physiques :
 Ce qui reste non prouvé est écrit dans le certificat : rien entre deux poses
 consécutives pour l'arête, et les intervalles non couverts sortent avec leur
 position. Un budget épuisé rend un certificat *incomplet*, jamais optimiste.
+
+## La machine se mesure, et ce qui reste se budgète
+
+Point que les six premiers jalons rendaient facile à oublier : **toutes leurs
+marges étaient calculées sur une machine parfaite.** Les jeux valaient 0,0, les
+pivots A et C étaient à leur cote nominale. Une marge de 0,7 mm annoncée sur une
+poche était une marge géométrique, pas une marge machine.
+
+Une machine non calibrée n'a donc pas une erreur nulle : elle a une incertitude
+**inconnue**, et le moteur refuse d'en tirer un budget plutôt que de lire des
+zéros.
+
+La localisation des axes se mesure au palpeur, par une sphère de référence
+palpée à plusieurs rotations : ses centres décrivent un cercle dont la normale
+est la direction de l'axe. Vérifié en **injectant une erreur connue dans le
+jumeau** et en exigeant que la procédure la retrouve — 0,20° d'inclinaison
+d'axe retrouvés à 0,008° près avec un palpeur à 3 µm.
+
+Une erreur mesurée est ensuite **compensable** : 261 µm et 0,33° d'erreur
+injectée cumulée retombent à zéro après compensation. Ce qui ne se compense pas
+est l'**incertitude de la mesure**, et elle grandit avec le bras de levier :
+
+| bruit de palpage | budget géométrique à 100 mm des pivots |
+|---|---|
+| 1 µm | 30 µm |
+| 3 µm | 74 µm |
+| 10 µm | 229 µm |
+
+Ce tableau est l'un des résultats les plus utiles du projet : il dit
+qu'un kit calibré avec un palpeur ordinaire a un budget géométrique de
+plusieurs dizaines de microns, **hors effets thermiques, flexion et
+hystérésis**. Il contredit donc ±0,02 mm, et c'est précisément son utilité.
 
 ## Ce que valide le moteur
 

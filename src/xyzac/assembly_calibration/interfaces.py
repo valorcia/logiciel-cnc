@@ -81,7 +81,20 @@ class CalibrationReport:
 
 
 def run_step(step: CalibrationStep, gateway, machine) -> CalibrationResult:
+    """Execution d'une etape sur la MACHINE REELLE. Exige ``linuxcnc_gateway``.
+
+    Implementee sur le jumeau numerique depuis le jalon M7 : voir
+    ``procedures.calibrate_on_twin``, qui execute la sequence contre un palpeur
+    simule et permet de verifier chaque procedure en lui injectant une erreur
+    connue. Le jumeau valide la MATHEMATIQUE d'une procedure ; il ne remplace
+    aucune mesure.
+
+    Cette entree-ci vise la machine physique, et elle reste donc fermee :
+    ``linuxcnc_gateway`` est verrouille tant qu'aucune machine n'existe.
+    """
     raise NotImplementedError(
-        "assembly_calibration non implemente au jalon M1 : chaque etape exige "
-        "des mouvements reels, donc linuxcnc_gateway et les portes de securite."
+        f"etape '{step.name}' sur machine reelle : linuxcnc_gateway est "
+        "verrouille. Pour valider la procedure sans machine, employer "
+        "assembly_calibration.calibrate_on_twin, qui la verifie en lui "
+        "injectant une erreur geometrique connue."
     )

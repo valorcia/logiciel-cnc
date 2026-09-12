@@ -103,6 +103,18 @@ class Setup(BaseModel):
     #: un plateau qu'il n'approche pas.
     part_to_table_mm: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
 
+    #: Hash du dossier de calibration sous lequel ce montage est approuve.
+    #:
+    #: Entre dans l'empreinte, donc une RECALIBRATION invalide une approbation
+    #: exactement comme un changement de bridage. Ce n'est pas une precaution
+    #: de forme : la calibration change les pivots A et C, donc la geometrie
+    #: contre laquelle les collisions ont ete verifiees. Une approbation portee
+    #: par une geometrie qui a change depuis est une approbation fausse.
+    #:
+    #: Laisser vide signifie « non renseigne » et non « pas de calibration » :
+    #: le post-processeur refuse alors seulement sur l'etat de la geometrie.
+    calibration_hash: str = ""
+
     notes: str = ""
 
     def fingerprint(self) -> dict:
@@ -136,6 +148,7 @@ class Setup(BaseModel):
             ],
             "work_offset": self.work_offset.model_dump(),
             "part_to_table": self.part_to_table_mm,
+            "calibration": self.calibration_hash,
         }
 
     def setup_hash(self) -> str:

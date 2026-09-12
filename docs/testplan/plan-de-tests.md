@@ -1,4 +1,4 @@
-# Plan de tests — jalons M1 à M6
+# Plan de tests — jalons M1 à M7
 
 ## 1. Principe
 
@@ -263,11 +263,46 @@ Génération : `python tools/make_degraded_corpus.py`.
 | `body_check_majorises_with_coarser_sampling` | le pas d'échantillonnage est **ajouté** à la pénétration : un pas grossier ne doit jamais rapporter moins |
 | `a_smooth_shaft_clears_a_normal_body` | sans quoi la vérification refuserait tout et serait inutilisable |
 
-## 9. État actuel
+## 9. Suite ajoutée au jalon M7
+
+### `test_m7_calibration_post.py`
+
+Discipline propre à ce fichier : **aucune procédure de calibration ne se vérifie
+contre elle-même.** On injecte dans le jumeau une erreur géométrique connue, on
+simule le palpage à travers elle, et on exige que la procédure la retrouve.
+
+| Test | Ce qu'il protège |
+|---|---|
+| `unmeasured_geometry_refuses_to_give_a_budget` | une machine non calibrée n'a pas une erreur nulle, elle a une incertitude **inconnue** |
+| `margins_were_computed_on_a_perfect_machine_until_now` | fixe le constat : toute marge de M1 à M6 est géométrique, pas machine |
+| **`compensation_recovers_an_injected_error`** (4 types) | **245 à 261 µm et 0,33° injectés → 0,0000 µm après compensation. Mesure d'abord ce que coûte l'erreur, sinon le test ne dit pas que le problème existait** |
+| `compensating_a_perfect_machine_changes_nothing` | |
+| **`damping_is_required_where_the_normal_equations_are_singular`** | **régression d'une affirmation fausse : le mode d'échec n'est pas une divergence mais un `J^T J` exactement singulier, qui lève** |
+| **`the_seed_selects_which_solution_not_whether_one_is_found`** | **rectification : les deux amorces convergent ; l'amorce choisit entre C = −89,80° et C = +90,20°, soit 180° de plateau** |
+| **`compensation_near_the_singularity_costs_rotary_travel`** | **0,15° de défaut d'axe coûte 16,6° de C à A = 0,5°, contre 1,5° à A = 5° : la compensation n'est pas neutre vis-à-vis des courses** |
+| **`fit_sphere_refuses_a_single_latitude`** | **régression du défaut qui faussait tout : des points d'un même cercle appartiennent à une infinité de sphères, et `lstsq` rendait quand même un centre** |
+| `fit_axis_refuses_angular_steps_over_180_deg` | au-delà, le sens de rotation n'est pas déductible des positions |
+| **`axis_location_recovers_the_injected_error`** (3 bruits) | **0,15° injecté retrouvé à 0,02° près ; et la composante AXIALE de l'offset revient à zéro, car elle n'est pas observable** |
+| **`reported_uncertainty_brackets_the_true_error`** | **régression du défaut le plus grave : les formules fermées sous-estimaient l'erreur d'un facteur 3,7. Remplacées par un jackknife** |
+| `a_sphere_further_from_the_axis_measures_the_angle_better` | le seul levier gratuit : 70 mm au lieu de 30 divise l'incertitude par deux |
+| **`squareness_is_measured_between_two_faces_not_on_one`** | **une procédure qui mesurait la mauvaise grandeur : un plan à z constant subit une distorsion uniforme, donc sa normale ne bouge pas** |
+| `hardware_steps_are_never_reported_as_passed` | cinq étapes exigent la machine ; les déclarer réussies serait fabriquer de la confiance |
+| **`tolerance_statement_refuses_to_quote_a_part_tolerance`** | **vérifie qu'aucun « 0,02 » ne sort tant que la pièce d'épreuve n'est pas mesurée** |
+| `calibration_hash_tracks_geometry_and_ignores_notes` | |
+| `header_carries_the_tolerance_statement_before_any_motion` | un opérateur doit tomber dessus avant la première ligne de mouvement |
+| **`round_trip_is_exact_on_the_measured_geometry`** | **un émetteur vérifié contre son propre calcul ne vérifie rien : on relit le fichier. Reste 0,078 µm, la quantification du format** |
+| **`round_trip_on_the_true_machine_stays_within_the_announced_budget`** | **la relation qui donne un sens au budget : 14,4 µm résiduels ≤ 54,3 µm annoncés** |
+| `post_process_refuses_a_hybrid_plan` | |
+| `recalibration_invalidates_an_approval` | une recalibration change les pivots, donc la géométrie vérifiée |
+| **`posting_under_a_different_calibration_than_approved_is_refused`** | **trou de sécurité fermé : approuver sous une calibration et poster sous une autre annule l'approbation** |
+| **`no_rapid_move_goes_to_a_contact_point`** | **régression : le premier point sortait en `G0`, c'est-à-dire un rapide dans la pièce** |
+| `the_gateway_is_still_locked` | M7 lève la moitié **logicielle** du verrou. L'envoi reste interdit |
+
+## 10. État actuel
 
 ```
 $ python -m pytest tests/ -q
-246 passed
+276 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -396,7 +431,37 @@ décorréler. D'où la règle ajoutée par ce jalon : **faire varier le paramèt
 qui doit commander le résultat, et vérifier qu'il le commande** — y compris en
 exigeant qu'un paramètre ne change rien.
 
-## 10. Ce qui n'est PAS testé, et doit l'être
+Cinq de plus au jalon M7, et cette fois **tous dans du code écrit pour mesurer
+ou pour vérifier** — la place la plus coûteuse :
+
+25. **Ajustement mal posé** : huit points sur une seule latitude d'une sphère
+    appartiennent à une infinité de sphères. `lstsq` rendait un centre, ce
+    centre avait l'air d'une mesure, et l'axe qui en découlait se trompait de
+    178°.
+26. **Procédure mesurant la mauvaise grandeur** : l'orientation d'une face au
+    lieu de l'angle entre deux. Sur un plan à z constant, la distorsion du
+    trièdre est uniforme, donc la normale ne bouge pas — l'équerrage injecté
+    donnait une valeur bit pour bit identique.
+27. **Signe déduit des extrémités d'un arc de 300°**, où le produit vectoriel ne
+    reflète plus le sens de rotation : normale retournée, erreur rapportée à
+    179,999° au lieu de 0,001°.
+28. **Variable écrasant un paramètre** : `ang` du jackknife masquait `ang` des
+    angles commandés, et le tri des positions devenait arbitraire.
+29. **Incertitude sous-estimée d'un facteur 3,7**, parce que les formules
+    fermées supposent un cercle complet alors qu'on mesure un arc.
+
+Et **deux affirmations de docstring fausses**, écrites par plausibilité et
+corrigées par la mesure : que l'amortissement évite une divergence (il évite un
+système normal singulier, qui *lève*), et que l'amorce décide de la convergence
+(elle décide de la branche).
+
+Le signe révélateur s'affine : **une grandeur qui ne varie pas quand le
+paramètre qui la commande varie.** D'où le revers de la règle de M6, que ce
+jalon impose : **quand une grandeur reste stable alors qu'un paramètre varie,
+c'est une information, pas une confirmation.** Un résidu qui ne bouge pas n'est
+pas un bon résidu ; c'est un résidu qui ne mesure pas ce qu'on croit.
+
+## 11. Ce qui n'est PAS testé, et doit l'être
 
 | Manque | État |
 |---|---|
@@ -410,15 +475,19 @@ exigeant qu'un paramètre ne change rien.
 | Finition d'une passe **complète** | **réduite ×5,5 M6**, pas levée : couverture 2 % → 18 % mesurée sur le dôme (159 899 points). Le mode rapporté dépend de la couverture |
 | ~~Gouge fine sur toute la passe~~ | **levée M6** côté porte-outil (preuve par majoration) |
 | Gouge de l'arête **entre** deux poses | exige une enveloppe balayée exacte |
-| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M7 |
+| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M8 |
 | ~~Collision du porte-plaquette en tournage~~ | **levée M6** (silhouette (z, r), test majorant) |
-| **Gorgeage** comme opération (plongée, non contour) | M7 |
-| Ordonnancement hybride fraisage + tournage dans une même gamme | M7 |
+| **Gorgeage** comme opération (plongée, non contour) | M8 |
+| Ordonnancement hybride fraisage + tournage dans une même gamme | M8 |
+| Erreurs non géométriques (thermique, flexion, hystérésis) | hors budget, non modélisées |
+| Erreurs d'échelle des vis | modélisées et compensables, aucune procédure ne les mesure |
+| Approche et dégagement dans le G-code | non générés (ADR-007 / D65) |
 | ~~Tournage : génération de trajectoires~~ | **levée M5** (profil, ovalité robuste, passes, refus motivé) |
 | Poids d'orientation calibrés | exige une machine |
+| Les cinq étapes de calibration matérielles | exigent la machine, dont la pièce d'épreuve |
 | Tout ce qui touche une machine réelle | après qualification |
 
-## 11. Précision — ce que les tests ne disent pas
+## 12. Précision — ce que les tests ne disent pas
 
 Aucun test de ce dépôt ne dit quoi que ce soit de la précision d'une pièce
 usinée. Ils portent sur la **justesse numérique** du moteur.

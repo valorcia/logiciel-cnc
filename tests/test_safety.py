@@ -66,25 +66,53 @@ def test_setup_change_invalidates_approval():
     assert m.state is SafetyState.INVALIDATED
 
 
+def _uncalibrated():
+    from xyzac.assembly_calibration import CalibrationRecord
+    from xyzac.machine_model import MachineGeometry
+    return CalibrationRecord(machine_id="X", geometry=MachineGeometry.nominal("X"))
+
+
 def test_postprocessor_refuses_without_approval(setup):
     from xyzac.postprocessor_linuxcnc import post_process
     m = SafetyStateMachine(setup_hash=setup.setup_hash())
     m.define_setup(setup.setup_hash())
     with pytest.raises(SafetyViolation, match="generation refusee"):
-        post_process(plan=None, safety=m, current_setup_hash=setup.setup_hash())
+        post_process(plan=None, safety=m, current_setup_hash=setup.setup_hash(),
+                     calibration=_uncalibrated())
 
 
-def test_postprocessor_is_not_implemented_even_when_approved(setup):
-    """Meme approuve, aucun G-code ne sort. ADR-001 §6.
+def test_safety_gate_fires_before_the_calibration_check(setup):
+    """L'ORDRE des refus compte : la porte de securite passe avant tout.
 
-    Le motif du verrou a change entre M1 et M2 — les portes existent
-    desormais — mais le verrou lui-meme tient. Le test porte donc sur le
-    comportement (rien ne sort), pas sur le libelle du message.
+    On appelle avec une calibration non mesuree ET sans approbation. Ce qui doit
+    sortir est la violation de securite, pas le refus de calibration : si l'etat
+    n'autorise pas la generation, rien d'autre n'a de sens — y compris de
+    regarder la machine.
+    """
+    from xyzac.postprocessor_linuxcnc import post_process
+    m = SafetyStateMachine(setup_hash=setup.setup_hash())
+    m.define_setup(setup.setup_hash())
+    with pytest.raises(SafetyViolation):
+        post_process(plan=None, safety=m, current_setup_hash=setup.setup_hash(),
+                     calibration=_uncalibrated())
+
+
+def test_postprocessor_refuses_an_unmeasured_machine_even_when_approved(setup):
+    """Remplace ``test_postprocessor_is_not_implemented_even_when_approved``.
+
+    Jusqu'au jalon M6, aucun G-code ne sortait, quel que soit l'etat : le verrou
+    avait une moitie logicielle (ni emetteur, ni modele de calibration) et une
+    moitie physique (machine non construite). M7 leve la moitie logicielle.
+
+    Le verrou lui-meme tient donc, avec un motif deplace et desormais exact :
+    une geometrie NON MESUREE n'est pas une geometrie nulle, et poster depuis
+    des pivots provisoires produirait un programme coherent et faux.
     """
     from xyzac.postprocessor_linuxcnc import post_process
     h = setup.setup_hash()
-    with pytest.raises(NotImplementedError, match="non implemente"):
-        post_process(plan=None, safety=_approved(h), current_setup_hash=h)
+    with pytest.raises(RuntimeError, match="NON MESUREE"):
+        post_process(plan=None, safety=_approved(h), current_setup_hash=h,
+                     calibration=_uncalibrated())
 
 
 def test_gateway_refuses_to_connect_at_this_milestone():
