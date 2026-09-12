@@ -368,12 +368,21 @@ def plan_finishing(
 
     Ce que cela ne suffit PAS a faire : la gamme de finition du dome C10 compte
     **159 899 points** repartis sur huit groupes de faces, soit environ 75 min
-    en mono-thread. Au plafond de 400 la couverture rapportee valait 2 % ; a
-    4 000 elle vaut AU PLUS 20 %, borne ``8 x 4000 / 159899``. Le plan reste
-    donc une MAQUETTE — une portion
-    reelle de la passe, avec sa continuite — et ``FinishingOpReport`` l'annonce
-    par sa couverture. La lire est le seul moyen de savoir ce que le plan
-    prouve.
+    en mono-thread. Mesure sur le dome C10 : couverture 2 % au plafond de 400,
+    **18 % a 4 000** (28 831 points, 1 091 s). Le plan reste donc une MAQUETTE.
+
+    **Et le MODE rapporte depend de la couverture**, ce qui interdit de lire une
+    maquette comme un resultat approche. Le meme dome rapporte
+    ``{3+2: 3, simultane: 2, inaccessible: 3}`` a 2 % et
+    ``{3+2: 2, simultane: 4, inaccessible: 2}`` a 18 % : un groupe indexable sur
+    ses 400 premiers points exige du simultane sur 4 000, un autre declare
+    inaccessible devient accessible. C'est la consequence directe de la regle du
+    moteur — l'intersection des ensembles admissibles ne peut que retrecir quand
+    on ajoute des points. Le mode d'une maquette est donc le mode d'un PREFIXE,
+    pas une estimation de celui de la passe.
+
+    ``FinishingOpReport.coverage`` n'est pour cette raison pas une note de
+    qualite a cote du resultat : c'est la PORTEE du resultat.
     """
     from ..accessibility_solver.solver import AccessibilityConfig, AccessibilitySolver
     from ..orientation_solver.solver import OrientationSolver

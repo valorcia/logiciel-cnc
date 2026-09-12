@@ -407,7 +407,7 @@ exigeant qu'un paramètre ne change rien.
 | ~~Gamme complète~~ | **levé M3** (ébauche indexée validée) |
 | ~~Finition : passes à crête contrôlée, 3+2 et 5 axes~~ | **levé M4** |
 | ~~Crête réelle sur surface courbe~~ | **levée M5** (forme fermée exacte, et le sens de l'erreur était l'inverse de ce qu'annonçait M4) |
-| ~~Finition d'une passe **complète**~~ | **levée M6** (88 s pour 3 213 points ; plafond redevenu garde-fou) |
+| Finition d'une passe **complète** | **réduite ×5,5 M6**, pas levée : couverture 2 % → 18 % mesurée sur le dôme (159 899 points). Le mode rapporté dépend de la couverture |
 | ~~Gouge fine sur toute la passe~~ | **levée M6** côté porte-outil (preuve par majoration) |
 | Gouge de l'arête **entre** deux poses | exige une enveloppe balayée exacte |
 | Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M7 |

@@ -113,11 +113,27 @@ Ce qui est donc vrai :
 - le coût par point baisse de **×5,5**, donc la couverture atteignable à budget
   égal est multipliée par autant ;
 - `max_points_per_pass` passe de 400 à 4 000, ce qui porte la couverture du
-  dôme de 2 % à **au plus 20 %** — les huit groupes comptant tous plus de
-  4 000 points, la borne `8 × 4 000 / 159 899` est atteinte au mieux ;
+  dôme de **2 % à 18 %** (28 831 / 159 899 points, mesuré en 1 091 s) — sous la
+  borne `8 × 4 000 / 159 899` = 20 %, deux groupes comptant moins de 4 000
+  points ;
 - **la maquette demeure.** Une gamme de finition complète sur une calotte reste
   hors de portée en mono-thread, et le rapport continue d'annoncer sa
   couverture pour que cela se lise.
+
+**Et la mesure apporte un fait que je n'avais pas anticipé** : les modes
+changent avec la couverture. Le dôme rapporte `{3+2: 3, simultané: 2,
+inaccessible: 3}` à 2 % de couverture, et `{3+2: 2, simultané: 4,
+inaccessible: 2}` à 18 %. Un groupe qui semblait indexable sur ses 400
+premiers points exige du simultané sur 4 000 ; un autre, déclaré inaccessible,
+devient accessible.
+
+C'est cohérent — l'intersection des ensembles admissibles ne peut que
+rétrécir quand on ajoute des points, et l'accessibilité d'un groupe ne peut
+que s'améliorer quand on en évalue davantage — mais cela veut dire que **le
+mode rapporté sur une maquette n'est pas le mode de la passe.** Il n'est pas
+non plus une approximation de celui-ci : c'est le mode d'un préfixe. La
+couverture n'est donc pas une note de qualité à côté du résultat, c'est la
+portée du résultat, et la lire est obligatoire.
 
 Ce que M6 ne fait donc pas : lever la limite de ADR-004 / D34. Il la réduit
 d'un facteur mesuré. Les leviers qui restent sont d'une autre nature —
