@@ -18,6 +18,13 @@ dependencies = [
 
 [project.optional-dependencies]
 viz = ["matplotlib>=3.8", "trimesh>=4.0"]
+# Banc de debug visuel (src/xyzac/ui/debug). Jamais requis par le moteur :
+# aucun module de calcul n'importe PySide6 ni PyVista, et un test le verifie.
+#
+# PySide6-Essentials plutot que PySide6 : le paquet complet embarque WebEngine,
+# Charts, 3D et Multimedia, soit ~450 Mo dont le banc n'utilise rien. Sur la
+# cible embarquee (Raspberry Pi 5) la difference n'est pas cosmetique.
+ui = ["PySide6-Essentials>=6.6", "pyvista>=0.44", "pyvistaqt>=0.11", "pillow>=10.0"]
 dev = ["pytest>=7.4", "pytest-cov"]
 # Backends optionnels, jamais dans le paquet coeur (licences : voir docs/audit/).
 ocl = ["opencamlib"]        # LGPL-2.1
@@ -30,4 +37,5 @@ testpaths = ["tests"]
 markers = [
     "slow: tests longs (corpus complet)",
     "needs_occt: necessite OCCT/OCP",
+    "needs_render: necessite un rendu 3D (OSMesa, EGL ou un ecran)",
 ]
