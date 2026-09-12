@@ -329,7 +329,7 @@ simule le palpage à travers elle, et on exige que la procédure la retrouve.
 | `measured_pivots_reach_the_hal_file` | une calibration qui ne franchit pas la frontière n'a servi à rien |
 | `an_uncalibrated_config_says_it_is_provisional` | une valeur nominale a l'air d'une valeur mesurée dans un fichier texte |
 | **`a_calibrated_config_is_never_called_uncalibrated`** | **défaut trouvé en lisant la sortie dans ses deux états : l'en-tête annonçait « modèle non calibré » au-dessus d'un pivot mesuré, ce qui conduit à refaire une calibration correcte** |
-| `the_config_never_claims_to_be_validated` | aucun fichier de ce jalon n'a été chargé par LinuxCNC ; le fichier doit le dire |
+| `the_config_never_claims_to_be_validated` | la génération ne valide rien ; seul un chargement le fait, et il a lieu à la main |
 | **`the_dangerous_point_is_named_as_such`** | **un signe d'offset faux ne provoque aucun échec au démarrage, seulement un usinage faux** |
 | `homing_is_left_unset_on_purpose` | une séquence de prise d'origine plausible envoie le chariot dans sa butée |
 | `the_tool_table_is_empty_and_says_why` | une longueur d'outil inventée est un plongeon dans la pièce |
@@ -343,11 +343,23 @@ simule le palpage à travers elle, et on exige que la procédure la retrouve.
 | `the_legacy_gateway_still_refuses_to_connect` | le stub M1 n'est pas devenu ouvert parce qu'un module voisin s'est rempli |
 | **`no_module_imports_the_linuxcnc_python_binding`** | **vérifié sur l'AST de tout le paquet, passerelle incluse : ce jalon écrit des fichiers, il n'ouvre aucun transport** |
 
+**Cinq tests de plus, tous nés d'un seul événement** : LinuxCNC 2.9 compilé
+depuis sa source et mis devant la configuration. Voir
+[la note de validation](../validation-linuxcnc.md).
+
+| Test | Ce qu'il protège |
+|---|---|
+| **`the_ini_loads_every_file_the_config_writes`** | **LE défaut : l'INI n'avait aucune section `[HAL]`, donc les deux fichiers HAL étaient écrits sur le disque et jamais chargés. Test *structurel* — tout fichier produit doit être nommé par l'INI — parce qu'un test de contenu de plus ne l'aurait pas vu** |
+| **`no_value_is_written_to_a_pin_the_xyzac_kinematics_ignores`** | **`x-offset` n'est lue que par la variante xyzbc. Le HAL y écrivait la composante X mesurée de l'axe C : aucune erreur, aucun effet, calibration perdue. La classe que D80 désigne comme la plus dangereuse, dans le fichier que D80 accompagne** |
+| `joint_sections_match_the_module_mapping` | C est l'articulation **4**, le module l'imprime au chargement ; `JOINT_AXIS` disait 4 et la liste écrite à la main disait 5 |
+| `angular_velocity_is_declared_because_a_rotary_axis_exists` | `Missing required specifier (has angular joint or axis)` |
+| `no_default_is_left_to_be_chosen_in_silence` | `[EMCIO]CYCLE_TIME` manquait et LinuxCNC choisissait 0,1 s en le disant dans son journal |
+
 ## 11. État actuel
 
 ```
 $ python -m pytest tests/ -q
-350 passed
+355 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -538,6 +550,37 @@ D'où la précision de la règle : **une phrase qui classe doit être aussi vrai
 que l'entrée la plus favorable qu'elle peut coiffer.** Un en-tête n'est pas un
 commentaire, c'est une affirmation portant sur tout ce qu'il surplombe.
 
+**Cinq de plus, trouvés d'un coup** en compilant LinuxCNC et en lui donnant la
+configuration à charger — épreuve que j'avais déclarée impossible à tort
+(§ [note de validation](../validation-linuxcnc.md)) :
+
+34. **Aucune section `[HAL]` dans l'INI.** Les deux fichiers HAL étaient écrits
+    et jamais chargés ; LinuxCNC démarrait sans cinématique ni `motmod`.
+    `xyzac.hal` était juste, ligne par ligne, et personne ne le lisait.
+35. **Une valeur mesurée écrite sur une broche que rien ne lit** : `x-offset`
+    n'est utilisée que par la variante xyzbc. Ni erreur, ni effet.
+36. **La bonne valeur dans la mauvaise broche** : `y-offset` recevait la
+    position absolue de l'axe C au lieu de l'écart A↔C, et les `rot-point`
+    restaient à zéro.
+37. **Deux sources de vérité pour un même numéro** : `JOINT_AXIS` disait 4 pour
+    C, la liste des blocs écrite juste en dessous disait 5.
+38. **Le motif écrit dans un fichier qui le rejette** : commentaires de
+    `tool.tbl` en `#` là où le parseur attend `;`.
+
+Les n° 35 et 36 sont **silencieux** : c'est la catégorie que la décision D80 de
+ce même jalon désigne comme la plus dangereuse, et elle se trouvait dans le
+fichier que D80 accompagne. Écrire la règle ne protège pas de l'enfreindre.
+
+D'où l'addition, qui porte cette fois sur les tests eux-mêmes : **un ensemble
+de fichiers qui se tiennent la main n'est pas testé tant qu'on n'a pas testé
+les mains.** Les onze tests de M9 vérifiaient chacun un fichier ; aucun ne
+vérifiait qu'ils se désignaient l'un l'autre.
+
+Et sur la méthode : **un échec d'installation n'est pas un verdict
+d'indisponibilité.** `apt` ne trouvait pas le paquet et le dépôt répondait 403
+— les deux constats étaient exacts, la conclusion « inaccessible » ne l'était
+pas. Le second canal coûtait quelques minutes à essayer.
+
 ## 13. Ce qui n'est PAS testé, et doit l'être
 
 | Manque | État |
@@ -564,7 +607,8 @@ commentaire, c'est une affirmation portant sur tout ce qu'il surplombe.
 | ~~Tournage : génération de trajectoires~~ | **levée M5** (profil, ovalité robuste, passes, refus motivé) |
 | Poids d'orientation calibrés | exige une machine |
 | Les cinq étapes de calibration matérielles | exigent la machine, dont la pièce d'épreuve |
-| **Configuration LinuxCNC jamais chargée par LinuxCNC** | M9 génère les fichiers ; l'interpréteur n'est pas installable dans cet environnement. `verification_command()` donne la commande dont le verdict compte |
+| ~~Configuration LinuxCNC jamais chargée par LinuxCNC~~ | **levée** : 2.9 compilée depuis la source, configuration chargée, elle démarre. Cinq défauts trouvés ([note](../validation-linuxcnc.md)) |
+| **Accord numérique des deux cinématiques** | le démarrage ne dit rien de l'endroit où LinuxCNC place réellement la pointe d'outil. Travail suivant |
 | Signe des offsets de pivot dans le HAL | seul `AXIS_DIRECTION` sur la machine physique l'établit |
 | Lancement de cycle | **par décision**, pas par manque : `start_cycle` lève, et un test le maintient |
 | Tout ce qui touche une machine réelle | après qualification |

@@ -609,6 +609,13 @@ lancement de cycle n'existe, et son absence est une décision inscrite dans le
 code plutôt qu'un manque : ce jalon ne produit pas de mouvement, il produit de
 quoi en produire un le jour où une machine qualifiée existera.
 
-**Aucun fichier produit par ce jalon n'a été chargé par LinuxCNC** — il n'est
-pas installable dans l'environnement de développement. `verification_command()`
-donne la commande dont le verdict compte.
+La configuration **a été chargée par LinuxCNC 2.9** (compilé depuis sa source,
+mode `uspace`). Elle démarre, et l'épreuve a révélé cinq défauts dont deux
+silencieux : `x-offset` n'est pas lue par la cinématique xyzac, `y-offset` porte
+l'écart A↔C et non une position absolue, et l'INI n'avait aucune section
+`[HAL]` — les deux fichiers HAL étaient écrits et jamais chargés. Voir
+[la note de validation](validation-linuxcnc.md).
+
+Ce que le démarrage ne dit pas : l'accord numérique des deux cinématiques, et le
+**signe** des offsets. `verification_command()` donne la commande à passer sur
+la machine de l'utilisateur.

@@ -1,11 +1,16 @@
 """Configuration LinuxCNC et remise d'un programme (jalon M9).
 
-**Ce que ces tests NE peuvent pas verifier, et il faut le dire d'abord.**
-LinuxCNC n'est pas installable dans l'environnement de developpement de ce
-projet : absent des depots Ubuntu, son propre depot inaccessible. Aucun test
-ici ne fait donc tourner l'interpreteur de LinuxCNC ni ne charge la
-configuration produite. Le seul verdict qui compte viendra d'une commande sur
-la machine de l'utilisateur — ``verification_command()`` la donne.
+**Ce que ces tests NE font pas, et il faut le dire d'abord.** Aucun test ici
+ne fait tourner LinuxCNC : il n'est pas une dependance du projet, et le rendre
+obligatoire pour lancer la suite serait disproportionne.
+
+Mais LinuxCNC 2.9 A ETE compile et A charge cette configuration une fois, a la
+main, et il y a trouve cinq defauts qu'aucun test d'alors ne voyait — parce
+qu'ils verifiaient le contenu de chaque fichier sans jamais verifier la
+coherence ENTRE fichiers. Les cinq tests de la section « ce que LinuxCNC a
+reellement dit » sont ce qui en reste. La procedure complete est dans
+``docs/validation-linuxcnc.md``, et ``verification_command()`` donne la
+commande a passer sur la machine de l'utilisateur.
 
 Ce que ces tests verifient : que la configuration est DERIVEE du modele et non
 saisie, qu'elle annonce ce qu'elle ne sait pas, et que les conditions de depot
@@ -22,6 +27,7 @@ from xyzac.assembly_calibration import (
     record_from_report,
 )
 from xyzac.linuxcnc_gateway import (
+    JOINT_AXIS,
     KINEMATICS_MODULE,
     DepositRefused,
     Target,
@@ -92,10 +98,25 @@ def test_measured_pivots_reach_the_hal_file(machine, calibre):
     mesure = build_config(machine, calibre)
 
     assert nominal.hal != mesure.hal, "la calibration ne change rien au HAL"
-    ligne = [l for l in mesure.hal.splitlines() if "x-offset" in l][0]
-    valeur = float(ligne.split()[-1])
+
+    def _setp(pin):
+        lignes = [l for l in mesure.hal.splitlines()
+                  if l.startswith("setp") and l.split()[1].endswith(pin)]
+        assert len(lignes) == 1, (pin, lignes)
+        return float(lignes[0].split()[-1])
+
+    # La composante X de l'axe C passe par x-rot-point et NON par x-offset,
+    # que la cinematique xyzac ne lit pas (voir trtfuncs.c).
     attendu = machine.pivot_c[0] + calibre.geometry.c_axis.offset_mm[0]
-    assert valeur == pytest.approx(attendu, abs=1e-6)
+    assert _setp(".x-rot-point") == pytest.approx(attendu, abs=1e-6)
+
+    # y-offset porte l'ecart de l'axe A PAR RAPPORT a l'axe C, pas sa
+    # position absolue : la rotation A se fait autour de
+    # (y-offset + y-rot-point, z-offset + z-rot-point).
+    ay = machine.pivot_a[1] + calibre.geometry.a_axis.offset_mm[1]
+    cy = machine.pivot_c[1] + calibre.geometry.c_axis.offset_mm[1]
+    assert _setp(".y-rot-point") == pytest.approx(cy, abs=1e-6)
+    assert _setp(".y-offset") == pytest.approx(ay - cy, abs=1e-6)
 
 
 def test_an_uncalibrated_config_says_it_is_provisional(machine):
@@ -164,8 +185,11 @@ def test_the_tool_table_is_empty_and_says_why(machine):
     """Une jauge saisie a la main decale toute la gamme en Z."""
     cfg = build_config(machine)
     assert "MESUREES" in cfg.tool_table
+    # Le caractere de commentaire d'une table d'outils est ';' : avec '#',
+    # LinuxCNC imprime « Unrecognized line skipped » pour chaque ligne, a
+    # chaque demarrage. Le motif etait ecrit dans un fichier qui le rejetait.
     lignes = [l for l in cfg.tool_table.splitlines()
-              if l.strip() and not l.startswith("#")]
+              if l.strip() and not l.startswith(";")]
     assert not lignes, lignes
 
 
@@ -177,6 +201,106 @@ def test_files_are_written_where_expected(machine, calibre, tmp_path):
         assert p.exists() and p.read_text(encoding="utf-8")
     assert "linuxcnc" in verification_command("config-xyzac")
     assert "halcmd show pin" in verification_command()
+
+
+# ------------------------------- ce que LinuxCNC a reellement dit
+#
+# Les cinq tests qui suivent sont tous nes du meme evenement : LinuxCNC a ete
+# compile depuis sa source (2.9, uspace) et la configuration generee lui a ete
+# donnee a charger. Cinq defauts sont apparus en quelques minutes, dont aucun
+# n'etait visible dans les tests precedents — parce que ceux-la verifiaient le
+# CONTENU des fichiers, et qu'aucun ne verifiait leur COHERENCE entre eux.
+#
+# La procedure et ses resultats sont consignes dans ADR-009 et
+# docs/validation-linuxcnc.md. Ces tests-ci sont ce qui empeche chaque defaut
+# de revenir, et ils ne demandent pas LinuxCNC pour tourner.
+
+def test_the_ini_loads_every_file_the_config_writes(machine, calibre, tmp_path):
+    """LE defaut : l'INI n'avait aucune section [HAL].
+
+    Les quatre fichiers etaient donc ecrits sur le disque, et deux d'entre eux
+    n'etaient JAMAIS charges. LinuxCNC demarrait sans cinematique ni motmod et
+    echouait sur 'emcTrajInit failed'. Aucun test ne l'a vu : ils lisaient le
+    contenu de xyzac.hal sans jamais se demander si quelque chose y renvoyait.
+
+    D'ou ce test structurel — tout fichier produit doit etre nomme par l'INI —
+    plutot qu'un test de plus sur le contenu du HAL.
+    """
+    cfg = build_config(machine, calibre)
+    ecrits = cfg.write(tmp_path / "c")
+    for nom in ecrits:
+        if nom.endswith(".ini"):
+            continue
+        assert nom in cfg.ini, (
+            f"{nom} est ecrit sur le disque mais l'INI n'y renvoie pas : "
+            "LinuxCNC ne le chargera jamais")
+    assert "[HAL]" in cfg.ini
+
+
+def test_joint_sections_match_the_module_mapping(machine):
+    """C est l'articulation 4, et le module l'annonce lui-meme au chargement.
+
+    L'INI declarait JOINTS = 6 et un [JOINT_5], avec un commentaire affirmant
+    que xyzac-trt-kins « attend la numerotation complete XYZABC ». Faux : avec
+    coordinates=xyzac (le defaut) il imprime 'Joint 4 ==> Axis C'.
+
+    Ce defaut echoue bruyamment au demarrage, donc il se serait signale. Ce
+    qui ne se signalait pas, c'est que JOINT_AXIS disait 4 tandis que la liste
+    des blocs, ecrite a la main juste en dessous, disait 5.
+    """
+    cfg = build_config(machine)
+    numeros = [j for j, _ in JOINT_AXIS]
+    assert dict(JOINT_AXIS)["4"] == "C"
+    assert f"JOINTS = {len(JOINT_AXIS)}" in cfg.ini
+    sections = [l.strip("[]") for l in cfg.ini.splitlines()
+                if l.startswith("[JOINT_")]
+    assert sections == [f"JOINT_{j}" for j in numeros], sections
+    # et la boucle de simulation du HAL boucle exactement ces articulations
+    for j in numeros:
+        assert f"joint.{j}.motor-pos-cmd" in cfg.hal
+    assert "joint.5." not in cfg.hal
+
+
+def test_no_value_is_written_to_a_pin_the_xyzac_kinematics_ignores(machine, calibre):
+    """Le pire mode d'echec : une broche qui existe et que personne ne lit.
+
+    ``xyzac-trt-kins`` publie x-offset, mais trtfuncs.c ne la lit que dans
+    xyzbcKinematicsForward/Inverse. Pour xyzac c'est une broche morte. Le HAL
+    y ecrivait la composante X de l'axe C mesuree : aucune erreur, aucun
+    effet, et la calibration silencieusement perdue.
+
+    C'est exactement la classe que D80 designe comme la plus dangereuse, et
+    elle etait dans le fichier que D80 accompagne.
+    """
+    ignorees = (".x-offset",)
+    for cfg in (build_config(machine), build_config(machine, calibre)):
+        for ligne in cfg.hal.splitlines():
+            if not ligne.startswith("setp"):
+                continue
+            pin = ligne.split()[1]
+            for morte in ignorees:
+                assert not pin.endswith(morte), (
+                    f"{ligne!r} : broche non lue par la cinematique xyzac")
+
+
+def test_angular_velocity_is_declared_because_a_rotary_axis_exists(machine):
+    """LinuxCNC : 'Missing required specifier (has angular joint or axis)'."""
+    cfg = build_config(machine)
+    assert "MAX_ANGULAR_VELOCITY" in cfg.ini
+    bloc = cfg.ini.split("[TRAJ]")[1].split("[")[0]
+    valeur = float([l for l in bloc.splitlines()
+                    if l.startswith("MAX_ANGULAR_VELOCITY")][0].split()[-1])
+    attendu = min(machine.a.max_feed_deg_min, machine.c.max_feed_deg_min) / 60.0
+    assert valeur == pytest.approx(attendu, abs=1e-6)
+
+
+def test_no_default_is_left_to_be_chosen_in_silence(machine):
+    """[EMCIO]CYCLE_TIME manquait, et LinuxCNC choisissait 0,1 s en le disant
+    dans son journal. Un defaut choisi en silence est ce que ce projet refuse
+    partout ailleurs ; il n'y a pas de raison de l'accepter ici."""
+    cfg = build_config(machine)
+    bloc = cfg.ini.split("[EMCIO]")[1].split("[")[0]
+    assert "CYCLE_TIME" in bloc
 
 
 # --------------------------------------------- conditions de depot

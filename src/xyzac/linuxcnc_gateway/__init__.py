@@ -1,4 +1,10 @@
-from .config import KINEMATICS_MODULE, ConfigFiles, build_config, verification_command
+from .config import (
+    JOINT_AXIS,
+    KINEMATICS_MODULE,
+    ConfigFiles,
+    build_config,
+    verification_command,
+)
 from .deposit import (
     DepositRecord,
     DepositRefused,
@@ -8,7 +14,18 @@ from .deposit import (
 )
 from .interfaces import GatewayState, LinuxCncGateway, MachineStatus
 
-__all__ = ["ConfigFiles", "DepositRecord", "DepositRefused", "GatewayState",
-           "KINEMATICS_MODULE", "LinuxCncGateway", "MachineStatus", "Target",
-           "build_config", "deposit_program", "start_cycle",
-           "verification_command"]
+__all__ = [
+    "ConfigFiles",
+    "DepositRecord",
+    "DepositRefused",
+    "GatewayState",
+    "JOINT_AXIS",
+    "KINEMATICS_MODULE",
+    "LinuxCncGateway",
+    "MachineStatus",
+    "Target",
+    "build_config",
+    "deposit_program",
+    "start_cycle",
+    "verification_command",
+]

@@ -9,11 +9,25 @@
 ## 1. Ce que M9 apporte, et ce qu'il ne peut pas vérifier
 
 **La limite d'abord, parce qu'elle change ce qu'on a le droit d'affirmer.**
-LinuxCNC n'est pas installable dans l'environnement de développement de ce
-projet : absent des dépôts Ubuntu, et son propre dépôt inaccessible depuis le
-mandataire réseau. **Aucun fichier produit par ce jalon n'a été chargé par
-LinuxCNC.** Le seul verdict qui compte viendra d'une commande sur la machine de
-l'utilisateur, et `verification_command()` la donne.
+
+Ce jalon a d'abord été livré en affirmant : « LinuxCNC n'est pas installable
+dans l'environnement de développement — absent des dépôts Ubuntu, son propre
+dépôt inaccessible depuis le mandataire réseau — donc aucun fichier produit par
+ce jalon n'a été chargé par LinuxCNC ». **Les deux constats étaient exacts et la
+conclusion était fausse.** Le 403 portait sur `ppa.launchpadcontent.net`,
+c'est-à-dire sur les *paquets binaires* ; le dépôt source sur GitHub répond, et
+l'archive Ubuntu principale aussi. LinuxCNC 2.9 a donc été **compilé depuis sa
+source** en mode `uspace`, et la configuration lui a été donnée à charger.
+
+Elle portait **cinq défauts**, dont deux silencieux. Ils sont consignés dans
+[la note de validation](../validation-linuxcnc.md) avec la procédure complète,
+et chacun est désormais tenu par un test qui ne demande pas LinuxCNC.
+
+Après correction, la configuration démarre : cinématique instanciée, cinq
+articulations, `task: 1063 cycles, 0 latency excursions`. Ce qui reste
+non prouvé est énuméré au §3, et `verification_command()` donne toujours la
+commande à passer sur la machine de l'utilisateur — car c'est sa machine, pas
+la configuration, qui décide du signe des offsets.
 
 Ce que M9 apporte malgré cela :
 
@@ -162,7 +176,9 @@ montage ni de quelle calibration il vient.
 
 | Limite | Pourquoi |
 |---|---|
-| **Configuration non validée par LinuxCNC** | LinuxCNC n'est pas installable ici. Une commande sur la machine de l'utilisateur tranche |
+| ~~Configuration non validée par LinuxCNC~~ | **levée** : 2.9 compilée depuis la source, configuration chargée, cinq défauts trouvés et corrigés ([note](../validation-linuxcnc.md)) |
+| **Justesse numérique de la cinématique** | le démarrage ne dit rien de l'accord entre `xyzacKinematicsInverse` et le solveur de ce projet. C'est le travail qui suit |
+| **Signe des offsets de pivot** | aucune simulation ne l'établit : il faut commander un déplacement et regarder. Le module prévient lui-même que « the directions of the rotational axes are the opposite of the conventional axis directions » |
 | **Machine non construite ni qualifiée** | inchangé depuis M7 ; c'est la condition du dépôt matériel |
 | Noms des broches HAL de la cinématique | dépendent de la version : à confirmer par `halcmd show pin xyzac` |
 | Signe des offsets de pivot | exige `AXIS_DIRECTION`, donc la machine |

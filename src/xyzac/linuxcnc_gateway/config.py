@@ -9,12 +9,19 @@ table/table, une erreur de pivot se propage directement a la piece.
 
 Cette configuration est donc **derivee**, jamais saisie.
 
-**Ce que ce module ne peut pas verifier, et il faut le dire avant de lire le
-reste.** LinuxCNC n'est pas installable dans l'environnement de developpement
-de ce projet : absent des depots Ubuntu, et son propre depot inaccessible. Les
-fichiers produits ne sont donc **pas valides par LinuxCNC lui-meme ici**. Ils
-le seront par une seule commande sur la machine de l'utilisateur, et cette
-commande est donnee par ``verification_command()``.
+**Ce qui a ete verifie, et comment.** Ce module a d'abord ete ecrit sans que
+LinuxCNC ait jamais lu sa sortie, sur la conviction qu'il n'etait pas
+installable ici. Il l'etait : la version 2.9 a ete compilee depuis sa source
+en mode ``uspace`` et la configuration lui a ete donnee a charger. Elle
+portait cinq defauts, dont deux silencieux — la correspondance des broches de
+pivot etait fausse, et la section [HAL] manquait, donc ce fichier n'etait
+jamais charge. La procedure et les resultats sont dans
+``docs/validation-linuxcnc.md``.
+
+Les noms de broches ci-dessous sont donc **confirmes contre la 2.9**, et la
+semantique des offsets est lue dans ``src/emc/kinematics/trtfuncs.c``. Ce qui
+reste a verifier sur la machine de l'utilisateur est le SIGNE, qu'aucune
+simulation ne peut etablir, et ``verification_command()`` donne la commande.
 
 Ce que cela implique sur le degre de confiance, section par section :
 
@@ -51,10 +58,20 @@ from ..machine_model.machine import CAxisMode, MachineKinematics
 #: fausse sur toute pose inclinee — sans qu'aucune erreur ne soit signalee.
 KINEMATICS_MODULE = "xyzac-trt-kins"
 
-#: Correspondance articulation -> axe. Sur cette machine chaque axe a une seule
-#: articulation, donc la correspondance est directe ; elle est ecrite
-#: explicitement parce qu'elle cesse de l'etre des qu'un axe est double.
-JOINT_AXIS = [("0", "X"), ("1", "Y"), ("2", "Z"), ("3", "A"), ("5", "C")]
+#: Correspondance articulation -> axe, TELLE QUE LE MODULE L'ETABLIT.
+#:
+#: Elle n'est pas un choix : ``xyzac-trt-kins`` charge avec
+#: ``coordinates=xyzac`` par defaut et annonce lui-meme, au chargement,
+#: ``Joint 4 ==> Axis C``. C = articulation **4**, pas 5.
+#:
+#: Cette table portait 5 pour C, avec un commentaire affirmant que le module
+#: « attend la numerotation complete XYZABC ». C'etait faux, et la verification
+#: consiste a charger le module et a lire ce qu'il imprime :
+#:     halrun -f <(echo 'loadrt xyzac-trt-kins')
+#: Le module accepte bien ``coordinates=xyzabc``, qui donnerait C = 5 — mais au
+#: prix d'un axe B fictif, donc d'une articulation de plus a declarer, borner
+#: et asservir pour rien.
+JOINT_AXIS = [("0", "X"), ("1", "Y"), ("2", "Z"), ("3", "A"), ("4", "C")]
 
 
 @dataclass
@@ -198,9 +215,10 @@ def build_config(
         "l'etablit, en commandant un deplacement et en REGARDANT de quel cote "
         "la piece part.")
     to_verify.append(
-        f"NOMS des broches HAL de {KINEMATICS_MODULE}, qui varient selon la "
-        "version : 'halcmd show pin xyzac'. Un nom errone fait echouer le "
-        "demarrage, sans mouvement.")
+        f"NOMS des broches HAL de {KINEMATICS_MODULE} : confirmes contre la "
+        "2.9 (configuration chargee, voir docs/validation-linuxcnc.md), mais "
+        "ils varient selon la version. Verifier par 'halcmd show pin xyzac'. "
+        "Un nom errone fait echouer le demarrage, sans mouvement.")
     if machine.c_mode is CAxisMode.CONTINUOUS_SPINDLE:
         to_verify.append(
             "mode C = broche de tournage : cette configuration declare C comme "
@@ -244,9 +262,10 @@ def build_config(
         "",
         "[KINS]",
         f"KINEMATICS = {KINEMATICS_MODULE}",
-        "# 6 articulations declarees (0..5) dont B (4) inutilisee : le module",
-        "# xyzac-trt-kins attend la numerotation complete XYZABC.",
-        "JOINTS = 6",
+        "# 5 articulations (0..4). Le module annonce lui-meme sa",
+        "# correspondance au chargement : Joint 4 ==> Axis C. Aucune",
+        "# articulation fictive n'est declaree.",
+        "JOINTS = 5",
         "",
         "[TRAJ]",
         "COORDINATES = X Y Z A C",
@@ -254,9 +273,26 @@ def build_config(
         "ANGULAR_UNITS = degree",
         f"MAX_LINEAR_VELOCITY = "
         f"{min(machine.x.max_feed_mm_min, machine.y.max_feed_mm_min, machine.z.max_feed_mm_min) / 60.0:.4f}",
+        "# Exigee des qu'un axe rotatif existe : LinuxCNC l'annonce comme",
+        "# 'Missing required specifier (has angular joint or axis)'.",
+        f"MAX_ANGULAR_VELOCITY = "
+        f"{min(machine.a.max_feed_deg_min, machine.c.max_feed_deg_min) / 60.0:.4f}",
+        "",
+        "[HAL]",
+        "# Sans cette section, LinuxCNC ne charge AUCUN fichier HAL : le",
+        "# module de cinematique et motmod ne sont jamais instancies, et le",
+        "# demarrage echoue sur 'emcTrajInit failed'. Elle a manque, et les",
+        "# tests ne l'ont pas vu parce qu'ils verifiaient le CONTENU des",
+        "# fichiers HAL sans verifier que l'INI y renvoie.",
+        "HALFILE = xyzac.hal",
+        "POSTGUI_HALFILE = postgui.hal",
         "",
         "[EMCIO]",
         "TOOL_TABLE = tool.tbl",
+        "# Sans cette ligne LinuxCNC choisit 0,1 s et l'ecrit dans son journal.",
+        "# Une valeur par defaut choisie en silence est exactement ce que ce",
+        "# projet refuse ailleurs ; elle est donc ecrite ici.",
+        "CYCLE_TIME = 0.100",
         "",
     ]
 
@@ -266,16 +302,20 @@ def build_config(
     ini.append(_axis_block("A", machine.a, is_rotary=True))
     ini.append(_axis_block("C", machine.c, is_rotary=True))
 
-    ini.append(_joint_block("0", "X", machine.x, is_rotary=False,
-                            backlash=machine.x.backlash_mm))
-    ini.append(_joint_block("1", "Y", machine.y, is_rotary=False,
-                            backlash=machine.y.backlash_mm))
-    ini.append(_joint_block("2", "Z", machine.z, is_rotary=False,
-                            backlash=machine.z.backlash_mm))
-    ini.append(_joint_block("3", "A", machine.a, is_rotary=True,
-                            backlash=machine.a.backlash_deg))
-    ini.append(_joint_block("5", "C", machine.c, is_rotary=True,
-                            backlash=machine.c.backlash_deg))
+    # Les blocs d'articulation sont derives de JOINT_AXIS, et non ecrits un
+    # par un : la version precedente listait a la main un [JOINT_5] alors que
+    # JOINT_AXIS disait 4. Deux sources de verite pour le meme numero, et
+    # elles ont diverge.
+    _par_axe = {
+        "X": (machine.x, False, machine.x.backlash_mm),
+        "Y": (machine.y, False, machine.y.backlash_mm),
+        "Z": (machine.z, False, machine.z.backlash_mm),
+        "A": (machine.a, True, machine.a.backlash_deg),
+        "C": (machine.c, True, machine.c.backlash_deg),
+    }
+    for _j, _axe in JOINT_AXIS:
+        _ax, _rot, _jeu = _par_axe[_axe]
+        ini.append(_joint_block(_j, _axe, _ax, is_rotary=_rot, backlash=_jeu))
 
     if all(v == 0.0 for v in (machine.x.backlash_mm, machine.y.backlash_mm,
                               machine.z.backlash_mm, machine.a.backlash_deg,
@@ -307,23 +347,45 @@ def build_config(
     for j, _name in JOINT_AXIS:
         hal.append(f"net j{j}-pos joint.{j}.motor-pos-cmd => joint.{j}.motor-pos-fb")
     hal += [
-        "net j4-pos joint.4.motor-pos-cmd => joint.4.motor-pos-fb",
-        "# (articulation 4 = B, inutilisee sur cette machine mais attendue par",
-        "#  la numerotation du module de cinematique)",
         "",
         "# ---------------- offsets de pivot mesures ----------------",
         "#",
         "# Ces valeurs viennent du modele machine et, quand il existe, du",
-        "# dossier de calibration. Les NOMS de broches ci-dessous dependent de",
-        "# la version de LinuxCNC : verifier par",
+        "# dossier de calibration. La correspondance ci-dessous est LUE dans",
+        "# xyzacKinematicsForward/Inverse (src/emc/kinematics/trtfuncs.c), pas",
+        "# devinee, parce qu'une version precedente de ce fichier la devinait",
+        "# et se trompait sur deux des trois valeurs :",
+        "#",
+        "#   rotation C  : autour de (x-rot-point, y-rot-point)",
+        "#   rotation A  : autour de (y-offset + y-rot-point,",
+        "#                            z-offset + z-rot-point)",
+        "#",
+        "# D'ou : les rot-point portent l'axe C, et y-offset porte l'ecart de",
+        "# l'axe A PAR RAPPORT a l'axe C — pas sa position absolue.",
+        "#",
+        "# La broche x-offset n'est PAS employee par la cinematique xyzac : la",
+        "# lecture de trtfuncs.c montre qu'elle ne l'est que par la variante",
+        "# xyzbc. Y ecrire une valeur mesuree ne produit aucune erreur et",
+        "# n'a aucun effet — c'est le pire des deux mondes, donc on ne l'ecrit",
+        "# pas. La composante X de l'axe C passe par x-rot-point.",
+        "#",
+        "# Les NOMS de broches dependent de la version : verifier par",
         "#     halcmd show pin xyzac",
         "# Un nom errone fait echouer le demarrage, ce qui est le bon mode",
         "# d'echec. Un SIGNE errone, lui, ne fait rien echouer : il fait usiner",
         "# faux, et seule l'etape AXIS_DIRECTION de assembly_calibration peut",
-        "# l'ecarter.",
-        f"setp {KINEMATICS_MODULE}.x-offset {pc[0]:.6f}",
-        f"setp {KINEMATICS_MODULE}.y-offset {pc[1]:.6f}",
+        "# l'ecarter. Le module lui-meme previent, dans son en-tete :",
+        "# 'The directions of the rotational axes are the opposite of the",
+        "#  conventional axis directions.'",
+        f"setp {KINEMATICS_MODULE}.x-rot-point {pc[0]:.6f}",
+        f"setp {KINEMATICS_MODULE}.y-rot-point {pc[1]:.6f}",
+        f"setp {KINEMATICS_MODULE}.y-offset {pa[1] - pc[1]:.6f}",
+        "# Seule la SOMME (z-offset + z-rot-point) intervient dans les",
+        "# equations : les deux broches sont redondantes en Z. On porte donc",
+        "# tout sur z-offset et on laisse z-rot-point a 0, plutot que de",
+        "# repartir arbitrairement une valeur mesuree entre deux broches.",
         f"setp {KINEMATICS_MODULE}.z-offset {pa[2]:.6f}",
+        f"setp {KINEMATICS_MODULE}.z-rot-point 0.000000",
         "",
         "# ---------------- arret d'urgence ----------------",
         "#",
@@ -347,12 +409,16 @@ def build_config(
         "",
     ]
 
+    # Le caractere de commentaire d'une table d'outils est ';' et non '#' :
+    # tooldata_read_entry() teste input_line[0] == ';'. Avec '#', LinuxCNC
+    # imprime « Unrecognized line skipped » pour CHAQUE ligne a chaque
+    # demarrage — le motif etait donc ecrit dans un fichier qui le rejetait.
     tool_table = [
-        "# Table d'outils LinuxCNC.",
-        "#",
-        "# VIDE volontairement : les longueurs d'outil doivent etre MESUREES",
-        "# (probing_service), pas saisies. Une jauge fausse decale toute la",
-        "# gamme en Z, et c'est l'erreur la plus courante et la plus couteuse.",
+        "; Table d'outils LinuxCNC.",
+        ";",
+        "; VIDE volontairement : les longueurs d'outil doivent etre MESUREES",
+        "; (probing_service), pas saisies. Une jauge fausse decale toute la",
+        "; gamme en Z, et c'est l'erreur la plus courante et la plus couteuse.",
         "",
     ]
     to_verify.append(
