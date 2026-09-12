@@ -616,6 +616,18 @@ l'écart A↔C et non une position absolue, et l'INI n'avait aucune section
 `[HAL]` — les deux fichiers HAL étaient écrits et jamais chargés. Voir
 [la note de validation](validation-linuxcnc.md).
 
-Ce que le démarrage ne dit pas : l'accord numérique des deux cinématiques, et le
-**signe** des offsets. `verification_command()` donne la commande à passer sur
-la machine de l'utilisateur.
+Le recoupement a ensuite été poussé jusqu'à l'exécution : `part_to_machine_point`
+et `xyzacKinematicsInverse` s'accordent à **7,1·10⁻¹⁵ mm** contre la fonction
+compilée, et à **1,4·10⁻¹⁴ mm** sur LinuxCNC **en marche** (56 poses commandées
+en MDI, articulations relues) — `tools/verify_kinematics_linuxcnc.py`, trois
+étages.
+
+Cette dernière étape a exigé de corriger un septième défaut : `[EMCIO]EMCIO`
+manquait, et la tâche décide d'employer le contrôleur d'entrées-sorties sur la
+**seule présence de cette clé** alors que le script de démarrage a sa propre
+valeur par défaut. `io` tournait donc, ses broches répondaient, et la machine
+ne pouvait jamais être mise en marche — sans un seul message d'erreur.
+
+Ce que rien de cela ne dit : le **signe** des offsets.
+`verification_command()` donne la commande à passer sur la machine de
+l'utilisateur.

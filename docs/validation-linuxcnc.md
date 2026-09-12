@@ -160,8 +160,11 @@ articulations existent, et la valeur mesurée est arrivée sur une broche réell
   point plus aigu, pas moins.
 - **La justesse numérique de la cinématique**, c'est-à-dire que le
   `xyzacKinematicsInverse` de LinuxCNC et le solveur de ce projet placent la
-  pointe d'outil au même endroit. Le démarrage ne dit rien de cela. Le
-  recoupement chiffré des deux implémentations est le travail qui suit.
+  pointe d'outil au même endroit. Le démarrage ne dit rien de cela.
+  *→ levé en partie II (7,1·10⁻¹⁵ mm) et en partie III (1,4·10⁻¹⁴ mm sur
+  LinuxCNC en marche).*
+- **Que la machine puisse être MISE EN MARCHE.** Rien de ce qui précède ne le
+  dit, et elle ne pouvait pas l'être. *→ défaut n° 39, §8.*
 - **Le HAL matériel.** Le HAL produit est de simulation : articulations bouclées
   sur elles-mêmes, aucun pilote de moteur.
 - **±0,02 mm**, qui reste un objectif de qualification physique.
@@ -205,15 +208,17 @@ fonction.** Et, pour mesurer ce qui était en jeu, la correspondance **d'avant
 correction** donne sur les mêmes poses un écart de **10,286 mm**. Ce n'était
 pas une subtilité numérique, c'était un centimètre sur la pièce.
 
-## 7. Pourquoi deux étages, et pourquoi pas en pilotant l'interface
+## 7. Pourquoi plusieurs étages, et ce que l'étage par l'interface a coûté
 
 L'étage `formule` seul est un **miroir** : il compare mon modèle à ma lecture
 de la source. Une erreur de transcription rendrait l'accord parfait et faux.
 
-La première version de l'étage 2 lançait LinuxCNC, levait l'arrêt d'urgence,
-passait en MDI et relisait les articulations. Elle n'a jamais abouti, et les
-obstacles rencontrés valent d'être notés parce qu'aucun ne concernait la
-cinématique :
+Un étage lançant LinuxCNC, levant l'arrêt d'urgence, passant en MDI et relisant
+les articulations a d'abord été tenté **et abandonné**. Il fonctionne
+aujourd'hui (partie III), mais seulement après la correction du défaut n° 39 :
+il butait sur un refus de mise en marche que je prenais pour un problème de
+méthode. Les obstacles qui l'ont retardé valent d'être notés, parce qu'aucun ne
+concernait la cinématique :
 
 - **mémoire partagée résiduelle.** `linuxcnc.stat()` lit un segment SysV. Une
   instance tuée sans nettoyage laisse le segment vivant, **figé** — et `stat()`
@@ -238,7 +243,7 @@ regard de la question posée**.
 Le banc confirme au passage les sept noms de broches, identiques à ceux lus
 sur l'instance vivante en §3.1.
 
-## 8. Défaut n° 39, resté OUVERT : la configuration ne se met pas en marche
+## 8. Défaut n° 39, RÉSOLU : la configuration ne se mettait pas en marche
 
 **Ce qui est établi.** `STATE_ESTOP_RESET` puis `STATE_ON` laissent
 `task_state = 1` (ESTOP) et `motion.motion-enabled = FALSE`. La boucle
@@ -268,15 +273,96 @@ fonctionner.
 les porte), et le contradictoire commentaire « prise d'origine NON
 renseignée » posé sous `HOME`/`HOME_SEQUENCE` a été corrigé — quarantième
 défaut du projet, cinquième de la famille « une phrase fausse posée sur les
-valeurs qu'elle prétend absentes ». La cause du refus de mise en marche reste
-à trouver ; la bissection a été arrêtée après que l'état temps réel de
-l'environnement est devenu peu fiable.
+valeurs qu'elle prétend absentes ».
 
-## 9. Ce qui reste non prouvé
+### 8.1 La cause, trouvée par bissection
 
-- le **signe** des axes, qu'aucun calcul n'établit ;
-- que le HAL porte les valeurs jusqu'aux broches **dans un système qui
-  tourne** : établi une fois par `halcmd show pin xyzac` (§3.4), non
-  automatisé ;
-- la **mise en marche** (défaut n° 39) ;
+Deux corrections de méthode d'abord, parce que la bissection précédente était
+fausse :
+
+- la « référence connue bonne » que j'utilisais (`gmoccapy_XYZAC.ini`) déclare
+  **`KINEMATICS = trivkins coordinates=xyzac`** — pas `xyzac-trt-kins`. Mon
+  contrôle différait donc sur le module de cinématique lui-même. La vraie
+  référence est `configs/sim/axis/vismach/5axis/table-rotary-tilting/xyzac-trt.ini` ;
+- mon lanceur fuyait un serveur X par essai (j'en étais à `:134`) et courait
+  avec son propre nettoyage IPC. Plusieurs « échecs au démarrage » que
+  j'attribuais à mes sections étaient les siens.
+
+Avec un lanceur qui nettoie et réessaie, la bissection est nette :
+
+| Variante | Résultat |
+|---|---|
+| INI de référence + **mon HAL** | **en marche** → mon HAL est bon |
+| mon INI + `[TRAJ]` de référence | refusé |
+| mon INI + les 5 `[JOINT_*]` de référence | refusé |
+| mon INI + les 5 `[AXIS_*]` de référence | refusé |
+| mon INI + `[EMC]`, `[TASK]`, `[KINS]`, `[DISPLAY]`, `[RS274NGC]`, `[HALUI]` | refusé |
+| **mon INI + `[EMCIO]` de référence** | **en marche** |
+| mon INI + la seule ligne **`EMCIO = io`** | **en marche** |
+| mon INI + la table d'outils peuplée de la référence | refusé |
+
+### 8.2 Le mécanisme
+
+`src/emc/task/taskclass.cc`, ligne 444 :
+
+```c
+use_iocontrol = (inifile.Find("EMCIO", "EMCIO") != NULL);
+```
+
+La tâche décide d'employer le contrôleur d'entrées-sorties sur la **seule
+présence de la clé**. Le script de démarrage, lui, a sa propre valeur par
+défaut (`GetFromIniEx IO IO EMCIO EMCIO io`) et lance `io` quand même.
+
+**Deux composants dérivent le même fait par deux chemins différents**, et mon
+INI omettait la clé. Conséquence : `io` tournait, ses broches HAL existaient et
+**répondaient** — `user-enable-out` et `emc-enable-in` passaient bien à TRUE —
+mais `emcIoUpdate` sortait immédiatement sur `if (!use_iocontrol)` et la tâche
+ne lisait jamais cet état. L'arrêt d'urgence ne se levait donc jamais.
+
+C'est ce qui m'a le plus retardé : **voir les broches bouger prouvait que `io`
+était là**, donc j'ai cherché partout ailleurs. Une preuve de présence n'est
+pas une preuve d'emploi.
+
+Un balayage de tout le paquet pour les clés dont la seule présence commande un
+comportement (`inifile.Find(…) != NULL`) n'en trouve **qu'une** : celle-ci. La
+ligne est désormais émise avec ce motif écrit dans le fichier, et un test
+vérifie sa présence — non sa valeur, puisque c'est la présence qui compte.
+
+## 9. Partie III — l'épreuve en exécution
+
+La correction rend possible l'étage que j'avais abandonné.
+`tools/verify_kinematics_linuxcnc.py --etage execution` lance LinuxCNC sur la
+configuration **générée telle quelle**, le met en marche, prend les cinq
+articulations en origine, commande des poses en MDI et relit les positions
+d'articulation que LinuxCNC calcule :
+
+```
+  LinuxCNC : 5 articulations, kinematics_type=4
+  machine en marche
+  5 articulations prises en origine
+  56 poses commandees en MDI et relues, 0 ecartees
+  ecart max = 1.421e-14 mm
+```
+
+Les trois étages, avec des pivots volontairement grands
+(`pc = [1,5, −2,5, 4,0]`, `pa = [0,7, 3,1, −39,2]`) :
+
+| Étage | Contre quoi | Écart max |
+|---|---|---|
+| `formule` | une transcription de `trtfuncs.c` | 7,105·10⁻¹⁵ mm |
+| `source` | la fonction **compilée** | 7,105·10⁻¹⁵ mm |
+| `execution` | **LinuxCNC en marche**, via MDI | 1,421·10⁻¹⁴ mm |
+
+Les étages 1 et 2 comparent une **fonction** ; l'étage 3 compare une
+**chaîne** — modèle → HAL → cinématique de LinuxCNC. La distinction n'est pas
+académique : les deux premiers étaient parfaits alors que la section `[EMCIO]`
+incomplète interdisait toute mise en marche. **Un calcul juste dans une
+machine qu'on ne peut pas démarrer ne produit rien.**
+
+## 10. Ce qui reste non prouvé
+
+- le **signe** des axes, qu'aucun calcul n'établit : il faut commander un
+  déplacement et regarder de quel côté la pièce part (`AXIS_DIRECTION`) ;
+- le **HAL matériel** : celui produit est de simulation, articulations bouclées
+  sur elles-mêmes, aucun pilote de moteur ;
 - **±0,02 mm**, qui reste un objectif de qualification physique.

@@ -7,7 +7,8 @@ Le jalon M9 a montre que la configuration demarre. Demarrer ne dit rien de
 l'endroit ou LinuxCNC place reellement la pointe d'outil : un mauvais offset de
 pivot demarre parfaitement et usine faux. Il faut donc comparer des NOMBRES.
 
-La comparaison se fait en deux etages, et les deux sont necessaires :
+La comparaison se fait en trois etages, chacun couvrant ce que le precedent
+laisse ouvert :
 
   1. ``formule`` — mon modele contre une transcription de
      ``xyzacKinematicsInverse`` (src/emc/kinematics/trtfuncs.c). Rapide, sans
@@ -18,22 +19,32 @@ La comparaison se fait en deux etages, et les deux sont necessaires :
      COMPILEE. ``trtfuncs.c`` est compile tel quel avec quatre bouchons HAL,
      et sa fonction est appelee. C'est ce qui valide l'etage 1, et il ne
      demande ni arret d'urgence, ni prise d'origine, ni mouvement.
+  3. ``execution`` — LinuxCNC est lance sur la configuration generee, mis en
+     marche, pris en origine ; des poses lui sont commandees en MDI et les
+     positions d'articulation qu'il CALCULE sont relues. Seul cet etage
+     etablit que le HAL porte les valeurs jusqu'aux broches que le systeme
+     emploie reellement.
+
+Les etages 1 et 2 comparent une fonction ; l'etage 3 compare une CHAINE. Les
+deux premiers auraient ete parfaits avec une section [EMCIO] incomplete qui
+empechait toute mise en marche.
 
 CE QUE CET OUTIL NE COUVRE PAS
 ------------------------------
-Que le HAL porte bien les valeurs mesurees jusqu'a ces broches dans un systeme
-qui tourne. Cela se lit par ``halcmd show pin xyzac`` sur une instance vivante,
-et c'est consigne dans ``docs/validation-linuxcnc.md``.
-
-Et le SIGNE des axes sur la machine reelle, qu'aucun calcul n'etablit.
+Le SIGNE des axes sur la machine reelle, qu'aucun calcul n'etablit : il faut
+commander un deplacement et REGARDER de quel cote la piece part
+(``assembly_calibration``, etape AXIS_DIRECTION).
 
 EXIGENCES
 ---------
 L'etage 1 ne demande rien. L'etage 2 demande un arbre source LinuxCNC et
-``gcc`` ; la procedure pour l'obtenir est dans ``docs/validation-linuxcnc.md``.
+``gcc``. L'etage 3 demande une compilation ``uspace`` de LinuxCNC et son
+environnement charge (``. <source>/scripts/rip-environment``). La procedure
+complete est dans ``docs/validation-linuxcnc.md``.
 
-Cet outil ne touche aucune machine et ne lance aucun mouvement : il compile
-une fonction et l'appelle.
+Aucun etage ne touche une machine : l'etage 3 lance LinuxCNC en SIMULATION,
+avec le HAL de simulation produit par ``build_config`` (articulations bouclees
+sur elles-memes, aucun pilote de moteur).
 """
 
 from __future__ import annotations
@@ -41,8 +52,11 @@ from __future__ import annotations
 import argparse
 import itertools
 import math
+import os
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -50,6 +64,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from xyzac.kinematics_solver.solver import KinematicsSolver          # noqa: E402
+from xyzac.linuxcnc_gateway import build_config                      # noqa: E402
 from xyzac.machine_model import default_xyzac_kit                    # noqa: E402
 
 
@@ -237,13 +252,248 @@ def etage_source(machine, racine: Path, sortie: Path, *, tolerance: float) -> fl
     return pire
 
 
+# ------------------------------------------- etage 3 : LinuxCNC en execution
+#
+# Cet etage a echoue longtemps, et aucun de ses obstacles ne concernait la
+# cinematique. Ce qui suit est ce qu'il a fallu apprendre ; chaque precaution
+# repare une erreur reellement commise.
+#
+#  1. Une instance tuee sans nettoyage laisse ses segments SysV. ``stat()``
+#     s'y attache et rend un etat FIGE mais plausible : joints=5,
+#     task_state=1, instantanement, pour une instance non demarree.
+#  2. Le symetrique : sans instance, NML ne refuse pas, il CREE le tampon,
+#     vide. Construire ``stat()`` trop tot donne des zeros indefiniment.
+#     D'ou l'attente d'un signe EXTERIEUR a NML : les processus.
+#  3. ``stat()`` s'attache A LA CONSTRUCTION et ne se rattache jamais : il
+#     faut jeter l'objet et le reconstruire, pas seulement re-poller.
+#  4. state(ESTOP_RESET) puis state(ON) enchaines sans attente laissent la
+#     machine en arret d'urgence, sans que rien ne le signale.
+#  5. Un mouvement refuse arrive par le CANAL D'ERREURS, pas par un code de
+#     retour : sans le vider, un refus passe pour un desaccord de cinematique.
+
+PROCESSUS_LINUXCNC = frozenset({"linuxcncsvr", "milltask", "rtapi_app", "io"})
+
+
+def _processus_vivants() -> list[str]:
+    """Identifies par leur EXECUTABLE, jamais par la ligne de commande.
+
+    Chercher ces mots dans ``ps -eo args`` attrape le shell qui lance ce banc
+    et l'editeur qui edite ce fichier : le garde-fou a deja refuse de demarrer
+    en accusant une instance vivante qui etait sa propre invocation.
+    """
+    try:
+        out = subprocess.run(["ps", "-eo", "pid=,comm="], capture_output=True,
+                             text=True, timeout=10).stdout
+    except Exception:
+        return []
+    res = []
+    for ligne in out.splitlines():
+        ch = ligne.split(None, 1)
+        if len(ch) == 2 and ch[1].strip() in PROCESSUS_LINUXCNC:
+            res.append(f"{ch[0]} {ch[1].strip()}")
+    return res
+
+
+def _nettoyer(fifo: str) -> None:
+    for ligne in _processus_vivants():
+        try:
+            os.kill(int(ligne.split()[0]), signal.SIGKILL)
+        except Exception:
+            pass
+    time.sleep(2)
+    try:
+        out = subprocess.run(["ipcs", "-m"], capture_output=True, text=True,
+                             timeout=10).stdout
+        for ligne in out.splitlines():
+            ch = ligne.split()
+            if (len(ch) >= 6 and ch[0].startswith("0x")
+                    and ch[0] != "0x00000000" and ch[1].isdigit()):
+                subprocess.run(["ipcrm", "-m", ch[1]], capture_output=True,
+                               timeout=10)
+    except Exception:
+        pass
+    for f in (fifo, "/tmp/linuxcnc.lock"):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+
+
+def etage_execution(machine, sortie: Path, *, attente: float,
+                    tolerance: float) -> float:
+    try:
+        import linuxcnc
+    except ImportError:
+        print("  IGNORE : le module Python 'linuxcnc' est absent. Charger")
+        print("  l'environnement d'une compilation uspace :")
+        print("      . <source>/scripts/rip-environment")
+        return float("nan")
+
+    fifo = os.environ.get("RTAPI_FIFO_PATH", "/tmp/rtapi_fifo")
+    _nettoyer(fifo)
+
+    cfg = build_config(machine, None, name="epreuve")
+    sortie.mkdir(parents=True, exist_ok=True)
+    cfg.write(sortie)
+    (sortie / "nc_files").mkdir(exist_ok=True)
+    ini = sortie / "xyzac.ini"
+
+    env = dict(os.environ)
+    env.setdefault("RTAPI_UID", "1000")
+    env.setdefault("RTAPI_FIFO_PATH", fifo)
+    proc = subprocess.Popen(
+        ["xvfb-run", "-a", "linuxcnc", "-r", str(ini)],
+        cwd=str(sortie), env=env, start_new_session=True,
+        stdout=(sortie / "linuxcnc.log").open("w"), stderr=subprocess.STDOUT)
+    try:
+        return _executer(linuxcnc, machine, attente=attente,
+                         tolerance=tolerance, journal=sortie / "linuxcnc.log")
+    finally:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except Exception:
+            proc.terminate()
+        try:
+            proc.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        _nettoyer(fifo)
+
+
+def _executer(linuxcnc, machine, *, attente: float, tolerance: float,
+              journal: Path) -> float:
+    t0 = time.time()
+    while time.time() - t0 < attente:
+        if "milltask" in " ".join(_processus_vivants()):
+            break
+        time.sleep(0.5)
+    else:
+        raise RuntimeError(f"milltask n'a pas demarre ; voir {journal}")
+    time.sleep(6.0)          # laisser NML s'etablir
+
+    s = None
+    while time.time() - t0 < attente:
+        try:
+            if s is None:
+                s = linuxcnc.stat()
+            s.poll()
+            if s.joints:
+                break
+        except Exception:
+            s = None
+        time.sleep(0.5)
+    else:
+        raise RuntimeError(f"aucune articulation exposee ; voir {journal}")
+    print(f"  LinuxCNC : {s.joints} articulations, "
+          f"kinematics_type={s.kinematics_type}")
+
+    cmd = linuxcnc.command()
+    err = linuxcnc.error_channel()
+
+    def messages():
+        out = []
+        while True:
+            m = err.poll()
+            if not m:
+                break
+            out.append(str(m[1]).strip())
+        return out
+
+    def attendre(cible, delai=20.0):
+        t = time.time()
+        while time.time() - t < delai:
+            s.poll()
+            if s.task_state == cible:
+                return True
+            time.sleep(0.2)
+        return False
+
+    cmd.state(linuxcnc.STATE_ESTOP_RESET)
+    cmd.wait_complete(10)
+    if not attendre(linuxcnc.STATE_ESTOP_RESET):
+        s.poll()
+        raise RuntimeError(
+            f"arret d'urgence non leve (task_state={s.task_state}). Si la "
+            f"boucle HAL se ferme pourtant, verifier [EMCIO]EMCIO : la tache "
+            f"decide sur la PRESENCE de cette cle. Messages : {messages()}")
+    cmd.state(linuxcnc.STATE_ON)
+    cmd.wait_complete(10)
+    if not attendre(linuxcnc.STATE_ON):
+        s.poll()
+        raise RuntimeError(
+            f"machine non mise en marche (task_state={s.task_state}) ; "
+            f"messages : {messages()}")
+    print("  machine en marche")
+
+    cmd.mode(linuxcnc.MODE_MANUAL)
+    cmd.wait_complete(10)
+    cmd.home(-1)
+    cmd.wait_complete(30)
+    for _ in range(60):
+        s.poll()
+        if all(s.homed[:s.joints]):
+            break
+        time.sleep(0.5)
+    s.poll()
+    if not all(s.homed[:s.joints]):
+        raise RuntimeError(f"prise d'origine incomplete : {s.homed[:s.joints]}"
+                           f" ; messages : {messages()}")
+    print(f"  {s.joints} articulations prises en origine")
+
+    cmd.mode(linuxcnc.MODE_MDI)
+    cmd.wait_complete(10)
+    cmd.mdi("G21 G90 G94 F600")
+    cmd.wait_complete(15)
+    messages()
+
+    ks = KinematicsSolver(machine)
+    pire = 0.0
+    pire_cas = None
+    testees = 0
+    ecartees = 0
+    for p, (a, c) in itertools.product(POINTS, ANGLES):
+        attendu = ks.part_to_machine_point(np.asarray(p, dtype=float), a, c)
+        # Une pose dont les ARTICULATIONS sortent des courses est refusee par
+        # LinuxCNC : ce n'est pas un desaccord de cinematique, et la compter
+        # comme tel serait un faux positif.
+        if not (machine.x.contains(attendu[0]) and machine.y.contains(attendu[1])
+                and machine.z.contains(attendu[2]) and machine.a.contains(a)):
+            ecartees += 1
+            continue
+        cmd.mdi(f"G0 X{p[0]} Y{p[1]} Z{p[2]} A{a} C{c}")
+        fini = cmd.wait_complete(40)
+        msgs = messages()
+        if fini != linuxcnc.RCS_DONE or msgs:
+            ecartees += 1
+            continue
+        time.sleep(0.4)
+        s.poll()
+        lu = np.array(s.joint_actual_position[:3], dtype=float)
+        e = float(np.max(np.abs(lu - attendu)))
+        testees += 1
+        if e > pire:
+            pire, pire_cas = e, (p, a, c, attendu, lu)
+
+    print(f"  {testees} poses commandees en MDI et relues, {ecartees} ecartees")
+    if testees == 0:
+        raise RuntimeError("aucune pose n'a pu etre commandee")
+    print(f"  ecart max = {pire:.3e} mm")
+    if pire > tolerance and pire_cas is not None:
+        p, a, c, attendu, lu = pire_cas
+        print(f"    pire cas : p={p} A={a} C={c}")
+        print(f"      modele            {np.array2string(attendu, precision=9)}")
+        print(f"      LinuxCNC (joints) {np.array2string(lu, precision=9)}")
+    return pire
+
+
 # ------------------------------------------------------------------------ main
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--etage", choices=["formule", "source", "les-deux"],
-                    default="les-deux")
+    ap.add_argument("--etage",
+                    choices=["formule", "source", "execution", "tous"],
+                    default="tous")
     ap.add_argument("--linuxcnc-source", default="",
                     help="racine d'un arbre source LinuxCNC (requis pour "
                          "l'etage 'source')")
@@ -253,6 +503,8 @@ def main() -> int:
     ap.add_argument("--out", default="out/epreuve-kins")
     ap.add_argument("--tolerance", type=float, default=1e-6,
                     help="ecart accepte, en mm")
+    ap.add_argument("--attente", type=float, default=150.0,
+                    help="delai de demarrage de LinuxCNC, en secondes")
     args = ap.parse_args()
 
     machine = machine_under_test(args.exagere)
@@ -268,11 +520,11 @@ def main() -> int:
     print()
 
     ecarts = []
-    if args.etage in ("formule", "les-deux"):
+    if args.etage in ("formule", "tous"):
         print("[1] contre la TRANSCRIPTION de trtfuncs.c")
         ecarts.append(("formule", etage_formule(machine)))
         print()
-    if args.etage in ("source", "les-deux"):
+    if args.etage in ("source", "tous"):
         print("[2] contre xyzacKinematicsInverse COMPILEE depuis trtfuncs.c")
         if not args.linuxcnc_source:
             print("  IGNORE : --linuxcnc-source non fourni.")
@@ -285,6 +537,14 @@ def main() -> int:
                            etage_source(machine, Path(args.linuxcnc_source),
                                         Path(args.out),
                                         tolerance=args.tolerance)))
+        print()
+
+    if args.etage in ("execution", "tous"):
+        print("[3] contre LinuxCNC EN EXECUTION (MDI -> articulations relues)")
+        ecarts.append(("execution",
+                       etage_execution(machine, Path(args.out) / "execution",
+                                       attente=args.attente,
+                                       tolerance=args.tolerance)))
         print()
 
     print("=" * 78)
@@ -301,8 +561,13 @@ def main() -> int:
     if code == 0:
         print()
         print("  Ce que cela etablit : les deux implementations calculent la")
-        print("  MEME fonction. Ce que cela n'etablit pas : le SIGNE des axes")
-        print("  sur la machine reelle, qui exige AXIS_DIRECTION.")
+        print("  meme fonction (etages 1 et 2), et la chaine complete")
+        print("  modele -> HAL -> cinematique de LinuxCNC la calcule aussi")
+        print("  dans un systeme qui tourne (etage 3).")
+        print()
+        print("  Ce que cela n'etablit pas : le SIGNE des axes sur la machine")
+        print("  reelle. Aucun calcul ne l'etablit ; il faut commander un")
+        print("  deplacement et REGARDER de quel cote la piece part.")
     print("=" * 78)
     return code
 

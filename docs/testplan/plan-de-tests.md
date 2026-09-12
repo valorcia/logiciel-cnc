@@ -354,6 +354,7 @@ depuis sa source et mis devant la configuration. Voir
 | `joint_sections_match_the_module_mapping` | C est l'articulation **4**, le module l'imprime au chargement ; `JOINT_AXIS` disait 4 et la liste écrite à la main disait 5 |
 | `angular_velocity_is_declared_because_a_rotary_axis_exists` | `Missing required specifier (has angular joint or axis)` |
 | `no_default_is_left_to_be_chosen_in_silence` | `[EMCIO]CYCLE_TIME` manquait et LinuxCNC choisissait 0,1 s en le disant dans son journal |
+| **`the_io_controller_key_is_present`** | **défaut n° 39 : sans `[EMCIO]EMCIO`, la machine ne peut pas être mise en marche, sans un seul message. La tâche décide sur la PRÉSENCE de la clé ; ce test vérifie donc une présence, pas une valeur** |
 
 ## 11 bis. Suite ajoutée après le recoupement des cinématiques
 
@@ -379,7 +380,7 @@ il n'a pas sa place dans la suite. Son résultat est consigné dans
 
 ```
 $ python -m pytest tests/ -q
-365 passed
+366 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -603,13 +604,17 @@ pas. Le second canal coûtait quelques minutes à essayer.
 
 **Deux de plus, en recoupant les cinématiques :**
 
-39. **La configuration ne se met pas en marche.** `STATE_ON` laisse
-    `motion.motion-enabled = FALSE` alors que la boucle d'arrêt d'urgence
-    fonctionne. La configuration de référence de LinuxCNC passe en marche dans
-    le même environnement, ce qui attribue le défaut. **OUVERT.** Il souligne
-    aussi la faiblesse de l'affirmation précédente : j'avais validé le
-    *démarrage* et écrit « la configuration démarre », ce qui était vrai, mais
-    laissait entendre plus. **Démarrer n'est pas fonctionner.**
+39. **La configuration ne se mettait pas en marche** — `[EMCIO]EMCIO`
+    manquait. `taskclass.cc` : `use_iocontrol = (inifile.Find("EMCIO",
+    "EMCIO") != NULL)`. La tâche décide sur la **présence** de la clé ; le
+    script de démarrage, lui, a sa propre valeur par défaut et lance `io`
+    quand même. Deux composants dérivant le même fait par deux chemins. `io`
+    tournait, ses broches existaient et **répondaient** — ce qui m'a envoyé
+    chercher partout ailleurs : **une preuve de présence n'est pas une preuve
+    d'emploi.** L'arrêt d'urgence ne se levait jamais, sans un message.
+    **RÉSOLU.** Il souligne aussi la faiblesse de l'affirmation précédente :
+    j'avais validé le *démarrage* et écrit « la configuration démarre », vrai
+    mais laissant entendre plus. **Démarrer n'est pas fonctionner.**
 40. **Un commentaire posé sur les valeurs qu'il prétend absentes** :
     « prise d'origine NON renseignée » écrit juste sous `HOME` et
     `HOME_SEQUENCE`. Cinquième de cette famille.
@@ -653,7 +658,8 @@ s'est mis à nommer la clé dont il expliquait l'absence.
 | Les cinq étapes de calibration matérielles | exigent la machine, dont la pièce d'épreuve |
 | ~~Configuration LinuxCNC jamais chargée par LinuxCNC~~ | **levée** : 2.9 compilée depuis la source, configuration chargée, elle démarre. Cinq défauts trouvés ([note](../validation-linuxcnc.md)) |
 | ~~Accord numérique des deux cinématiques~~ | **levé** : 7,1·10⁻¹⁵ mm contre la fonction compilée de LinuxCNC, sur 56 poses et 5 jeux de pivots |
-| **Mise en marche de la configuration** | **défaut n° 39, OUVERT** : `STATE_ON` laisse `motion-enabled = FALSE` là où la configuration de référence de LinuxCNC passe en marche dans le même environnement. Une configuration qu'on ne peut pas mettre en marche est inutilisable |
+| ~~Mise en marche de la configuration~~ | **levée** (défaut n° 39) : `[EMCIO]EMCIO` manquait. La tâche décide sur la **présence** de la clé, le script de démarrage a sa propre valeur par défaut — `io` tournait et ses broches répondaient, mais la tâche les ignorait |
+| ~~Chaîne complète modèle → HAL → cinématique en exécution~~ | **levée** : 56 poses commandées en MDI sur LinuxCNC en marche, 1,4·10⁻¹⁴ mm |
 | Signe des offsets de pivot dans le HAL | seul `AXIS_DIRECTION` sur la machine physique l'établit |
 | Lancement de cycle | **par décision**, pas par manque : `start_cycle` lève, et un test le maintient |
 | Tout ce qui touche une machine réelle | après qualification |

@@ -296,6 +296,40 @@ def test_no_value_is_written_to_a_pin_the_xyzac_kinematics_ignores(machine, cali
                     f"{ligne!r} : broche non lue par la cinematique xyzac")
 
 
+def test_the_io_controller_key_is_present(machine):
+    """Defaut n 39, et le plus instructif du jalon : la machine ne pouvait pas
+    etre MISE EN MARCHE, sans un seul message d'erreur.
+
+    Dans ``emc/task/taskclass.cc`` :
+
+        use_iocontrol = (inifile.Find("EMCIO", "EMCIO") != NULL);
+
+    La tache decide d'employer le controleur d'entrees-sorties sur la seule
+    PRESENCE de la cle. Le script de demarrage, lui, a sa propre valeur par
+    defaut ('io') et lance le controleur quand meme. Deux composants derivent
+    le meme fait par deux chemins differents, et mon INI omettait la cle : 'io'
+    tournait, ses broches HAL existaient et REPONDAIENT — user-enable-out et
+    emc-enable-in passaient bien a TRUE — mais la tache, qui les ignorait, ne
+    quittait jamais l'arret d'urgence.
+
+    C'est ce qui m'a le plus retarde : voir les broches bouger prouvait que
+    'io' etait la, donc j'ai cherche partout ailleurs. Une preuve de presence
+    n'est pas une preuve d'emploi.
+
+    Ce test ne verifie pas une valeur mais une PRESENCE, parce que c'est
+    exactement ce dont depend le comportement.
+    """
+    cfg = build_config(machine)
+    bloc = cfg.ini.split("[EMCIO]")[1].split("[")[0]
+    affectations = {l.split("=")[0].strip() for l in bloc.splitlines()
+                    if "=" in l and not l.lstrip().startswith("#")}
+    assert "EMCIO" in affectations, (
+        "sans [EMCIO]EMCIO la machine ne peut pas etre mise en marche")
+    # et le motif doit rester dans le fichier : personne ne devinera pourquoi
+    # cette ligne est indispensable en la lisant
+    assert "taskclass.cc" in bloc
+
+
 def test_angular_velocity_is_declared_because_a_rotary_axis_exists(machine):
     """LinuxCNC : 'Missing required specifier (has angular joint or axis)'."""
     cfg = build_config(machine)
