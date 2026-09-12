@@ -1,4 +1,4 @@
-# Plan de tests — jalon M1
+# Plan de tests — jalons M1 à M5
 
 ## 1. Principe
 
@@ -222,11 +222,33 @@ Génération : `python tools/make_degraded_corpus.py`.
 | `adaptive_costs_less_than_the_full_solve` | |
 | **`guard_inversion_agrees_with_the_direct_transform`** (12 poses) | **test différentiel : transporter le TCP au lieu des organes est une réécriture, pas un assouplissement** |
 
-## 7. État actuel
+## 7. Suite ajoutée au jalon M5
+
+### `test_m5_curvature_turning.py`
+
+| Test | Ce qu'il protège |
+|---|---|
+| **`curvature_stepover_hits_the_requested_cusp_exactly`** (3 rayons × 4 crêtes × 2 sens) | **aller-retour contre la crête exacte recalculée par intersection des positions d'outil : c'est le seul test qui distingue une forme fermée d'un développement plausible (écart < 1e-6 %)** |
+| **`first_order_expansion_stays_optimistic_on_convex`** (4 pas) | **enregistre le biais mesuré du développement au premier ordre (−0,08 % à s = 0,2 mm, −4,68 % à s = 1,5 mm), pour que sa réintroduction par commodité soit visible** |
+| **`plane_formula_is_optimistic_on_CONVEX_surfaces`** | **rectification de ADR-004 / D31 : le sens de l'erreur est adossé à un test, plus à un raisonnement** |
+| `curvature_stepover_goes_in_the_right_direction` (3 courbures) | égalité exacte avec la formule plane à κ = 0, resserrement en convexe, élargissement en concave |
+| `stepover_refuses_a_pocket_tighter_than_the_tool` | l'outil ne touche pas le fond : c'est l'outil qu'il faut changer, pas le pas |
+| **`curvature_sign_and_radius_match_the_known_geometry`** (C10, C11, C13) | **l'orientation topologique d'une face inverse sa normale donc sa courbure ; l'ignorer inverse le sens de la correction** |
+| `finishing_uses_curvature_when_available` | le dôme voit bien son pas resserré (−6,2 %) |
+| `profile_recovers_the_shaft_radii` | R20 / R14 / R9 puis cône 9 → 4 retrouvés à 0,2 mm sur C12 |
+| **`ovality_is_near_zero_on_a_true_revolution`** (C12, C13) | **régression du défaut d'axe de mesure : la variation axiale d'un épaulement confondue avec un méplat donnait 19,9 mm d'ovalité sur un arbre parfaitement tournable** |
+| `ovality_detects_real_flats` | C14 et ses deux méplats ressortent à 5,8 mm |
+| **`roughing_descends_to_the_smallest_radius`** | **la boucle bornée par le rayon maximal produisait 2 passes là où il en faut 12, en laissant tous les étages intacts** |
+| `turning_refuses_a_profile_steeper_than_the_tool` | vérifié **avant** génération, avec les zones nommées |
+| `turning_refuses_a_stock_below_the_profile` | |
+| `c_mode_switch_is_a_locked_transition` | ADR-001 / D8 : le basculement invalide l'approbation |
+| `turning_candidate_still_rejects_off_axis_revolution` | régression M1 : C15 est de révolution, mais autour du mauvais axe |
+
+## 8. État actuel
 
 ```
 $ python -m pytest tests/ -q
-199 passed
+232 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -309,7 +331,32 @@ qu'une mesure *physique* les contredisait : écart entre points consécutifs,
 course A+C, monotonie d'un résultat selon un paramètre qui ne devrait rien
 changer.
 
-## 8. Ce qui n'est PAS testé, et doit l'être
+Quatre de plus au jalon M5, de la même famille :
+
+18. **Ovalité mesurée sur l'étendue axiale** d'une tranche au lieu de sa
+    variation angulaire : l'arbre étagé C12, parfaitement tournable, était
+    déclaré non revolutif à 19,9 mm près — l'écart entre deux de ses diamètres.
+19. **Min–max là où il fallait un quantile** : une fois la mesure passée sur θ,
+    une tranche unique chevauchant un épaulement donnait encore 2,77 mm pour une
+    médiane de 0,003 mm. L'indicateur est désormais P95 − P5, avec un nombre
+    minimal de secteurs peuplés.
+20. **Boucle bornée par le rayon maximal** au lieu du minimal : 2 passes
+    d'ébauche là où il en faut 12, tous les étages laissés intacts, sans rien
+    signaler.
+21. **Signe de courbure pris sans l'orientation topologique** : une face
+    `REVERSED` a sa normale inversée, donc sa courbure. Le défaut aurait échangé
+    convexe et concave — c'est-à-dire **inversé** la correction de pas, ce qui
+    est pire que de ne pas corriger.
+
+Et un défaut de **documentation**, le plus sérieux du jalon : ADR-004 / D31
+affirmait le contraire de la vérité sur le sens de l'erreur de la formule plane
+(optimiste en convexe, non en concave). Une formule imprécise se rattrape par
+une marge ; une formule dont on croit connaître le sens du biais fait ajouter
+la marge du mauvais côté. D'où la règle tirée de ce jalon : **toute affirmation
+de sens — « optimiste », « conservatif », « majore » — doit être adossée à un
+test**, et le test qui la porte nomme la rectification.
+
+## 9. Ce qui n'est PAS testé, et doit l'être
 
 | Manque | État |
 |---|---|
@@ -319,15 +366,17 @@ changer.
 | ~~Import de STEP dégradés~~ | **levé M3** (corpus D01–D03) |
 | ~~Gamme complète~~ | **levé M3** (ébauche indexée validée) |
 | ~~Finition : passes à crête contrôlée, 3+2 et 5 axes~~ | **levé M4** |
-| Crête réelle sur surface **concave** (formule plane optimiste) | M5 |
-| Finition d'une passe **complète** (aujourd'hui : maquette contiguë) | M5 |
-| Gouge fine sur toute la passe (sondage épars) | M5 |
-| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M5 |
-| Tournage : génération de trajectoires | M5 |
+| ~~Crête réelle sur surface courbe~~ | **levée M5** (forme fermée exacte, et le sens de l'erreur était l'inverse de ce qu'annonçait M4) |
+| Finition d'une passe **complète** (aujourd'hui : maquette contiguë) | M6 |
+| Gouge fine sur toute la passe (sondage épars) | M6 |
+| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M6 |
+| Collision du porte-plaquette en tournage (profil 2D exact, porte-outil non modélisé) | M6 |
+| Ordonnancement hybride fraisage + tournage dans une même gamme | M6 |
+| ~~Tournage : génération de trajectoires~~ | **levée M5** (profil, ovalité robuste, passes, refus motivé) |
 | Poids d'orientation calibrés | exige une machine |
 | Tout ce qui touche une machine réelle | après qualification |
 
-## 9. Précision — ce que les tests ne disent pas
+## 10. Précision — ce que les tests ne disent pas
 
 Aucun test de ce dépôt ne dit quoi que ce soit de la précision d'une pièce
 usinée. Ils portent sur la **justesse numérique** du moteur.

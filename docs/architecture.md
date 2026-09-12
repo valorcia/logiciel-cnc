@@ -9,7 +9,7 @@ d'appeler qui**.
 logiciel-cnc/
 ├── pyproject.toml
 ├── docs/
-│   ├── adr/ADR-001-architecture-fondatrice.md
+│   ├── adr/ADR-001-architecture-fondatrice.md … ADR-005-jalon-M5.md
 │   ├── audit/dependencies-licenses.md
 │   ├── algorithms/accessibility-solver.md
 │   ├── algorithms/orientation-solver.md
@@ -17,7 +17,7 @@ logiciel-cnc/
 │   └── architecture.md
 ├── src/xyzac/
 │   ├── geometry_core/        types.py, brep.py, sphere.py, voxelize.py,
-│   │                         healing.py
+│   │                         healing.py, curvature.py
 │   ├── machine_model/        machine.py, setup.py
 │   ├── tool_model/           assembly.py
 │   ├── stock_engine/         stock.py, material.py
@@ -28,7 +28,7 @@ logiciel-cnc/
 │   │                         machine_guard.py, sweep.py, exact_gouge.py
 │   ├── kinematics_solver/    solver.py
 │   ├── simulation_engine/    scene.py, validator.py
-│   ├── turning_engine/       interfaces.py
+│   ├── turning_engine/       interfaces.py, profile.py
 │   ├── safety_state_machine/ machine.py
 │   ├── subtractive_slicer/   interfaces.py, slicer.py, finishing.py
 │   ├── strategy_planner/     interfaces.py, planner.py
@@ -39,7 +39,7 @@ logiciel-cnc/
 │   ├── recipe_profiles/      interfaces.py        ← stub M1
 │   ├── assembly_calibration/ interfaces.py        ← stub M1
 │   └── ui/                   render.py
-├── tests/         conftest, 9 fichiers, corpus/ (20 STEP sains + 3 dégradés)
+├── tests/         conftest, 10 fichiers, corpus/ (20 STEP sains + 3 dégradés)
 ├── tools/         make_corpus.py, make_degraded_corpus.py,
 │               demo_vertical_slice.py, demo_m2_pipeline.py, demo_m3_pipeline.py
 └── out/           rendus PNG (non versionnés)
@@ -300,3 +300,56 @@ Résout complètement un point sur `stride`, puis n'évalue aux points
 intermédiaires qu'un ensemble candidat réduit — **augmenté des directions
 admissibles en toutes les ancres**, sans quoi la faisabilité de la séquence
 dépendrait de la chance du classement (voir ADR-004 / D36).
+
+## 7. Ajouts du jalon M5
+
+### geometry_core/curvature
+
+```python
+face_curvature(shape, face_index, n_u, n_v) -> FaceCurvature | None
+curvature_stepover(tool_radius, scallop_mm, kappa) -> float
+```
+
+`FaceCurvature.kappa_worst` est la courbure principale **la plus convexe** de la
+face — celle qui majore la crête, donc celle qui dimensionne le pas. Convention
+de signe : positive sur une bosse vue du côté de la normale sortante. Le signe
+tient compte de l'orientation topologique de la face (`TopAbs_REVERSED`), faute
+de quoi convexe et concave s'échangent.
+
+`curvature_stepover` est une **forme fermée exacte** (loi des cosinus sur le
+cercle osculateur), pas un développement, et vaut exactement
+`subtractive_slicer.scallop_stepover` à `kappa = 0`. Un creux plus serré que
+l'outil lève `ValueError` : l'outil n'en atteint pas le fond, et aucun pas n'y
+remédie.
+
+### turning_engine/profile
+
+```python
+revolution_profile(shape, axis_point, axis_dir, n_z, n_theta,
+                   sample_spacing) -> RevolutionProfile
+plan_turning_passes(profile, tool, stock_radius, depth_of_cut,
+                    finish_allowance) -> TurningPlanReport
+```
+
+Le tournage est le seul module à travailler sur une géométrie **exacte** plutôt
+que sur le test discret conservatif du reste du moteur : une pièce de révolution
+est entièrement décrite par sa silhouette `(z, r)`, et une passe est une courbe
+dans ce plan.
+
+`RevolutionProfile.out_of_round()` mesure le défaut de circularité **sur θ**
+(rayon maximal par secteur angulaire, étendue P95 − P5 sur les secteurs), et non
+sur l'étendue d'une tranche : sinon la variation axiale d'un épaulement se
+confond avec un méplat.
+
+`TurningPlanReport.feasible` est faux, avec les zones nommées, si le profil est
+plus raide que le dégagement de l'outil ou si le brut passe sous le profil. La
+vérification a lieu **avant** toute génération de passes.
+
+`turning_engine.require_c_mode` reste le verrou : passer en broche continue
+invalide l'approbation de sécurité (ADR-001 / D8).
+
+### subtractive_slicer/finishing
+
+`generate_finishing_passes(..., use_curvature=True)` prend désormais le pas dans
+la courbure mesurée du groupe de faces. Sur le dôme C10 le pas se resserre de
+6,2 %, dans la cavité C11 il s'élargit de 8,5 %.

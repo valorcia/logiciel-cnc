@@ -8,14 +8,17 @@ Ce n'est **pas** un CAM généraliste : l'utilisateur ne programme pas
 d'opérations. Ce n'est **pas** un portage d'OrcaSlicer : l'inspiration est
 l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 
-> **État : jalon M4.** Ébauche indexée **et** finition à crête contrôlée, en 3+2
-> ou en 5 axes simultané selon ce que la géométrie permet. Aucun G-code n'est
-> généré : le verrou tient, et son motif n'est pas logiciel — **la machine n'est
-> pas calibrée**. Voir
+> **État : jalon M5.** Ébauche indexée, finition à crête contrôlée — le pas
+> venant de la **courbure locale mesurée** et non d'une formule plane — et
+> tournage sur l'axe C : profil de révolution, ovalité robuste, passes, refus
+> motivé. En 3+2 ou en 5 axes simultané selon ce que la géométrie permet.
+> Aucun G-code n'est généré : le verrou tient, et son motif n'est pas logiciel —
+> **la machine n'est pas calibrée**. Voir
 > [ADR-001 §6](docs/adr/ADR-001-architecture-fondatrice.md),
 > [ADR-002](docs/adr/ADR-002-jalon-M2.md),
 > [ADR-003](docs/adr/ADR-003-jalon-M3.md),
-> [ADR-004](docs/adr/ADR-004-jalon-M4.md).
+> [ADR-004](docs/adr/ADR-004-jalon-M4.md),
+> [ADR-005](docs/adr/ADR-005-jalon-M5.md).
 
 ---
 
@@ -43,7 +46,7 @@ pip install -e ".[viz,dev]"
 
 python tools/make_corpus.py                  # 20 géométries STEP synthétiques
 python tools/make_degraded_corpus.py         # 3 STEP volontairement abîmés
-python -m pytest tests/ -q                   # 199 tests
+python -m pytest tests/ -q                   # 232 tests
 
 # M1 — accessibilité + orientation + visualisation
 python tools/demo_vertical_slice.py C08
@@ -81,6 +84,7 @@ Le prototype produit quatre images dans `out/` :
 | [ADR-002](docs/adr/ADR-002-jalon-M2.md) | jalon M2 : ce qui a levé les limites de M1, et ce qui reste |
 | [ADR-003](docs/adr/ADR-003-jalon-M3.md) | jalon M3 : slicer, planificateur de gammes, import réel |
 | [ADR-004](docs/adr/ADR-004-jalon-M4.md) | jalon M4 : finition, coût du calcul, cinq défauts de repère |
+| [ADR-005](docs/adr/ADR-005-jalon-M5.md) | jalon M5 : courbure locale, tournage, et la rectification d'une erreur de D31 |
 | [Accessibility Solver](docs/algorithms/accessibility-solver.md) | algorithme, garantie conservative, performance mesurée |
 | [Orientation Solver](docs/algorithms/orientation-solver.md) | Viterbi, segmentation 3+2, raffinement |
 | [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 108 tests, ce qui n'est pas testé |
@@ -110,10 +114,32 @@ la gamme de finition emploie les trois modes — `3+2` sur les faces planes,
 `simultané` sur la calotte, et `inaccessible` là où le porte-outil ne passe pas,
 en le disant.
 
-Le pas de finition se déduit d'une crête admissible (`h = R − √(R² − (s/2)²)`) :
-10 µm de crête avec un bec R3 donnent 0,489 mm de pas. La formule est plane,
-donc **optimiste en concave** — c'est une consigne, pas une garantie d'état de
-surface.
+Le pas de finition se déduit d'une crête admissible. Sur un plan,
+`h = R − √(R² − (s/2)²)` : 10 µm de crête avec un bec R3 donnent 0,489 mm de
+pas. Sur une surface courbe cette formule est **optimiste en convexe** — 15,7 µm
+réels contre 10,4 prédits sur une bosse de 6 mm — donc le pas se calcule depuis
+la courbure locale mesurée sur le B-Rep (forme fermée exacte, `curvature_stepover`).
+Cela reste une consigne géométrique, pas une garantie d'état de surface.
+
+## L'axe C est aussi une broche
+
+Le même axe sert d'axe d'indexation en fraisage et de broche de tournage. Le
+moteur détecte les régions de révolution, extrait la silhouette `(z, r)` de la
+pièce, mesure son défaut de circularité et planifie des passes — ébauche à
+rayon décroissant, contour à la surépaisseur, finition.
+
+Le tournage est le seul module à travailler sur une géométrie **exacte** : une
+pièce de révolution est entièrement décrite par sa silhouette, donc rien n'y
+oblige au test discret conservatif employé partout ailleurs.
+
+Un profil plus raide que le dégagement de l'outil est refusé **avant** toute
+génération de passes, en nommant les zones fautives : ce n'est pas un problème
+de trajectoire, et aucun recalcul n'y remédie. Le défaut de circularité se
+mesure par secteur angulaire et par quantile (P95 − P5), sans quoi un
+épaulement passe pour un méplat.
+
+Le basculement indexation ↔ broche continue **n'est pas un réglage** : il
+invalide l'approbation de sécurité et exige une nouvelle simulation.
 
 ## Ce que valide le moteur
 

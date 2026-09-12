@@ -36,16 +36,27 @@ def scallop_stepover(tool_radius: float, scallop_mm: float) -> float:
 
         h = R - sqrt(R^2 - (s/2)^2)     d'ou     s = 2.sqrt(2Rh - h^2)
 
-    **Valable sur une surface plane uniquement.** Sur une surface convexe la
-    crete reelle est plus faible (les passes se recouvrent davantage), sur une
-    surface concave elle est plus forte. La formule plane est donc OPTIMISTE en
-    concave — c'est le sens d'erreur defavorable, et il faut le savoir : sur un
-    conge interieur de rayon proche de celui de l'outil, la hauteur de crete
-    reelle peut depasser plusieurs fois la consigne.
+    **Valable sur une surface plane uniquement.** Sur une surface courbe, voir
+    ``geometry_core.curvature.curvature_stepover``, qui prend la courbure
+    normale en compte sous forme fermee exacte et dont cette fonction est le
+    cas limite : les deux valeurs sont egales au flottant pres a ``kappa = 0``.
+    Cette fonction reste le chemin direct quand la courbure n'est pas connue.
 
-    Le calcul exact demande la courbure locale de la surface. Il n'est pas fait
-    ici, et tant qu'il ne l'est pas ``scallop_mm`` doit etre lu comme une
-    consigne indicative, pas comme une garantie d'etat de surface.
+    RECTIFICATION. La documentation du jalon M4 affirmait que cette formule
+    etait optimiste en concave et pessimiste en convexe. **C'est l'inverse**, et
+    la verification numerique (crete exacte par intersection des deux positions
+    d'outil, R = 3 mm, s = 0,5 mm) le montre sans ambiguite :
+
+        surface            crete reelle    cette formule
+        plan                  10,43 um        10,43 um
+        convexe R = 20 mm     12,01 um        10,43 um   <- OPTIMISTE
+        convexe R =  6 mm     15,70 um        10,43 um   <- OPTIMISTE (x1,5)
+        concave R = 20 mm      8,86 um        10,43 um   <- conservatif
+        concave R =  6 mm      5,21 um        10,43 um   <- conservatif
+
+    Le sens de l'erreur est ce qui compte, puisqu'il decide si l'on sur-decoupe
+    ou sous-decoupe. Dimensionner une finition de BOSSE sur cette formule
+    laisse la piece hors tolerance, sans qu'aucun indicateur ne le signale.
     """
     R = float(tool_radius)
     h = float(min(max(scallop_mm, 1e-4), R * 0.99))
@@ -61,6 +72,8 @@ class FinishingPass:
     normals: np.ndarray                 # (N,3) normales sortantes
     stepover: float
     scallop_mm: float
+    #: Courbure normale dimensionnante employee pour le pas (0 = plan).
+    kappa_used: float = 0.0
     pass_direction: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0]))
     n_stripes: int = 0
     #: "parallele" (bandes dans le plan tangent) ou "waterline" (niveaux
@@ -85,9 +98,12 @@ class FinishingPass:
         return float(np.degrees(np.arccos(cos.min())) * 2.0)
 
     def describe(self) -> str:
+        curv = ("plan" if abs(self.kappa_used) < 1e-6 else
+                f"courbure {self.kappa_used:+.4f} /mm "
+                f"(R={1.0 / abs(self.kappa_used):.1f} mm)")
         return (f"Finition faces {self.face_indices} : {self.n_points} points, "
                 f"{self.n_stripes} passes, pas {self.stepover:.3f} mm "
-                f"(crete {self.scallop_mm:.3f} mm), "
+                f"(crete {self.scallop_mm:.3f} mm, {curv}), "
                 f"ouverture des normales {self.normal_spread_deg():.1f} deg")
 
 
@@ -101,6 +117,8 @@ def generate_finishing_passes(
     point_spacing: float | None = None,
     sample_spacing: float | None = None,
     waterline_above_deg: float = 60.0,
+    use_curvature: bool = True,
+    samples: "brep.SampledSurface | None" = None,
 ) -> FinishingPass | None:
     """Genere une passe de finition en zigzag sur un groupe de faces.
 
@@ -135,11 +153,39 @@ def generate_finishing_passes(
             f"outil '{tool.tool_id}' a bout droit : la finition d'une surface "
             "demande un rayon de bec (fraise hemispherique ou torique)")
 
-    step = scallop_stepover(tool.corner_radius, scallop_mm)
+    # Pas transversal : par courbure quand on peut la mesurer, sinon plan.
+    #
+    # Ce n'est pas un raffinement de confort. Sur une bosse de rayon proche de
+    # celui de l'outil, la formule plane sous-estime la crete d'un facteur 1,5 —
+    # et dans le sens defavorable. On prend donc la courbure la plus CONVEXE
+    # rencontree sur le groupe, celle qui majore la crete.
+    kappa = 0.0
+    if use_curvature:
+        from ..geometry_core.curvature import curvature_stepover, face_curvature
+
+        worst = []
+        for fi in face_indices:
+            fc = face_curvature(shape, fi)
+            if fc is not None:
+                worst.append(fc.kappa_worst)
+        if worst:
+            kappa = max(worst)
+    try:
+        step = (curvature_stepover(tool.corner_radius, scallop_mm, kappa)
+                if use_curvature else scallop_stepover(tool.corner_radius, scallop_mm))
+    except ValueError:
+        # Creux plus serre que l'outil : il ne touche pas le fond. On retombe
+        # sur le pas plan, et c'est l'accessibility solver qui signalera que la
+        # zone n'est pas atteignable — un pas plus fin n'y changerait rien.
+        step = scallop_stepover(tool.corner_radius, scallop_mm)
     spacing = point_spacing or max(step * 0.8, 0.2)
     samp = sample_spacing or max(min(step, spacing) * 0.5, 0.15)
 
-    full = brep.sample_surface(shape, spacing=samp)
+    # ``samples`` permet de reutiliser un echantillonnage deja calcule. Sans
+    # cela, planifier la finition de N groupes reechantillonne N fois TOUTE la
+    # piece au pas de finition — quelques centaines de milliers de points a
+    # chaque groupe, pour n'en garder qu'une fraction.
+    full = samples if samples is not None else brep.sample_surface(shape, spacing=samp)
     mask = np.isin(full.face_ids, np.asarray(face_indices))
     if not np.any(mask):
         return None
@@ -192,7 +238,7 @@ def generate_finishing_passes(
     return FinishingPass(
         face_indices=list(face_indices),
         points=np.vstack(ordered_pts), normals=np.vstack(ordered_nrm),
-        stepover=step, scallop_mm=scallop_mm,
+        stepover=step, scallop_mm=scallop_mm, kappa_used=kappa,
         pass_direction=u, n_stripes=len([p for p in ordered_pts if len(p)]),
         topology=topology,
     )

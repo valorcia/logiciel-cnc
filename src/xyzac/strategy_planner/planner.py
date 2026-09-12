@@ -382,8 +382,16 @@ def plan_finishing(
     plan = ProcessPlan(plan_id=f"finition-{setup.setup_id}", setup=setup)
     reports: list[FinishingOpReport] = []
 
-    for faces in group_faces_by_normal(shape, tol_deg=group_tol_deg):
-        fp = generate_finishing_passes(shape, faces, tool, scallop_mm=scallop_mm)
+    groups = group_faces_by_normal(shape, tol_deg=group_tol_deg)
+    # Un seul echantillonnage de surface pour tous les groupes : le pas de
+    # finition est fin, et le refaire par groupe coûte des centaines de milliers
+    # de points a chaque fois pour n'en garder qu'une fraction.
+    samp = max(min(scallop_mm * 20.0, 1.0), 0.15)
+    shared = brep.sample_surface(shape, spacing=samp)
+
+    for faces in groups:
+        fp = generate_finishing_passes(shape, faces, tool, scallop_mm=scallop_mm,
+                                       samples=shared)
         if fp is None or fp.n_points == 0:
             continue
 

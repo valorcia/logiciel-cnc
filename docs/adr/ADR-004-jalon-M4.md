@@ -36,7 +36,14 @@ quoi.
 
 ## 2. Décisions
 
-### D31 — Le pas de finition se déduit d'une hauteur de crête, et la formule est optimiste en concave
+### D31 — Le pas de finition se déduit d'une hauteur de crête
+
+> **ERRATUM — rectifié en M5 (voir ADR-005 / D39).** Le titre initial de
+> cette décision et le paragraphe marqué ci-dessous affirmaient que la
+> formule plane est optimiste en **concave**. C'est l'inverse : elle est
+> optimiste en **convexe**. Le texte est corrigé ci-dessous, l'erreur est
+> conservée ici parce qu'elle a été écrite, appliquée, et qu'elle portait
+> sur le seul point qui compte — le sens de l'erreur.
 
 Entre deux passes d'un outil hémisphérique de rayon R espacées de `s` :
 
@@ -51,15 +58,17 @@ h = R − √(R² − (s/2)²)      ⇒      s = 2·√(2Rh − h²)
 | 10 µm | 0,489 mm |
 | 50 µm | 1,091 mm |
 
-**Valable sur un plan.** Sur une surface convexe la crête réelle est plus
-faible (les passes se recouvrent davantage), sur une surface **concave** elle
-est plus forte. La formule plane est donc optimiste dans le cas concave — le
-sens d'erreur défavorable. Sur un congé intérieur de rayon proche de celui de
-l'outil, la crête réelle peut dépasser plusieurs fois la consigne.
+**Valable sur un plan uniquement.** Sur une surface **convexe** la crête réelle
+est plus **forte** que ce que prédit cette formule (le contact s'éloigne plus
+vite de part et d'autre du point de tangence) ; sur une surface **concave** elle
+est plus faible. La formule plane est donc **optimiste en convexe** — le sens
+d'erreur défavorable. Mesuré à s = 0,5 mm avec un bec R3 : 15,70 µm réels sur
+une bosse de 6 mm contre 10,43 µm prédits, soit ×1,5.
 
-Le calcul exact demande la courbure locale. Il n'est pas fait, et tant qu'il ne
-l'est pas `scallop_mm` est une **consigne indicative, pas une garantie d'état de
-surface**.
+Le calcul exact demande la courbure locale. Il est fait depuis M5
+(`geometry_core.curvature.curvature_stepover`, forme fermée exacte). Là où la
+courbure n'est pas disponible, `scallop_mm` reste une **consigne indicative,
+pas une garantie d'état de surface**.
 
 ### D32 — Une fraise à bout droit est refusée en finition de surface
 
