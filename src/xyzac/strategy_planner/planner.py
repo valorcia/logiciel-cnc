@@ -275,3 +275,173 @@ def indexed_orientation_plan(points: np.ndarray, direction: np.ndarray,
         0, max(0, n - 1), "3+2", a_deg=sol.a_deg, c_deg=sol.c_deg,
         reason="operation indexee : orientation fixe par construction")]
     return plan
+
+
+@dataclass
+class FinishingOpReport:
+    """Ce qu'une passe de finition a donne, et sous quel mode."""
+
+    face_indices: list[int]
+    n_points: int
+    mode: str                      # "3+2" | "simultane" | "inaccessible"
+    a_deg: float | None = None
+    c_deg: float | None = None
+    min_margin: float = 0.0
+    indexed_fraction: float = 0.0
+    rotary_travel_deg: float = 0.0
+    #: Ouverture des normales sur le SEGMENT reellement evalue.
+    normal_spread_deg: float = 0.0
+    #: Ouverture sur la passe COMPLETE, et nombre de points qu'elle compte.
+    #: Les deux sont distincts et il faut les lire ensemble : un mode « 3+2 »
+    #: obtenu sur le pole d'une calotte ne dit rien du reste de la calotte.
+    group_spread_deg: float = 0.0
+    pass_total_points: int = 0
+    n_inaccessible: int = 0
+    detail: str = ""
+
+    @property
+    def coverage(self) -> float:
+        """Part de la passe reelle que le segment evalue represente."""
+        return self.n_points / max(self.pass_total_points, 1)
+
+    def describe(self) -> str:
+        head = (f"faces {self.face_indices} : {self.n_points} points, "
+                f"mode {self.mode}")
+        if self.mode == "3+2":
+            head += f" (A={self.a_deg:.2f} C={self.c_deg:.2f})"
+        head += (f", ouverture du segment {self.normal_spread_deg:.0f} deg"
+                 f", marge min {self.min_margin:.3f} mm")
+        if self.coverage < 0.999:
+            head += (f" | MAQUETTE : {self.coverage * 100:.1f} % de la passe "
+                     f"({self.pass_total_points} points, ouverture totale "
+                     f"{self.group_spread_deg:.0f} deg) — le mode annonce ne "
+                     f"vaut que pour ce segment")
+        if self.mode == "simultane":
+            head += (f", 3+2 {self.indexed_fraction * 100:.0f} %"
+                     f", course A+C {self.rotary_travel_deg:.0f} deg")
+        if self.n_inaccessible:
+            head += f", {self.n_inaccessible} points INACCESSIBLES"
+        if self.detail:
+            head += f" — {self.detail}"
+        return head
+
+
+def _spread(normals: np.ndarray) -> float:
+    """Ouverture angulaire (cone complet) d'un ensemble de normales."""
+    if len(normals) < 2:
+        return 0.0
+    mean = normals.mean(axis=0)
+    nn = float(np.linalg.norm(mean))
+    if nn < 1e-6:
+        return 360.0
+    cos = np.clip(normals @ (mean / nn), -1.0, 1.0)
+    return float(np.degrees(np.arccos(cos.min())) * 2.0)
+
+
+def plan_finishing(
+    shape, setup: Setup, obstacles, tool: ToolAssembly,
+    *,
+    scallop_mm: float = 0.01,
+    max_points_per_pass: int = 400,
+    group_tol_deg: float = 20.0,
+    stride: int = 8,
+    accessibility_config=None,
+):
+    """Construit les operations de FINITION, face par face.
+
+    La decision 3+2 / simultane n'est pas un reglage : elle sort de la meme
+    regle que partout ailleurs — **l'intersection des ensembles admissibles**.
+    Si une orientation degage en tous les points d'une passe, la passe est
+    indexee ; sinon elle est simultanee. L'ouverture angulaire des normales
+    donne une intuition, mais elle ne decide pas : seul l'accessibility solver
+    connait le porte-outil, et c'est lui qui tranche.
+
+    ``max_points_per_pass`` limite chaque passe a un SEGMENT CONTIGU de tete.
+    Ce n'est pas une approximation de confort mais une contrainte de coût
+    assumee : a ~25 ms/point, une passe de finition complete sur une calotte
+    (plusieurs centaines de milliers de points au pas de crete demande)
+    demanderait des heures de calcul d'accessibilite.
+
+    Le plan produit est donc une MAQUETTE — une portion reelle de la passe,
+    avec sa continuite — et non la passe complete. Il faut le lire comme tel :
+    il prouve que le debut de la passe est realisable, pas toute la passe.
+    """
+    from ..accessibility_solver.solver import AccessibilityConfig, AccessibilitySolver
+    from ..orientation_solver.solver import OrientationSolver
+    from ..subtractive_slicer.finishing import (
+        generate_finishing_passes,
+        group_faces_by_normal,
+    )
+
+    cfg = accessibility_config or AccessibilityConfig(
+        subdivisions=3, max_lead_deg=45.0, cutting_depth=0.0)
+    solver = AccessibilitySolver(tool, setup.machine, obstacles, cfg,
+                                 mount_offset_mm=setup.mount_offset)
+    osolver = OrientationSolver(setup.machine, tool)
+
+    plan = ProcessPlan(plan_id=f"finition-{setup.setup_id}", setup=setup)
+    reports: list[FinishingOpReport] = []
+
+    for faces in group_faces_by_normal(shape, tol_deg=group_tol_deg):
+        fp = generate_finishing_passes(shape, faces, tool, scallop_mm=scallop_mm)
+        if fp is None or fp.n_points == 0:
+            continue
+
+        pts, nrm = fp.points, fp.normals
+        total_points = len(pts)
+        group_spread = fp.normal_spread_deg()
+        if len(pts) > max_points_per_pass:
+            # Segment CONTIGU, et non un echantillonnage reparti.
+            #
+            # Un ``linspace`` sur toute la passe semble plus representatif, et
+            # c'est un piege : il detruit la continuite du chemin. Sur une
+            # calotte de 245 917 points, 150 points repartis sont distants de
+            # 1 640 rangs — donc tres eloignes dans l'espace. Le resultat n'est
+            # plus une passe mais une suite de sauts, et l'orientation solver
+            # paie 13 000 deg de course A+C pour un chemin qui n'existe pas.
+            #
+            # Un prefixe contigu est une VRAIE portion de la passe reelle, avec
+            # sa continuite. C'est une maquette, pas un resume.
+            pts, nrm = pts[:max_points_per_pass], nrm[:max_points_per_pass]
+
+        amaps = solver.solve_points_adaptive(pts, nrm, stride=stride)
+        n_bad = sum(1 for m in amaps if not m.accessible)
+        if n_bad == len(amaps):
+            reports.append(FinishingOpReport(
+                face_indices=faces, n_points=len(pts), mode="inaccessible",
+                normal_spread_deg=_spread(nrm), group_spread_deg=group_spread,
+                pass_total_points=total_points, n_inaccessible=n_bad,
+                detail="aucune orientation admissible : outil ou bridage a revoir"))
+            continue
+
+        oplan = osolver.solve(amaps, path_points=pts)
+        mode = ("3+2" if oplan.feasible and oplan.indexed_fraction > 0.99
+                else "simultane")
+        seg = oplan.segments[0] if oplan.segments else None
+        ta, tc = oplan.rotary_travel()
+        finite = oplan.margin[np.isfinite(oplan.margin)]
+
+        reports.append(FinishingOpReport(
+            face_indices=faces, n_points=len(pts), mode=mode,
+            a_deg=seg.a_deg if seg and seg.mode == "3+2" else None,
+            c_deg=seg.c_deg if seg and seg.mode == "3+2" else None,
+            min_margin=float(finite.min()) if finite.size else -np.inf,
+            indexed_fraction=oplan.indexed_fraction,
+            rotary_travel_deg=ta + tc,
+            normal_spread_deg=_spread(nrm), group_spread_deg=group_spread,
+            pass_total_points=total_points, n_inaccessible=n_bad,
+            detail="" if oplan.feasible else "plan d'orientation incomplet",
+        ))
+
+        plan.operations.append(Operation(
+            op_id=f"finition-{'-'.join(str(f) for f in faces)}",
+            kinematic=(Kinematic.MILLING_3PLUS2 if mode == "3+2"
+                       else Kinematic.MILLING_5AXIS),
+            tool=tool,
+            toolpath=Toolpath(points=pts, normals=nrm, depth_of_cut=0.0,
+                              label=f"finition faces {faces} ({mode})"),
+            notes=(f"pas {fp.stepover:.3f} mm, crete {scallop_mm:.3f} mm, "
+                   f"{fp.n_stripes} passes"),
+        ))
+
+    return plan, reports

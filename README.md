@@ -8,14 +8,14 @@ Ce n'est **pas** un CAM généraliste : l'utilisateur ne programme pas
 d'opérations. Ce n'est **pas** un portage d'OrcaSlicer : l'inspiration est
 l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 
-> **État : jalon M3.** La chaîne va de bout en bout sans passe construite à la
-> main : le planificateur choisit les indexations, le slicer produit les
-> trajectoires, et chaque opération est validée couche par couche. Aucun G-code
-> n'est généré : le verrou tient, et son motif n'est plus logiciel — **la machine
-> n'est pas calibrée**. Voir
+> **État : jalon M4.** Ébauche indexée **et** finition à crête contrôlée, en 3+2
+> ou en 5 axes simultané selon ce que la géométrie permet. Aucun G-code n'est
+> généré : le verrou tient, et son motif n'est pas logiciel — **la machine n'est
+> pas calibrée**. Voir
 > [ADR-001 §6](docs/adr/ADR-001-architecture-fondatrice.md),
 > [ADR-002](docs/adr/ADR-002-jalon-M2.md),
-> [ADR-003](docs/adr/ADR-003-jalon-M3.md).
+> [ADR-003](docs/adr/ADR-003-jalon-M3.md),
+> [ADR-004](docs/adr/ADR-004-jalon-M4.md).
 
 ---
 
@@ -43,7 +43,7 @@ pip install -e ".[viz,dev]"
 
 python tools/make_corpus.py                  # 20 géométries STEP synthétiques
 python tools/make_degraded_corpus.py         # 3 STEP volontairement abîmés
-python -m pytest tests/ -q                   # 182 tests
+python -m pytest tests/ -q                   # 199 tests
 
 # M1 — accessibilité + orientation + visualisation
 python tools/demo_vertical_slice.py C08
@@ -80,6 +80,7 @@ Le prototype produit quatre images dans `out/` :
 | [Architecture](docs/architecture.md) | arborescence, règles de dépendance, interfaces |
 | [ADR-002](docs/adr/ADR-002-jalon-M2.md) | jalon M2 : ce qui a levé les limites de M1, et ce qui reste |
 | [ADR-003](docs/adr/ADR-003-jalon-M3.md) | jalon M3 : slicer, planificateur de gammes, import réel |
+| [ADR-004](docs/adr/ADR-004-jalon-M4.md) | jalon M4 : finition, coût du calcul, cinq défauts de repère |
 | [Accessibility Solver](docs/algorithms/accessibility-solver.md) | algorithme, garantie conservative, performance mesurée |
 | [Orientation Solver](docs/algorithms/orientation-solver.md) | Viterbi, segmentation 3+2, raffinement |
 | [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 108 tests, ce qui n'est pas testé |
@@ -99,10 +100,20 @@ soit :
    filtrée par les courses A/C ;
 4. **tranchage** en couches perpendiculaires à chaque indexation, avec liaisons
    explicites au plan de dégagement ;
-5. **validation couche par couche** contre l'état réel de la matière.
+5. **validation couche par couche** contre l'état réel de la matière ;
+6. **finition** à hauteur de crête contrôlée, en 3+2 ou en 5 axes simultané
+   selon ce que la géométrie permet.
 
-Mesure sur une poche débouchante : 12/12 couches acceptées, marge minimale
-0,700 mm, 52 % du volume enlevé en une seule indexation.
+Mesures : sur une poche débouchante, 12/12 couches d'ébauche acceptées, marge
+minimale 0,700 mm, 52 % du volume enlevé en une seule indexation. Sur un dôme,
+la gamme de finition emploie les trois modes — `3+2` sur les faces planes,
+`simultané` sur la calotte, et `inaccessible` là où le porte-outil ne passe pas,
+en le disant.
+
+Le pas de finition se déduit d'une crête admissible (`h = R − √(R² − (s/2)²)`) :
+10 µm de crête avec un bec R3 donnent 0,489 mm de pas. La formule est plane,
+donc **optimiste en concave** — c'est une consigne, pas une garantie d'état de
+surface.
 
 ## Ce que valide le moteur
 
@@ -159,9 +170,10 @@ Python 3.11+ · **OCCT 8.0.1** via `cadquery-ocp` (wheels x86_64 **et aarch64**,
 donc `pip install` sur Raspberry Pi 5) · NumPy/SciPy · pydantic · matplotlib
 (rendu hors-ligne).
 
-Performance mesurée (x86_64) : **55 ms/point** d'accessibilité sur une scène de
-13 500 obstacles et 642 directions candidates — ×2,2 depuis M1. Sur une pièce
-grande devant l'outil, l'index spatial donne ×48. **Jamais mesuré sur Pi 5** :
+Performance mesurée (x86_64) : **51 ms/point** d'accessibilité avec le garde
+machine actif, contre 199 ms avant l'inversion de son transport. La résolution
+adaptative donne ×1,8 à ×4,3 selon la contrainte géométrique, en rendant le même
+verdict de faisabilité que le calcul complet. **Jamais mesuré sur Pi 5** :
 l'extrapolation ×3–5 reste une extrapolation.
 
 Aucune dépendance AGPL dans le paquet distribué — voir

@@ -518,3 +518,216 @@ class AccessibilitySolver:
     ) -> list[AccessibilityMap]:
         """Champ d'accessibilite pour une sequence de points (une trajectoire)."""
         return [self.solve_point(p, n) for p, n in zip(np.asarray(contacts), np.asarray(normals))]
+
+
+    # -- resolution adaptative --------------------------------------------
+
+    def solve_points_adaptive(
+        self, contacts: np.ndarray, normals: np.ndarray, *,
+        stride: int = 8, candidate_margin_deg: float = 20.0,
+        max_candidates: int = 24,
+    ) -> list[AccessibilityMap]:
+        """Champ d'accessibilite sur une trajectoire, a coût reduit.
+
+        Le coût d'un point vient de l'EXPLORATION : 642 directions filtrees puis
+        testees une a une. Or le long d'une passe, deux points voisins ont des
+        normales proches et des ensembles admissibles qui se recouvrent
+        largement — reexplorer toute la sphere revient a redecouvrir la meme
+        reponse.
+
+        On resout donc completement un point sur ``stride``, et entre deux
+        ancres on procede par **balayage avant** : les candidats d'un point sont
+        ceux retenus au point PRECEDENT, plus les meilleurs de l'ancre suivante,
+        plus un eventail local.
+
+        **Pourquoi un balayage avant et non une interpolation entre ancres.**
+        La premiere version prenait les meilleures directions des deux ancres
+        encadrantes, chacune classee par marge. Elle produisait des plans
+        INFAISABLES a stride 2 et 4, alors que chaque point avait des solutions
+        et que le calcul complet trouvait une orientation constante.
+
+        La raison : le classement par marge n'a aucune raison de retenir la
+        meme direction en deux points voisins. Des que l'orientation commune
+        disparait de l'un des ensembles, la contrainte de vitesse rotative — a
+        peine 10 deg pour un pas de 0,7 mm — interdit d'en rejoindre une autre.
+        Un elagage independant point par point casse donc la sequence.
+
+        Inclure l'ensemble retenu au point precedent garantit que le choix fait
+        en amont reste DISPONIBLE en aval s'il est toujours admissible. La
+        continuite des ensembles candidats devient une propriete de
+        construction, et non un heureux hasard de classement.
+
+        Le test exact reste exact ; ce qui est perdu, c'est l'EXHAUSTIVITE. Le
+        resultat est un SOUS-ENSEMBLE de l'ensemble admissible reel :
+        conservatif, comme tout le reste du moteur. ``stride`` arbitre donc
+        entre coût et richesse du choix offert a l'orientation solver, jamais
+        entre coût et surete.
+        """
+        contacts = np.asarray(contacts, dtype=np.float64).reshape(-1, 3)
+        normals = np.asarray(normals, dtype=np.float64).reshape(-1, 3)
+        n = len(contacts)
+        if n == 0:
+            return []
+        stride = max(1, int(stride))
+
+        anchors = sorted(set(list(range(0, n, stride)) + [n - 1]))
+        anchor_set = set(anchors)
+        anchor_maps: dict[int, AccessibilityMap] = {
+            i: self.solve_point(contacts[i], normals[i]) for i in anchors}
+
+        # Directions admissibles en TOUTES les ancres : elles sont injectees dans
+        # chaque ensemble candidat, et c'est ce qui rend la methode robuste.
+        #
+        # Diagnostic qui a impose ce mecanisme. Sur une face plane usinee a
+        # l'hemispherique, l'orientation retenue est proche de la verticale,
+        # donc A ~ 5 deg : tout pres de la singularite, ou le gain dC/d(axe)
+        # vaut 10,8. Les directions voisines sur la grille correspondent alors a
+        # des C repartis sur tout le cercle (-108, +108, +72, -180...), et la
+        # contrainte de vitesse rotative — 10 deg pour un pas de 0,7 mm —
+        # interdit de passer de l'une a l'autre.
+        #
+        # La passe n'est donc realisable QUE par une orientation commune a tous
+        # ses points. Le calcul complet y parvenait en gardant 106 candidats ;
+        # tout elagage qui la retire d'un seul point rend la sequence
+        # infaisable, ce qui produisait des resultats erratiques selon le stride
+        # (faisable a 8 et 32, infaisable a 2, 4 et 16).
+        #
+        # Garantir sa presence partout est donc la seule correction valable :
+        # la faisabilite ne doit pas dependre de la chance du classement.
+        common = np.ones(len(self.grid), dtype=bool)
+        worst = np.full(len(self.grid), np.inf)
+        for mp in anchor_maps.values():
+            common &= mp.feasible_mask_full()
+            worst = np.minimum(worst, mp.margin_full())
+
+        # Plafonnee, et par le bon critere : la PIRE marge sur l'ensemble des
+        # ancres. C'est exactement le critere qu'emploie la detection 3+2 pour
+        # choisir l'orientation d'un segment indexe — une orientation commune
+        # doit degager en TOUT point, pas en moyenne. Retenir les meilleures a
+        # ce critere garde donc celle que le solveur choisira de toute façon.
+        #
+        # Sans plafond, l'intersection compte presque autant de directions que
+        # l'exploration complete et le gain disparait (x1,1 mesure).
+        idx_common = np.flatnonzero(common)
+        if idx_common.size > max_candidates:
+            idx_common = idx_common[np.argsort(-worst[idx_common])][:max_candidates]
+        common_dirs = self.grid.directions[idx_common]
+
+        cos_margin = float(np.cos(np.radians(candidate_margin_deg)))
+        out: list[AccessibilityMap] = []
+        prev: AccessibilityMap | None = None
+
+        for i in range(n):
+            if i in anchor_set:
+                prev = anchor_maps[i]
+                out.append(prev)
+                continue
+
+            pool: list[np.ndarray] = []
+            if prev is not None and prev.n_feasible:
+                idx = np.flatnonzero(prev.feasible)
+                order = idx[np.argsort(-prev.margin[idx])]
+                pool.append(prev.directions[order[:max_candidates]])
+
+            nxt = min([a for a in anchors if a > i], default=None)
+            if nxt is not None and anchor_maps[nxt].n_feasible:
+                m2 = anchor_maps[nxt]
+                idx = np.flatnonzero(m2.feasible)
+                order = idx[np.argsort(-m2.margin[idx])]
+                pool.append(m2.directions[order[: max(2, max_candidates // 3)]])
+
+            if len(common_dirs):
+                pool.append(common_dirs)
+
+            if not pool:
+                prev = self.solve_point(contacts[i], normals[i])
+                out.append(prev)
+                continue
+
+            cand = np.vstack(pool)
+            # Eventail local : sans lui la solution ne pourrait jamais deriver
+            # le long de la passe et resterait collee a celle de l'ancre.
+            close = np.flatnonzero(
+                (self.grid.directions @ cand.T).max(axis=1) >= cos_margin)
+            if close.size:
+                step = max(1, close.size // max(1, max_candidates // 2))
+                cand = np.vstack([cand, self.grid.directions[close[::step]]])
+
+            prev = self._solve_point_on(contacts[i], normals[i], cand)
+            out.append(prev)
+
+        return out
+
+    def _solve_point_on(self, contact: np.ndarray, normal: np.ndarray,
+                        directions: np.ndarray) -> AccessibilityMap:
+        """Evalue un ENSEMBLE DONNE de directions en un point de contact.
+
+        Meme pipeline que ``solve_point`` a partir de l'etage E1, mais sans
+        generation de candidats : c'est l'appelant qui fournit la liste.
+        """
+        contact = np.asarray(contact, dtype=np.float64)
+        normal = normalize(normal)
+        dirs = np.asarray(directions, dtype=np.float64).reshape(-1, 3)
+        dirs = dirs / np.linalg.norm(dirs, axis=1, keepdims=True)
+
+        key = np.round(dirs / 0.01).astype(np.int64)
+        _, keep = np.unique(key, axis=0, return_index=True)
+        dirs = dirs[np.sort(keep)]
+
+        cos_lead = float(np.cos(np.radians(self.cfg.max_lead_deg)))
+        dots = dirs @ normal
+        ok_geo = dots >= min(cos_lead, 1.0)
+        dirs = dirs[ok_geo]
+        counts = {"E0_candidats": int(len(directions)), "E1_apres_geometrie": int(len(dirs))}
+
+        if len(dirs) == 0:
+            return self._empty_map(contact, normal, np.zeros(0, np.int8), counts)
+
+        nearest = np.argmax(dirs @ self.grid.directions.T, axis=1)
+        keep_kin, reason_kin, a_deg, c_deg = self._kinematic_filter(dirs)
+        counts["E2_apres_cinematique"] = int(keep_kin.sum())
+
+        reason = np.full(len(dirs), RejectReason.OK, dtype=np.int8)
+        reason[~keep_kin] = reason_kin[~keep_kin]
+        feasible = np.zeros(len(dirs), dtype=bool)
+        margin = np.full(len(dirs), -np.inf)
+
+        live = np.flatnonzero(keep_kin)
+        if len(live):
+            tcps = np.array([tcp_from_contact(contact, normal, dirs[i], self.tool)
+                             for i in live])
+            counts["E4_tests_exacts"] = int(len(live))
+            feas_v, marg_v, block_v = self.checker.check_many(
+                tcps, dirs[live], self.obstacles,
+                cutting_depth=self.cfg.cutting_depth,
+                cutting_allowance=self._cut_allow)
+            feasible[live] = feas_v
+            margin[live] = marg_v
+            for k in np.flatnonzero(~feas_v):
+                si = int(block_v[k])
+                reason[live[k]] = (_ROLE_TO_REASON[self.tool.segments[si].role]
+                                   if si >= 0 else RejectReason.COLLISION_CUTTING)
+
+            if self.guard is not None:
+                still = np.flatnonzero(feasible[live])
+                if still.size:
+                    tcps_m = np.array([
+                        self.kin.part_to_machine_point(
+                            tcps[k] + self.mount_offset, a_deg[live[k]], c_deg[live[k]])
+                        + self.work_offset for k in still])
+                    ac = np.stack([a_deg[live[still]], c_deg[live[still]]], axis=1)
+                    ok_m = self.guard.check_many(tcps_m, ac)
+                    counts["E4b_rejets_machine"] = int((~ok_m).sum())
+                    for k, okk in zip(still, ok_m):
+                        if not okk:
+                            feasible[live[k]] = False
+                            reason[live[k]] = RejectReason.MACHINE_COLLISION
+
+        reason[feasible] = RejectReason.OK
+        counts["E5_admissibles"] = int(feasible.sum())
+        return AccessibilityMap(
+            point=contact, normal=normal, grid=self.grid,
+            directions=dirs, grid_index=nearest,
+            feasible=feasible, margin=margin, reason=reason,
+            a_deg=a_deg, c_deg=c_deg, stage_counts=counts,
+        )

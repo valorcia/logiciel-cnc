@@ -30,7 +30,7 @@ logiciel-cnc/
 │   ├── simulation_engine/    scene.py, validator.py
 │   ├── turning_engine/       interfaces.py
 │   ├── safety_state_machine/ machine.py
-│   ├── subtractive_slicer/   interfaces.py, slicer.py
+│   ├── subtractive_slicer/   interfaces.py, slicer.py, finishing.py
 │   ├── strategy_planner/     interfaces.py, planner.py
 │   ├── vision_service/       interfaces.py        ← stub M1
 │   ├── probing_service/      interfaces.py        ← stub M1
@@ -39,7 +39,7 @@ logiciel-cnc/
 │   ├── recipe_profiles/      interfaces.py        ← stub M1
 │   ├── assembly_calibration/ interfaces.py        ← stub M1
 │   └── ui/                   render.py
-├── tests/         conftest, 8 fichiers, corpus/ (20 STEP sains + 3 dégradés)
+├── tests/         conftest, 9 fichiers, corpus/ (20 STEP sains + 3 dégradés)
 ├── tools/         make_corpus.py, make_degraded_corpus.py,
 │               demo_vertical_slice.py, demo_m2_pipeline.py, demo_m3_pipeline.py
 └── out/           rendus PNG (non versionnés)
@@ -258,3 +258,45 @@ validate_roughing_progressive(setup, material, slice_result, tool, ...) -> Opera
 Valide couche par couche en enlevant la matière au fur et à mesure : c'est
 l'ordre dans lequel la machine travaille, et le seul état contre lequel la
 question a un sens.
+
+
+## 6. Ajouts du jalon M4
+
+### subtractive_slicer/finishing
+
+```python
+scallop_stepover(tool_radius, scallop_mm) -> float
+group_faces_by_normal(shape, tol_deg, curved_above_deg) -> list[list[int]]
+generate_finishing_passes(shape, face_indices, tool, scallop_mm,
+                          waterline_above_deg) -> FinishingPass | None
+```
+
+`FinishingPass.topology` vaut `"parallele"` (bandes dans le plan tangent) ou
+`"waterline"` (niveaux constants autour de l'axe du groupe). Le choix se fait
+sur l'étalement des normales : au-delà de 60°, le plan tangent moyen n'existe
+plus et les bandes se replieraient.
+
+Une fraise à **bout droit** est refusée : elle laisse une marche à chaque passe.
+
+### strategy_planner
+
+```python
+plan_finishing(shape, setup, obstacles, tool, scallop_mm,
+               max_points_per_pass, stride) -> (ProcessPlan, list[FinishingOpReport])
+```
+
+`FinishingOpReport` distingue l'étalement du **segment évalué** de celui de la
+**passe complète**, et affiche la couverture : un mode `3+2` obtenu sur le pôle
+d'une calotte ne dit rien du reste de la calotte, et le rapport le dit.
+
+### accessibility_solver
+
+```python
+AccessibilitySolver.solve_points_adaptive(contacts, normals, stride,
+                                          max_candidates) -> list[AccessibilityMap]
+```
+
+Résout complètement un point sur `stride`, puis n'évalue aux points
+intermédiaires qu'un ensemble candidat réduit — **augmenté des directions
+admissibles en toutes les ancres**, sans quoi la faisabilité de la séquence
+dépendrait de la chance du classement (voir ADR-004 / D36).

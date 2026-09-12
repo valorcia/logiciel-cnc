@@ -8,6 +8,8 @@ from .interfaces import (
 )
 from .planner import (
     DirectionCandidate,
+    FinishingOpReport,
+    plan_finishing,
     indexed_orientation_plan,
     PlanReport,
     candidate_directions,
@@ -15,6 +17,6 @@ from .planner import (
     plan_roughing,
 )
 
-__all__ = ["DirectionCandidate", "Kinematic", "Operation", "PlanReport", "ProcessPlan",
+__all__ = ["DirectionCandidate", "FinishingOpReport", "Kinematic", "Operation", "PlanReport", "ProcessPlan",
            "StrategyPlanner", "Toolpath", "ToolpathBackend", "candidate_directions",
-           "evaluate_candidates", "indexed_orientation_plan", "plan_roughing"]
+           "evaluate_candidates", "indexed_orientation_plan", "plan_finishing", "plan_roughing"]

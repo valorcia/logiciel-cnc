@@ -205,11 +205,28 @@ Génération : `python tools/make_degraded_corpus.py`.
 | `unit_confusion_is_flagged_as_plausibility_not_defect` | ne pas lancer ShapeFix sur une pièce intacte |
 | `healing_refuses_to_change_the_part` | une réparation qui déplace la matière n'est pas une réparation |
 
-## 6. État actuel
+## 6. Suite ajoutée au jalon M4
+
+### `test_m4_finishing.py`
+
+| Test | Ce qu'il protège |
+|---|---|
+| `scallop_stepover_round_trips` (4 crêtes) | `h = R − √(R² − (s/2)²)` redonne la consigne |
+| `scallop_is_clamped_below_tool_radius` | une crête > rayon d'outil n'a pas de sens |
+| `flat_endmill_is_refused_for_finishing` | elle laisse une marche et enfonce son talon |
+| `planar_group_uses_parallel_topology` | |
+| `curved_group_switches_to_waterline` | les bandes parallèles se replient sur une calotte |
+| **`waterline_keeps_consecutive_points_close`** | **a trouvé DEUX défauts : le groupement par norme de moyenne, et l'angle mesuré autour de l'origine (12,6 mm d'écart pour un pas de 2,2 mm)** |
+| **`adaptive_is_a_subset_of_the_full_solve`** | **le test reste exact, seule l'exhaustivité est perdue** |
+| **`adaptive_never_loses_feasibility_where_the_full_solve_has_it`** (4 strides) | **régression du défaut le plus subtil : plans faisables à stride 8 et 32, infaisables à 2, 4 et 16** |
+| `adaptive_costs_less_than_the_full_solve` | |
+| **`guard_inversion_agrees_with_the_direct_transform`** (12 poses) | **test différentiel : transporter le TCP au lieu des organes est une réécriture, pas un assouplissement** |
+
+## 7. État actuel
 
 ```
 $ python -m pytest tests/ -q
-182 passed
+199 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -272,7 +289,27 @@ une pose sur 270) : **deux modèles conservatifs indépendants divergent s'ils n
 partagent pas leurs marges.** C'est désormais vérifié par construction — le
 validateur refuse un tranchage qui n'a pas employé la même clearance.
 
-## 7. Ce qui n'est PAS testé, et doit l'être
+Cinq de plus au jalon M4, et ils forment eux aussi une famille :
+
+13. **`linspace` qui détruit l'ordre** : 150 points « répartis » sur 245 917
+    ordonnés sont distants de 1 640 rangs. La passe devient une suite de sauts,
+    et l'orientation solver paie 13 084° de course A+C pour un chemin inexistant.
+14. **Norme de moyenne comme indice de courbure** : pour un hémisphère elle vaut
+    pile le seuil (0,5). La calotte passait pour un plan et absorbait ses voisines.
+15. **Angle mesuré autour de l'origine** et non de l'axe de la surface : 12,6 mm
+    d'écart médian pour un pas de 2,2 mm.
+16. **Deux classements supposés interchangeables** (marge vs coût) : plans
+    infaisables selon le stride, de façon erratique.
+17. **Organes machine transportés au lieu du TCP** : correct, mais 150 ms sur 199.
+
+Le schéma commun : **une quantité calculée dans le mauvais repère, ou selon le
+mauvais critère, produit un résultat plausible et faux.** Aucun de ces défauts
+ne lève d'erreur — ils produisent des nombres. Ils n'ont été trouvés que parce
+qu'une mesure *physique* les contredisait : écart entre points consécutifs,
+course A+C, monotonie d'un résultat selon un paramètre qui ne devrait rien
+changer.
+
+## 8. Ce qui n'est PAS testé, et doit l'être
 
 | Manque | État |
 |---|---|
@@ -281,14 +318,16 @@ validateur refuse un tranchage qui n'a pas employé la même clearance.
 | ~~Suivi de matière enlevée~~ | **levé M2** |
 | ~~Import de STEP dégradés~~ | **levé M3** (corpus D01–D03) |
 | ~~Gamme complète~~ | **levé M3** (ébauche indexée validée) |
-| Gouge fine sur **toute** la passe (aujourd'hui : sondage épars) | M4 |
-| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M4 |
-| Finition : contour-parallèle, passes 5 axes simultanées | M4 |
-| Tournage : génération de trajectoires | M4/M5 |
+| ~~Finition : passes à crête contrôlée, 3+2 et 5 axes~~ | **levé M4** |
+| Crête réelle sur surface **concave** (formule plane optimiste) | M5 |
+| Finition d'une passe **complète** (aujourd'hui : maquette contiguë) | M5 |
+| Gouge fine sur toute la passe (sondage épars) | M5 |
+| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M5 |
+| Tournage : génération de trajectoires | M5 |
 | Poids d'orientation calibrés | exige une machine |
 | Tout ce qui touche une machine réelle | après qualification |
 
-## 8. Précision — ce que les tests ne disent pas
+## 9. Précision — ce que les tests ne disent pas
 
 Aucun test de ce dépôt ne dit quoi que ce soit de la précision d'une pièce
 usinée. Ils portent sur la **justesse numérique** du moteur.

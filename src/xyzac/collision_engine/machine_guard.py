@@ -79,23 +79,29 @@ class MachineGuard:
         self.checker = ToolCollisionChecker(tool)
         payload = tuple((cv.frame, cv.model_dump_json()) for cv in machine.collision_volumes)
         self._vols = _volume_cache(machine.machine_id, spacing, payload)
+        #: Champ d'obstacles par organe, dans SON repere : statique, donc
+        #: construit une fois et partage par toutes les orientations.
+        self._field_cache: dict[str, ObstacleField] = {}
 
-    # -- transport des organes vers le repere machine ---------------------
+    # -- transport : on deplace le TCP, pas la machine --------------------
 
-    def _points_in_machine_frame(self, a_deg: float, c_deg: float) -> np.ndarray:
-        """Organes machine exprimes dans le repere MACHINE pour un couple (A, C).
-
-        - ``machine``  : statique, rien a faire ;
-        - ``cradle_A`` : subit Rx(A) autour du pivot A ;
-        - ``table_C``  : subit Rx(A)·Rz(C), il est porte par le berceau.
-        """
-        if not self._vols:
-            return np.zeros((0, 3))
-
+    def _rot(self, a_deg: float, c_deg: float):
         a, c = np.radians(a_deg), np.radians(c_deg)
         ca, sa, cc, sc = np.cos(a), np.sin(a), np.cos(c), np.sin(c)
         rx = np.array([[1, 0, 0], [0, ca, -sa], [0, sa, ca]])
         rz = np.array([[cc, -sc, 0], [sc, cc, 0], [0, 0, 1]])
+        return rx, rz
+
+    def _points_in_machine_frame(self, a_deg: float, c_deg: float) -> np.ndarray:
+        """Organes machine exprimes dans le repere MACHINE pour un couple (A, C).
+
+        Conserve pour le diagnostic d'une pose isolee et pour le rendu. Le
+        chemin de calcul en volume passe par ``_pose_in_volume_frame``, qui
+        deplace le TCP au lieu des organes.
+        """
+        if not self._vols:
+            return np.zeros((0, 3))
+        rx, rz = self._rot(a_deg, c_deg)
         pa = np.asarray(self.m.pivot_a, float)
         pc = np.asarray(self.m.pivot_c, float)
 
@@ -111,6 +117,49 @@ class MachineGuard:
             else:
                 raise ValueError(f"repere de volume machine inconnu : {frame}")
         return np.vstack(chunks)
+
+    def _pose_in_volume_frame(self, frame: str, tcp_machine: np.ndarray,
+                              a_deg: float, c_deg: float):
+        """Transporte une pose (TCP, axe) du repere MACHINE vers celui d'un organe.
+
+        **Inversion du probleme, et c'est ce qui rend le garde utilisable.** La
+        premiere version transportait les ORGANES vers le repere machine : une
+        transformation de plusieurs milliers de points, refaite pour chaque
+        couple (A, C) candidat. Sur un point de contact offrant 106 orientations,
+        cela representait 150 ms sur 199 — les trois quarts du temps de calcul
+        de l'accessibilite.
+
+        Or le rapport est de un a plusieurs milliers : on transporte le TCP et
+        l'axe, soit deux vecteurs, et les organes restent ou ils sont. Le nuage
+        devient alors STATIQUE pour un organe donne, donc partageable entre
+        toutes les orientations candidates — un seul appel vectorise au lieu de
+        cent.
+
+        Dans le repere machine l'axe outil vaut +Z ; dans le repere d'un organe
+        mobile, il devient l'image de +Z par la rotation inverse.
+        """
+        rx, rz = self._rot(a_deg, c_deg)
+        pa = np.asarray(self.m.pivot_a, float)
+        pc = np.asarray(self.m.pivot_c, float)
+        z = np.array([0.0, 0.0, 1.0])
+        tcp = np.asarray(tcp_machine, float)
+
+        if frame == "machine":
+            return tcp, z
+        if frame == "cradle_A":
+            return rx.T @ (tcp - pa) + pa, rx.T @ z
+        if frame == "table_C":
+            q = rx.T @ (tcp - pa) + pa
+            return rz.T @ (q - pc) + pc, rz.T @ (rx.T @ z)
+        raise ValueError(f"repere de volume machine inconnu : {frame}")
+
+    def _field_for(self, frame: str, pts: np.ndarray) -> ObstacleField:
+        cache = self._field_cache.get(frame)
+        if cache is None:
+            cache = ObstacleField(pts, np.full(len(pts), ObstacleClass.MACHINE),
+                                  np.full(len(pts), self.spacing + self.clearance))
+            self._field_cache[frame] = cache
+        return cache
 
     # -- verification -----------------------------------------------------
 
@@ -143,29 +192,33 @@ class MachineGuard:
     def check_many(self, tcps_machine: np.ndarray, ac: np.ndarray) -> np.ndarray:
         """Masque de validite pour M poses. ``ac`` est (M, 2) en degres.
 
-        Les organes machine ne dependent que de (A, C) : on regroupe donc les
-        poses partageant le meme couple, ce qui evite de retransporter le
-        berceau pour chaque point d'une passe indexee — cas le plus frequent,
-        puisqu'un segment 3+2 a par construction un (A, C) unique.
+        Un appel de collision par ORGANE, et non par couple (A, C) : le nuage
+        d'un organe est statique dans son propre repere, donc partageable entre
+        toutes les poses. Voir ``_pose_in_volume_frame``.
         """
         tcps_machine = np.asarray(tcps_machine, float).reshape(-1, 3)
         ac = np.asarray(ac, float).reshape(-1, 2)
-        ok = np.zeros(len(tcps_machine), dtype=bool)
+        M = len(tcps_machine)
 
-        key = np.round(ac, 6)
-        uniq, inverse = np.unique(key, axis=0, return_inverse=True)
-        for g, (a, c) in enumerate(uniq):
-            rows = np.flatnonzero(inverse == g)
-            pts = self._points_in_machine_frame(float(a), float(c))
+        ok = (self.m.x.contains(tcps_machine[:, 0])
+              & self.m.y.contains(tcps_machine[:, 1])
+              & self.m.z.contains(tcps_machine[:, 2]))
+        if not self._vols or not ok.any():
+            return ok
+
+        live = np.flatnonzero(ok)
+        for frame, pts in self._vols:
             if len(pts) == 0:
-                ok[rows] = True
                 continue
-            field_ = ObstacleField(pts, np.full(len(pts), ObstacleClass.MACHINE),
-                                   np.full(len(pts), self.spacing + self.clearance))
-            axes = np.tile([0.0, 0.0, 1.0], (len(rows), 1))
-            feas, _, _ = self.checker.check_many(tcps_machine[rows], axes, field_)
-            lin = (self.m.x.contains(tcps_machine[rows, 0])
-                   & self.m.y.contains(tcps_machine[rows, 1])
-                   & self.m.z.contains(tcps_machine[rows, 2]))
-            ok[rows] = feas & lin
+            field_ = self._field_for(frame, pts)
+            tcps_v = np.empty((len(live), 3))
+            axes_v = np.empty((len(live), 3))
+            for k, i in enumerate(live):
+                tcps_v[k], axes_v[k] = self._pose_in_volume_frame(
+                    frame, tcps_machine[i], float(ac[i, 0]), float(ac[i, 1]))
+            feas, _, _ = self.checker.check_many(tcps_v, axes_v, field_)
+            ok[live] &= feas
+            live = np.flatnonzero(ok)
+            if live.size == 0:
+                break
         return ok
