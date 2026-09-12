@@ -1,4 +1,4 @@
-# Banc de debug visuel — V1
+# Banc de debug visuel
 
 Outil de contrôle pour le porteur du projet : **voir** ce que le moteur calcule
 au lieu d'en lire les journaux. Ce n'est pas l'IHM destinée au client.
@@ -206,6 +206,35 @@ signalait « arête / PIÈCE : 804 points en violation » sur des orientations
 déclarées admissibles. Un panneau de debug qui contredit le moteur est pire
 que pas de panneau.
 
+## Voir la trajectoire
+
+Un G-code qu'on ne peut pas inspecter visuellement n'est livré qu'à moitié.
+Bouton **`CALCULER LA GAMME`** dans la barre d'outils, ou en ligne de commande :
+
+```bash
+python -m xyzac.ui.debug --step tests/corpus/step/C02_poche_droite.step \
+    --tool endmill --plan-roughing --capture out/traj.png
+```
+
+Deux calques, parce que ce sont deux questions distinctes :
+
+| couleur | ce que c'est |
+|---|---|
+| **bleu** | les passes de coupe |
+| **orange fin** | les rapides, les liaisons au plan de dégagement, l'approche et le dégagement |
+
+On lit alors la structure directement : couper une rangée, remonter au plan de
+dégagement, se déplacer, replonger. Et l'onglet **Gamme** donne le nombre de
+points, la proportion de rapides, le volume enlevé et les voxels gougés.
+
+C'est **exactement** ce que le post-processeur écrira : l'opération porte le
+chemin continu avec ses indicateurs `is_rapid`, et le G-code en découle
+directement (ADR-008 / D74).
+
+Le calcul prend quelques secondes — tranchage, simulation d'enlèvement de
+matière et validation couche par couche. `--pitch` est le levier : le doubler
+divise le temps par huit et rend la matière plus grossière.
+
 ## Architecture
 
 Trois couches, et la séparation a une raison pratique autant que théorique :
@@ -259,7 +288,9 @@ Le bandeau « SIMULATION » de la fenêtre n'est pas un état : c'est une consta
 | **Rendu dans le widget Qt non vérifié** | la fenêtre se construit, charge un STEP, attache la scène, bascule ses calques et se ferme proprement — tout cela est testé. Que des pixels apparaissent dans le widget ne l'est pas |
 | ~~Organes machine justes à A = C = 0~~ | **corrigé en V1** : plateau, berceau et axe C sont animés par (A, C). Un test vérifie que la distance pièce/plateau est invariante à toute pose |
 | Pose d'inspection, pas trajectoire | les X/Y/Z/A/C sont ceux d'une pose **choisie**. Le panneau le dit |
-| Calques restants | matière restante, bridage, trajectoire : déclarés, désactivés, annoncés « non disponible » |
+| Calques restants | matière restante et bridage : déclarés, désactivés, annoncés « non disponible » |
+| Pas à pas sur la trajectoire | pas encore : la trajectoire s'affiche en entier, sans curseur temporel ni état machine instant par instant |
+| Trajectoires de **finition** | `plan_finishing` produit des maquettes (ADR-006 / D50) et sans approche : le banc n'affiche que l'ébauche |
 | Bridage non modélisé | l'analyse d'accessibilité est donc **optimiste**, et le panneau le dit |
 | Coût de l'analyse | ~70 ms par point de contact. Une face de mille points prendrait une minute : le nombre de points est un réglage, et le rapport dit toujours combien la face en contient |
 | Sélection de face à la souris | pas encore : la face se choisit dans une liste triée par aire. Les `face_id` sont déjà transportés dans le maillage |

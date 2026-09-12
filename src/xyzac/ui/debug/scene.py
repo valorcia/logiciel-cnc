@@ -47,7 +47,8 @@ LAYERS: list[tuple[str, str, bool]] = [
     ("machine_axes", "Axes A et C", True),
     ("limits", "Limites machine", True),
     ("fixtures", "Bridage", False),
-    ("path", "Trajectoire", False),
+    ("path_cut", "Trajectoire — coupe", True),
+    ("path_rapid", "Trajectoire — rapides et liaisons", True),
     ("orient_ok", "Orientations admissibles", True),
     ("orient_tool", "Rejets — collision outil", True),
     ("orient_machine", "Rejets — collision machine", True),
@@ -327,6 +328,59 @@ class DebugScene:
         self._add("limits", box_mesh(lo, hi), color=palette.WARNING,
                   style="wireframe", line_width=1, opacity=0.6, name="limits")
 
+    def add_toolpath(self, points, is_rapid, machine: MachineKinematics,
+                     mount_offset, a_deg: float, c_deg: float, *,
+                     tube_radius: float = 0.0) -> None:
+        """Trajectoire d'une operation, coupe et liaisons separees.
+
+        Deux calques et non un seul : la question qu'on se pose devant une
+        trajectoire est « ou est-ce que ca coupe » et « par ou est-ce que ca
+        passe ». Les melanger dans une seule polyligne bleue rend la seconde
+        illisible, alors que c'est elle qui porte les liaisons au plan de
+        degagement — donc les mouvements qui traversent la piece quand ils sont
+        mal generes.
+
+        Le transport passe par la meme chaine que la piece, sinon la
+        trajectoire flotterait a cote de la matiere qu'elle enleve.
+        """
+        pv = _pv()
+        from ...kinematics_solver.solver import KinematicsSolver
+
+        P = np.asarray(points, dtype=float).reshape(-1, 3)
+        if len(P) < 2:
+            return
+        R = (np.zeros(len(P), dtype=bool) if is_rapid is None
+             else np.asarray(is_rapid, dtype=bool).reshape(-1))
+
+        ks = KinematicsSolver(machine)
+        mo = np.asarray(mount_offset, dtype=float)
+        M = np.array([ks.part_to_machine_point(q + mo, a_deg, c_deg) for q in P])
+
+        # Un segment est « rapide » si l'une de ses extremites l'est : c'est le
+        # choix conservatif pour l'affichage, celui qui ne cache pas un
+        # mouvement hors matiere derriere une couleur de coupe.
+        seg_rapid = R[1:] | R[:-1]
+        for mask, layer, color, width in (
+            (~seg_rapid, "path_cut", palette.PATH, 3),
+            (seg_rapid, "path_rapid", palette.WARNING, 1),
+        ):
+            idx = np.flatnonzero(mask)
+            if idx.size == 0:
+                continue
+            # Un acteur unique : des milliers de petites lignes separees
+            # etoufferaient le rendu.
+            pts = np.empty((idx.size * 2, 3))
+            pts[0::2] = M[idx]
+            pts[1::2] = M[idx + 1]
+            cells = np.hstack([np.column_stack([
+                np.full(idx.size, 2), np.arange(0, idx.size * 2, 2),
+                np.arange(1, idx.size * 2, 2)])]).ravel()
+            poly = pv.PolyData()
+            poly.points = pts
+            poly.lines = cells
+            self._add(layer, poly, color=color, line_width=width,
+                      name=f"{layer}_lines")
+
     def add_orientations(self, result, machine: MachineKinematics, mount_offset,
                          a_deg: float, c_deg: float, *,
                          length: float = 20.0, only_family: str | None = None,
@@ -586,7 +640,8 @@ def _arrow_length(state) -> float:
 def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
             elevation_deg: float = 0.0, zoom: float = 1.0, fit: str = "part",
             window_size=(1280, 860), deflection: float = 0.05,
-            accessibility=None, arrow_length: float | None = None) -> Path:
+            accessibility=None, arrow_length: float | None = None,
+            toolpath=None) -> Path:
     """Capture PNG d'un etat, par un plotter NEUF a chaque appel.
 
     **Pourquoi un plotter neuf et non une capture du plotter vivant.** Mesure
@@ -645,12 +700,17 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
     if "limits" not in hide:
         scene.add_travel_limits(state.machine)
 
+    if toolpath is not None:
+        pts_tp, rap_tp = toolpath
+        scene.add_toolpath(pts_tp, rap_tp, state.machine, mo, a, c)
+
     if accessibility is not None:
         L = arrow_length if arrow_length is not None else _arrow_length(state)
         scene.add_orientations(accessibility, state.machine, mo, a, c, length=L)
-        for key in list(scene.actors):
-            if key in hide:
-                scene.set_visible(key, False)
+
+    for key in list(scene.actors):
+        if key in hide:
+            scene.set_visible(key, False)
 
     plotter.add_axes(interactive=False)
     if fit == "part":

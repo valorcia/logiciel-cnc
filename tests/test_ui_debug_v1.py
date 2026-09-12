@@ -306,3 +306,62 @@ def test_the_pose_shown_changes_with_the_selected_orientation(bench, tmp_path):
     bench.set_inspect_from_candidate(res, b)
     i2 = _img_sum(capture(bench, tmp_path / "p2.png", accessibility=res))
     assert i1 != i2
+
+
+# ------------------------------------------------ trajectoire dans le banc
+
+def test_the_bench_shows_what_would_be_posted(corpus_dir):
+    """Un G-code qu'on ne peut pas inspecter visuellement n'est livre qu'a
+    moitie. Le banc doit donc afficher la trajectoire de l'operation — celle
+    que le post-processeur ecrira, liaisons et approche comprises.
+    """
+    st = BenchState()
+    st.load_step(corpus_dir / "C02_poche_droite.step")
+    st.set_default_tool("endmill")
+
+    assert st.operation_path(0) is None, (
+        "sans gamme calculee, il faut rendre None et non un tableau vide : "
+        "un tableau vide se confondrait avec une gamme sans mouvement")
+    assert dict(st.plan_lines())["Gamme"] == "non calculee"
+
+    plan, rep = st.plan_roughing_preview(layer_thickness=4.0, pitch=2.5)
+    assert plan.operations
+    P, R = st.operation_path(0)
+    assert len(P) > 100
+    assert R is not None and R.any() and not R.all(), (
+        "la trajectoire doit porter coupe ET liaisons")
+    assert "Operations" in dict(st.plan_lines())
+
+
+def test_loading_a_new_part_forgets_the_previous_plan(corpus_dir):
+    """Une gamme calculee sur une autre piece ne s'y applique plus : la garder
+    afficherait une trajectoire qui n'a rien a voir avec la matiere visible."""
+    st = BenchState()
+    st.load_step(corpus_dir / "C02_poche_droite.step")
+    st.set_default_tool("endmill")
+    st.plan_roughing_preview(layer_thickness=5.0, pitch=3.0)
+    assert st.plan is not None
+
+    st.load_step(corpus_dir / "C01_bloc_simple.step")
+    assert st.plan is None and st.operation_path(0) is None
+
+
+@render
+def test_the_toolpath_is_visible_and_separable(corpus_dir, tmp_path):
+    """Coupe et liaisons sont deux calques : la question « ou est-ce que ca
+    coupe » et la question « par ou est-ce que ca passe » ne se lisent pas sur
+    la meme couleur."""
+    from xyzac.ui.debug.scene import capture
+
+    st = BenchState()
+    st.load_step(corpus_dir / "C02_poche_droite.step")
+    st.set_default_tool("endmill")
+    st.plan_roughing_preview(layer_thickness=5.0, pitch=3.0)
+    tp = st.operation_path(0)
+
+    sans = _img_sum(capture(st, tmp_path / "s.png"))
+    avec = _img_sum(capture(st, tmp_path / "a.png", toolpath=tp))
+    sans_rapides = _img_sum(capture(st, tmp_path / "r.png", toolpath=tp,
+                                    hidden={"path_rapid"}))
+    assert sans != avec, "la trajectoire ne se voit pas"
+    assert sans_rapides != avec, "masquer les liaisons n'a rien change"

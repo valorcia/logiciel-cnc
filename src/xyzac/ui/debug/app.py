@@ -59,6 +59,13 @@ def main(argv: list[str] | None = None) -> int:
                          "au-dessus de la piece ('none')")
     ap.add_argument("--faces", action="store_true",
                     help="liste les faces de la piece et sort")
+    ap.add_argument("--plan-roughing", action="store_true",
+                    help="calcule une gamme d'ebauche et affiche sa trajectoire")
+    ap.add_argument("--layer", type=float, default=3.0,
+                    help="epaisseur de couche de l'ebauche (mm)")
+    ap.add_argument("--pitch", type=float, default=2.0,
+                    help="pas de la grille de matiere (mm) ; le doubler divise "
+                         "le temps par huit")
     args = ap.parse_args(argv)
 
     from .state import BenchState
@@ -139,6 +146,26 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:                                 # noqa: BLE001
             print(f"    non disponible : {exc}")
 
+    # --- gamme d'ebauche, pour voir la trajectoire
+    toolpath = None
+    if args.plan_roughing:
+        if state.part is None:
+            print("--plan-roughing exige --step", file=sys.stderr)
+            return 2
+        os.environ.setdefault("VTK_DEFAULT_OPENGL_WINDOW", "vtkOSOpenGLRenderWindow")
+        import time as _t
+
+        t0 = _t.perf_counter()
+        try:
+            state.plan_roughing_preview(layer_thickness=args.layer, pitch=args.pitch)
+        except Exception as exc:                                 # noqa: BLE001
+            print(f"gamme impossible : {exc}", file=sys.stderr)
+            return 1
+        print(f"\n  gamme calculee en {_t.perf_counter() - t0:.1f} s")
+        for k, v in state.plan_lines():
+            print(f"  {k:26s} {v}")
+        toolpath = state.operation_path(0)
+
     # --- mode capture : aucun ecran requis
     if args.capture:
         if state.part is None:
@@ -151,7 +178,8 @@ def main(argv: list[str] | None = None) -> int:
         hidden = {s.strip() for s in args.hide.split(",") if s.strip()}
         out = capture(state, args.capture, hidden=hidden,
                       azimuth_deg=args.azimuth, elevation_deg=args.elevation,
-                      zoom=args.zoom, fit=args.fit, accessibility=result)
+                      zoom=args.zoom, fit=args.fit, accessibility=result,
+                      toolpath=toolpath)
         print(f"capture : {out.resolve()}")
         return 0
 

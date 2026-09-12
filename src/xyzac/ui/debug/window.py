@@ -114,6 +114,12 @@ class DebugWindow:
         self.act_all = tb.addAction("Voir tout")
         self.act_all.triggered.connect(self.on_view_all)
         tb.addSeparator()
+        self.act_plan = tb.addAction("CALCULER LA GAMME")
+        self.act_plan.setToolTip(
+            "Tranche, simule l'enlevement de matiere et valide couche par "
+            "couche, puis affiche la trajectoire. Quelques secondes.")
+        self.act_plan.triggered.connect(self.on_plan_roughing)
+        tb.addSeparator()
         self.act_shot = tb.addAction("CAPTURE DEBUG")
         self.act_shot.triggered.connect(self.on_capture)
         tb.addSeparator()
@@ -170,6 +176,8 @@ class DebugWindow:
         ]
         if candidate is not None:
             pages.insert(0, ("Orientation", candidate.lines()))
+        if st.plan is not None:
+            pages.append(("Gamme", st.plan_lines()))
         if st.part is not None:
             try:
                 mat = st.collision_matrix(
@@ -364,6 +372,12 @@ class DebugWindow:
         self.interactor.clear()
         self.scene = scene_mod.build_scene(
             self.state, plotter=self.interactor, off_screen=False)
+        tp = self.state.operation_path(0)
+        if tp is not None:
+            self.scene.add_toolpath(tp[0], tp[1], self.state.machine,
+                                    self.state.mount_offset,
+                                    self.state.inspect_a_deg,
+                                    self.state.inspect_c_deg)
         if self.result is not None:
             self.scene.add_orientations(
                 self.result, self.state.machine, self.state.mount_offset,
@@ -407,6 +421,27 @@ class DebugWindow:
             self.scene.reset_view()
             self.interactor.render()
 
+    def on_plan_roughing(self, *_):
+        """CALCULER LA GAMME : la seule facon de VOIR ce qui serait poste."""
+        QtCore, QtGui, QtWidgets = _qt()
+        if self.state.part_shape is None:
+            self.status("aucune piece chargee")
+            return
+        self.status("tranchage, simulation de matiere et validation par "
+                    "couche — quelques secondes...")
+        QtWidgets.QApplication.processEvents()
+        try:
+            self.state.plan_roughing_preview()
+        except Exception as exc:                                 # noqa: BLE001
+            QtWidgets.QMessageBox.critical(self.win, "Gamme impossible", str(exc))
+            self.status(f"gamme impossible : {exc}")
+            return
+        self.rebuild_scene()
+        self._refresh_panels()
+        n = len(self.state.plan.operations) if self.state.plan else 0
+        self.status(f"gamme calculee : {n} operation(s) — "
+                    "calques « Trajectoire » a gauche")
+
     def on_capture(self, *_) -> Path | None:
         """CAPTURE DEBUG : image de l'etat courant, par un plotter neuf.
 
@@ -422,7 +457,8 @@ class DebugWindow:
         self.status("Capture en cours...")
         try:
             p = scene_mod.capture(self.state, out, hidden=self.hidden_layers(),
-                                  accessibility=self.result)
+                                  accessibility=self.result,
+                                  toolpath=self.state.operation_path(0))
         except Exception as exc:                                 # noqa: BLE001
             # Un echec doit etre VU, donc modal. Un succes non : on capture
             # souvent sur un banc, et une boite a fermer chaque fois ferait

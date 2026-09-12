@@ -121,6 +121,10 @@ class BenchState:
     stock: Stock | None = None
     tool: ToolAssembly | None = None
     tool_kind: str = "ballnose"
+    #: Gamme calculee, si elle l'a ete. ``None`` = pas calculee, ce qui n'est
+    #: pas la meme chose qu'une gamme vide.
+    plan: object | None = None
+    plan_report: object | None = None
     #: Pose a laquelle l'outil est DESSINE. Choisie, pas calculee.
     inspect_tcp: np.ndarray = field(default_factory=lambda: np.zeros(3))
     inspect_a_deg: float = 0.0
@@ -170,6 +174,8 @@ class BenchState:
         self.part = info
         self.messages = []
         self._obstacles = None      # la scene change : le cache est perime
+        self.plan = None            # et la gamme precedente ne s'y applique plus
+        self.plan_report = None
         if heal.describe():
             self.messages.append(f"Import : {heal.describe()}")
 
@@ -507,6 +513,69 @@ class BenchState:
         rows.append(("outil complet", "MACHINE", chk.reason()))
         if not chk.axis_limits_ok:
             rows.append(("(synthese)", "MACHINE", f"hors course : {chk.detail}"))
+        return rows
+
+    def plan_roughing_preview(self, *, layer_thickness: float = 3.0,
+                              max_setups: int = 1, pitch: float = 2.0,
+                              point_spacing: float = 2.0):
+        """Calcule une gamme d'ebauche et rend ``(plan, rapport)``.
+
+        Appelle ``strategy_planner.plan_roughing`` : aucun calcul ici. Le
+        resultat sert a AFFICHER la trajectoire — c'est la seule facon de voir
+        ce que le post-processeur va ecrire, et sans cela un G-code emis n'est
+        inspectable qu'en le lisant ligne par ligne.
+
+        **Coûteux** : tranchage, simulation d'enlevement de matiere et
+        validation par couche. Quelques secondes a quelques dizaines de
+        secondes selon la piece et le pas de voxel. ``pitch`` est le levier
+        principal : le doubler divise le temps par huit et rend la matiere plus
+        grossiere.
+        """
+        from ...stock_engine.material import MaterialState
+        from ...strategy_planner.planner import plan_roughing
+
+        if self.part_shape is None:
+            raise RuntimeError("aucune piece chargee")
+        if self.tool is None:
+            self.set_default_tool()
+
+        verts, tris, _ = brep.tessellate(self.part_shape, deflection=pitch * 0.25)
+        material = MaterialState.from_setup(self.stock, verts, tris, pitch=pitch)
+        plan, report = plan_roughing(
+            self.part_shape, self.build_setup(), material, self.tool,
+            max_setups=max_setups, layer_thickness=layer_thickness,
+            point_spacing=point_spacing)
+        self.plan = plan
+        self.plan_report = report
+        return plan, report
+
+    def operation_path(self, index: int = 0):
+        """``(points, is_rapid)`` d'une operation de la gamme calculee.
+
+        Rend ``None`` si aucune gamme n'a ete calculee — et non un tableau vide,
+        qui se confondrait avec une gamme sans mouvement.
+        """
+        if self.plan is None or not self.plan.operations:
+            return None
+        op = self.plan.operations[min(index, len(self.plan.operations) - 1)]
+        return np.asarray(op.toolpath.points, dtype=float), op.toolpath.is_rapid
+
+    def plan_lines(self) -> list[tuple[str, str]]:
+        if self.plan is None:
+            return [("Gamme", "non calculee")]
+        rows = [("Gamme", self.plan.plan_id),
+                ("Operations", str(len(self.plan.operations)))]
+        for op in self.plan.operations:
+            P = np.asarray(op.toolpath.points, dtype=float)
+            R = op.toolpath.is_rapid
+            n_rap = "non disponible" if R is None else str(int(np.sum(R)))
+            rows.append((op.op_id, f"{len(P)} points, dont {n_rap} rapides"))
+            if op.notes:
+                rows.append(("", op.notes))
+        if self.plan_report is not None:
+            rows.append(("Volume enleve",
+                         f"{sum(self.plan_report.removed_per_step):.0f} mm3"))
+            rows.append(("Voxels gouges", str(self.plan_report.gouged_voxels)))
         return rows
 
     def set_inspect_from_candidate(self, result, candidate) -> None:
