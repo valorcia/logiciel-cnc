@@ -1,4 +1,4 @@
-# Plan de tests — jalons M1 à M8
+# Plan de tests — jalons M1 à M9
 
 ## 1. Principe
 
@@ -318,11 +318,36 @@ simule le palpage à travers elle, et on exige que la procédure la retrouve.
 | **`roughing_operations_carry_links_and_approach`** | **ce qui serait POSTÉ n'était pas ce qui avait été validé : l'opération portait les points de coupe seuls** |
 | **`approach_and_retract_pass_the_sweep_gate`** | **l'en-tête du G-code affirme que ces mouvements sont validés ; ce test est ce qui autorise la phrase** |
 
+## 11. Suite ajoutée au jalon M9
+
+### `test_m9_linuxcnc.py` — la frontière
+
+| Test | Ce qu'il protège |
+|---|---|
+| `travel_limits_come_from_the_model_not_from_typing` | une course tapée dans l'INI est une deuxième source de vérité, et elle divergera |
+| **`the_kinematics_module_is_the_xyzac_one`** | **`trivkins` démarre sans erreur et interprète les axes rotatifs comme des axes linéaires : la machine bouge, et faux** |
+| `measured_pivots_reach_the_hal_file` | une calibration qui ne franchit pas la frontière n'a servi à rien |
+| `an_uncalibrated_config_says_it_is_provisional` | une valeur nominale a l'air d'une valeur mesurée dans un fichier texte |
+| **`a_calibrated_config_is_never_called_uncalibrated`** | **défaut trouvé en lisant la sortie dans ses deux états : l'en-tête annonçait « modèle non calibré » au-dessus d'un pivot mesuré, ce qui conduit à refaire une calibration correcte** |
+| `the_config_never_claims_to_be_validated` | aucun fichier de ce jalon n'a été chargé par LinuxCNC ; le fichier doit le dire |
+| **`the_dangerous_point_is_named_as_such`** | **un signe d'offset faux ne provoque aucun échec au démarrage, seulement un usinage faux** |
+| `homing_is_left_unset_on_purpose` | une séquence de prise d'origine plausible envoie le chariot dans sa butée |
+| `the_tool_table_is_empty_and_says_why` | une longueur d'outil inventée est un plongeon dans la pièce |
+| `files_are_written_where_expected` | les quatre fichiers, aux noms que LinuxCNC attend |
+| `deposit_refuses_without_approval` | l'ordre des quatre conditions est testé, pas seulement leur présence |
+| `deposit_refuses_an_unmeasured_machine` | déposer sous une géométrie inconnue |
+| **`hardware_deposit_needs_a_qualified_machine`** | **et la simulation, non : l'exiger des deux ferait une porte verrouillée sur sa propre clé, la pièce d'épreuve devant être simulée avant d'être usinée** |
+| `the_deposited_file_carries_its_own_provenance` | un fichier retrouvé dans un dossier six mois plus tard doit dire sous quel montage il a été approuvé |
+| **`no_cycle_is_ever_started`** | **`start_cycle` lève par décision ; ce test est ce qui empêche de le « compléter » par inadvertance** |
+| `deposit_says_no_cycle_was_started` | le rapport ne laisse pas croire qu'un dépôt est un lancement |
+| `the_legacy_gateway_still_refuses_to_connect` | le stub M1 n'est pas devenu ouvert parce qu'un module voisin s'est rempli |
+| **`no_module_imports_the_linuxcnc_python_binding`** | **vérifié sur l'AST de tout le paquet, passerelle incluse : ce jalon écrit des fichiers, il n'ouvre aucun transport** |
+
 ## 11. État actuel
 
 ```
 $ python -m pytest tests/ -q
-328 passed
+350 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -501,7 +526,19 @@ manque doit être calculée depuis l'état réel, pas écrite.** Une justificati
 écrite à la main vieillit sans prévenir ; celle qui regarde les données
 vieillit avec elles.
 
-## 12. Ce qui n'est PAS testé, et doit l'être
+Un de plus au jalon M9, quatrième de cette famille :
+
+33. **Un en-tête de catégorie devenu faux** : la section provisoire de la
+    configuration LinuxCNC s'annonçait « déduite d'un modèle non calibré »
+    alors qu'elle peut légitimement rester non vide sur une machine **mesurée**
+    à qui il ne manque que la pièce d'épreuve. Conséquence concrète : un
+    opérateur peut croire sa calibration ignorée et la refaire.
+
+D'où la précision de la règle : **une phrase qui classe doit être aussi vraie
+que l'entrée la plus favorable qu'elle peut coiffer.** Un en-tête n'est pas un
+commentaire, c'est une affirmation portant sur tout ce qu'il surplombe.
+
+## 13. Ce qui n'est PAS testé, et doit l'être
 
 | Manque | État |
 |---|---|
@@ -515,10 +552,10 @@ vieillit avec elles.
 | Finition d'une passe **complète** | **réduite ×5,5 M6**, pas levée : couverture 2 % → 18 % mesurée sur le dôme (159 899 points). Le mode rapporté dépend de la couverture |
 | ~~Gouge fine sur toute la passe~~ | **levée M6** côté porte-outil (preuve par majoration) |
 | Gouge de l'arête **entre** deux poses | exige une enveloppe balayée exacte |
-| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M8 |
+| Performance sur le matériel cible (Pi 5) — **jamais mesurée** | M10 |
 | ~~Collision du porte-plaquette en tournage~~ | **levée M6** (silhouette (z, r), test majorant) |
-| **Gorgeage** comme opération (plongée, non contour) | M8 |
-| Ordonnancement hybride fraisage + tournage dans une même gamme | M8 |
+| **Gorgeage** comme opération (plongée, non contour) | M10 |
+| Ordonnancement hybride fraisage + tournage dans une même gamme | M10 |
 | Erreurs non géométriques (thermique, flexion, hystérésis) | hors budget, non modélisées |
 | Erreurs d'échelle des vis | modélisées et compensables, aucune procédure ne les mesure |
 | ~~Approche et dégagement dans le G-code~~ | **levée M8** : portées par la trajectoire et validées au balayage |
@@ -527,9 +564,12 @@ vieillit avec elles.
 | ~~Tournage : génération de trajectoires~~ | **levée M5** (profil, ovalité robuste, passes, refus motivé) |
 | Poids d'orientation calibrés | exige une machine |
 | Les cinq étapes de calibration matérielles | exigent la machine, dont la pièce d'épreuve |
+| **Configuration LinuxCNC jamais chargée par LinuxCNC** | M9 génère les fichiers ; l'interpréteur n'est pas installable dans cet environnement. `verification_command()` donne la commande dont le verdict compte |
+| Signe des offsets de pivot dans le HAL | seul `AXIS_DIRECTION` sur la machine physique l'établit |
+| Lancement de cycle | **par décision**, pas par manque : `start_cycle` lève, et un test le maintient |
 | Tout ce qui touche une machine réelle | après qualification |
 
-## 13. Précision — ce que les tests ne disent pas
+## 14. Précision — ce que les tests ne disent pas
 
 Aucun test de ce dépôt ne dit quoi que ce soit de la précision d'une pièce
 usinée. Ils portent sur la **justesse numérique** du moteur.

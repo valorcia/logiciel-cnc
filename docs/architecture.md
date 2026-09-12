@@ -9,7 +9,8 @@ d'appeler qui**.
 logiciel-cnc/
 ├── pyproject.toml
 ├── docs/
-│   ├── adr/ADR-001-architecture-fondatrice.md … ADR-007-jalon-M7.md
+│   ├── adr/ADR-001-architecture-fondatrice.md … ADR-009-jalon-M9.md
+│   ├── banc-de-debug.md
 │   ├── audit/dependencies-licenses.md
 │   ├── algorithms/accessibility-solver.md
 │   ├── algorithms/orientation-solver.md
@@ -35,14 +36,18 @@ logiciel-cnc/
 │   ├── vision_service/       interfaces.py        ← stub M1
 │   ├── probing_service/      interfaces.py, fitting.py, simulator.py
 │   ├── postprocessor_linuxcnc/ interfaces.py, emit.py
-│   ├── linuxcnc_gateway/     interfaces.py        ← stub M1, verrouillé
-│   ├── recipe_profiles/      interfaces.py        ← stub M1
+│   ├── linuxcnc_gateway/     interfaces.py, config.py, deposit.py
+│   │                         ← fabrique un FICHIER, n'ouvre aucun transport
+│   ├── recipe_profiles/      interfaces.py, recipes.py
 │   ├── assembly_calibration/ interfaces.py, procedures.py, record.py
-│   └── ui/                   render.py
-├── tests/         conftest, 12 fichiers, corpus/ (20 STEP sains + 3 dégradés)
+│   └── ui/                   render.py,
+│                             debug/ palette.py, state.py, scene.py,
+│                                    window.py, app.py   ← banc de debug
+├── tests/         conftest, 18 fichiers, corpus/ (20 STEP sains + 3 dégradés)
 ├── tools/         make_corpus.py, make_degraded_corpus.py,
 │               demo_vertical_slice.py, demo_m2_pipeline.py,
-│               demo_m3_pipeline.py, demo_m7_calibration.py
+│               demo_m3_pipeline.py, demo_m7_calibration.py,
+│               demo_m9_linuxcnc.py
 └── out/           rendus PNG (non versionnés)
 ```
 
@@ -59,7 +64,9 @@ Elles ne sont pas indicatives : la dernière est **vérifiée par un test**
 3. `simulation_engine` n'importe jamais `linuxcnc_gateway`. Le digital twin
    ne peut pas, même par erreur, atteindre une machine.
 4. **Seul** `linuxcnc_gateway` peut ouvrir un transport machine
-   (`socket`, `telnetlib`, `serial`, `linuxcnc`).
+   (`socket`, `telnetlib`, `serial`, `linuxcnc`). Au jalon M9 il ne s'en sert
+   toujours pas : il écrit des fichiers. Un test vérifie qu'**aucun** module
+   du projet, passerelle incluse, n'importe le binding Python `linuxcnc`.
 5. `vision_service` ne retourne que des observations. Aucune de ses fonctions
    ne produit de consigne d'axe.
 
@@ -517,3 +524,91 @@ calcul ne vérifie rien.
 
 `linuxcnc_gateway` reste verrouillé : poster exige une géométrie mesurée,
 envoyer exige une machine qualifiée.
+
+## 10. Ajouts du jalon M8
+
+### recipe_profiles/recipes
+
+```python
+MATERIALS: dict[str, MaterialData]         # 6 matières, chacune avec sa SOURCE
+build_recipe(material, tool, *, depth_of_cut_mm, width_of_cut_mm,
+             machine, derating=None, vc_tolerance=0.25) -> CuttingRecipe
+effective_diameter(tool, depth_of_cut_mm) -> float
+radial_chip_thinning(diameter_mm, width_of_cut_mm) -> float
+```
+
+Une matière inconnue **lève** (`UnknownMaterialError`) plutôt que de retomber
+sur des paramètres d'aluminium. Le déclassement par défaut est de 0,5 et il est
+**appliqué**, pas seulement conseillé : une note disant « commencer nettement
+en dessous » ne protège personne si le code livre quand même les valeurs de
+table.
+
+Le diamètre effectif d'une hémisphérique à faible profondeur
+(`2·√(D·ap − ap²)`, soit 2,15 mm pour une D6 à ap = 0,2) est ce qui sépare une
+vitesse de coupe calculée d'une vitesse de coupe réelle. `CuttingRecipe` porte
+`clamped`, `warnings`, `derating`, et `qualified = False` — jamais autre chose.
+
+### subtractive_slicer + strategy_planner
+
+```python
+with_approach_retract(points, is_rapid, direction, clearance_z, frame,
+                      *, standoff_mm=2.0, plunge_feed=True)
+```
+
+Les opérations d'ébauche portent désormais `continuous_path` : le chemin
+**complet**, liaisons et approches comprises, avec son masque de rapides. Ce
+qui est posté est exactement ce qui a été validé au balayage — l'opération ne
+portait auparavant que les points de coupe.
+
+`post_process` exige maintenant une `recipe` : il n'existe plus de
+`feed_mm_min` par défaut, et l'en-tête porte la provenance de la recette et ses
+avertissements. La ligne annonçant l'absence d'approche est **calculée** depuis
+les trajectoires, plus écrite.
+
+## 11. Ajouts du jalon M9 — la frontière LinuxCNC
+
+### linuxcnc_gateway/config
+
+```python
+KINEMATICS_MODULE = "xyzac-trt-kins"       # module intégré, pas trivkins
+build_config(machine, calibration=None, *, name, servo_period_ns) -> ConfigFiles
+ConfigFiles.write(directory) -> list[str]  # .ini, .hal, postgui.hal, .tbl
+ConfigFiles.describe() -> str
+verification_command(directory) -> str
+```
+
+La configuration est **dérivée** de `MachineKinematics` et du
+`CalibrationRecord`, jamais saisie : une course tapée à la main dans un INI est
+une deuxième source de vérité qui divergera. Chaque valeur émise porte un des
+trois degrés de confiance — mesurée, dérivée du modèle, ou **provisoire** — et
+`to_verify` / `provisional` listent nommément ce qui reste à confirmer sur la
+machine.
+
+Le point dangereux est nommé comme tel dans le fichier : le **signe** des
+offsets de pivot ne provoque aucun échec au démarrage, seulement un usinage
+faux, et seule l'étape matérielle `AXIS_DIRECTION` l'établit. Prise d'origine
+et table d'outils sont laissées vides **avec leur motif écrit dedans**, plutôt
+que remplies d'une valeur plausible.
+
+### linuxcnc_gateway/deposit
+
+```python
+deposit_program(gcode, directory, *, target, safety, setup_hash,
+                calibration, filename="", journal=None) -> DepositRecord
+start_cycle(*args, **kw)                   # NotImplementedError, par décision
+```
+
+Quatre conditions, dans cet ordre : approbation de sécurité vivante, hash de
+montage identique, géométrie mesurée, puis — **pour la cible HARDWARE
+seulement** — machine qualifiée. La simulation reste ouverte : la conditionner
+à la qualification ferait une porte qui se verrouille sur sa propre clé, car la
+pièce d'épreuve doit être simulée avant d'être usinée.
+
+Ce qui traverse la frontière est **un fichier, et rien d'autre**. Aucun
+lancement de cycle n'existe, et son absence est une décision inscrite dans le
+code plutôt qu'un manque : ce jalon ne produit pas de mouvement, il produit de
+quoi en produire un le jour où une machine qualifiée existera.
+
+**Aucun fichier produit par ce jalon n'a été chargé par LinuxCNC** — il n'est
+pas installable dans l'environnement de développement. `verification_command()`
+donne la commande dont le verdict compte.

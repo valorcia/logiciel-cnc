@@ -8,17 +8,22 @@ Ce n'est **pas** un CAM généraliste : l'utilisateur ne programme pas
 d'opérations. Ce n'est **pas** un portage d'OrcaSlicer : l'inspiration est
 l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 
-> **État : jalon M8.** Ébauche indexée, finition à crête contrôlée — le pas
+> **État : jalon M9.** Ébauche indexée, finition à crête contrôlée — le pas
 > venant de la **courbure locale mesurée** — et tournage sur l'axe C. La gouge
 > du porte-outil est **prouvée sur toute la passe**, et non sondée. La machine
-> se **mesure** désormais : localisation des axes A et C au palpeur, erreurs
-> compensées, incertitude budgétée. Le G-code est généré **dans un fichier**,
-> derrière les quatre portes, et vérifié par aller-retour. Ce qui reste
-> verrouillé est l'envoi réel : poster exige une géométrie mesurée, **envoyer
-> exige une machine qualifiée**, et aucune machine n'existe. Les avances
-> viennent de recettes sourcées et déclassées, plus d'une valeur par défaut ;
-> approche et dégagement sont portés par la trajectoire et validés au balayage.
-> Voir
+> se **mesure** : localisation des axes A et C au palpeur, erreurs compensées,
+> incertitude budgétée. Les avances viennent de recettes sourcées et
+> déclassées ; approche et dégagement sont portés par la trajectoire et
+> validés au balayage. La **configuration LinuxCNC** (`xyzac-trt-kins`) est
+> désormais dérivée du modèle et du dossier de calibration, et le programme est
+> **déposé dans un fichier** derrière quatre conditions ordonnées.
+>
+> Ce qui n'est **pas** acquis : aucun fichier de configuration n'a jamais été
+> chargé par LinuxCNC — il n'est pas installable dans l'environnement de
+> développement, et seule une commande sur la machine de l'utilisateur peut en
+> juger. Aucun lancement de cycle n'existe, **par décision**. Le dépôt vers une
+> cible matérielle reste refusé tant que la pièce d'épreuve n'a pas été usinée
+> **puis mesurée**. Voir
 > [ADR-001 §6](docs/adr/ADR-001-architecture-fondatrice.md),
 > [ADR-002](docs/adr/ADR-002-jalon-M2.md),
 > [ADR-003](docs/adr/ADR-003-jalon-M3.md),
@@ -26,7 +31,8 @@ l'expérience utilisateur des slicers 3D, le moteur est propre et soustractif.
 > [ADR-005](docs/adr/ADR-005-jalon-M5.md),
 > [ADR-006](docs/adr/ADR-006-jalon-M6.md),
 > [ADR-007](docs/adr/ADR-007-jalon-M7.md),
-> [ADR-008](docs/adr/ADR-008-jalon-M8.md).
+> [ADR-008](docs/adr/ADR-008-jalon-M8.md),
+> [ADR-009](docs/adr/ADR-009-jalon-M9.md).
 
 ---
 
@@ -54,7 +60,7 @@ pip install -e ".[viz,dev]"
 
 python tools/make_corpus.py                  # 20 géométries STEP synthétiques
 python tools/make_degraded_corpus.py         # 3 STEP volontairement abîmés
-python -m pytest tests/ -q                   # 328 tests
+python -m pytest tests/ -q                   # 350 tests
 
 # M1 — accessibilité + orientation + visualisation
 python tools/demo_vertical_slice.py C08
@@ -68,6 +74,9 @@ python tools/demo_m3_pipeline.py C02 --max-setups 1
 
 # M7 — erreur injectée -> calibration -> compensation -> G-code -> envoi refusé
 python tools/demo_m7_calibration.py C10 --out /tmp/piece.ngc
+
+# M9 — configuration LinuxCNC dérivée, dépôt simulation accepté / matériel refusé
+python tools/demo_m9_linuxcnc.py --out out/config-xyzac
 ```
 
 Le pipeline M2 enchaîne : scène → accessibilité → orientation (+ vérification
@@ -99,9 +108,11 @@ Le prototype produit quatre images dans `out/` :
 | [ADR-006](docs/adr/ADR-006-jalon-M6.md) | jalon M6 : coût du calcul (×5,5), preuve de gouge, corps de l'outil de tour |
 | [ADR-007](docs/adr/ADR-007-jalon-M7.md) | jalon M7 : calibration mesurée, compensation, post-processeur sous scellés |
 | [ADR-008](docs/adr/ADR-008-jalon-M8.md) | jalon M8 : recettes de coupe, approche et dégagement, un programme exécutable |
+| [ADR-009](docs/adr/ADR-009-jalon-M9.md) | jalon M9 : configuration LinuxCNC dérivée, dépôt de programme, pas de lancement de cycle |
+| [Banc de debug](docs/banc-de-debug.md) | interface de contrôle visuel : ce qu'elle montre, comment la lancer |
 | [Accessibility Solver](docs/algorithms/accessibility-solver.md) | algorithme, garantie conservative, performance mesurée |
 | [Orientation Solver](docs/algorithms/orientation-solver.md) | Viterbi, segmentation 3+2, raffinement |
-| [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 108 tests, ce qui n'est pas testé |
+| [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 350 tests, ce qui n'est pas testé |
 
 ---
 
@@ -244,8 +255,15 @@ collision_engine → kinematics_solver → simulation_engine → safety_state_ma
   un outil ou corriger l'origine pièce **invalide l'approbation** — vérifié par
   test, pas seulement documenté.
 - **Seul** `linuxcnc_gateway` peut ouvrir un transport machine. Un test parcourt
-  le source pour le garantir.
+  l'AST de tout le paquet pour le garantir — et au jalon M9 la passerelle ne
+  s'en sert toujours pas : elle **écrit des fichiers**.
 - **LinuxCNC est la seule couche autorisée à produire du mouvement réel.**
+- **Aucun lancement de cycle n'existe**, et c'est une décision, pas un manque :
+  `linuxcnc_gateway.start_cycle` lève, et un test le maintient. Ce qui traverse
+  la frontière est un fichier, que l'opérateur charge lui-même.
+- Le dépôt vers une cible **matérielle** exige en plus une machine **qualifiée**
+  (pièce d'épreuve usinée puis mesurée). La simulation reste ouverte : l'exiger
+  des deux ferait une porte verrouillée sur sa propre clé.
 - **E-stop et interlocks critiques sont matériels et indépendants** du logiciel.
 - `vision_service` produit des **observations**, jamais des commandes.
 
