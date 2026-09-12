@@ -64,3 +64,63 @@ OPACITY = {
 def role_color(role: str) -> str:
     """Couleur d'un role de troncon, gris neutre si le role est inconnu."""
     return TOOL_ROLE.get(str(role), NEUTRAL)
+
+
+#: Couleur par motif de rejet d'orientation (``accessibility_solver.RejectReason``).
+#:
+#: Les familles se lisent a la teinte, le detail a la nuance :
+#:
+#:   vert      admissible
+#:   rouges    collision d'un troncon d'outil, du plus clair (arete) au plus
+#:             sombre (nez de broche) — la gravite monte avec l'assombrissement,
+#:             comme pour les troncons eux-memes
+#:   orange    limite de course, lineaire ou rotative
+#:   violet    singularite : ni collision ni butee, mais inexploitable
+#:   gris      ecarte par le filtre geometrique, avant tout calcul physique
+REASON_COLOR = {
+    "OK": VALID,
+    "BACK_FACING": "#5a5f66",
+    "LEAD_LIMIT": "#7c8189",
+    "AXIS_LIMITS": WARNING,
+    "MACHINE_TRAVEL": "#c9700f",
+    "SINGULARITY": "#9b59d0",
+    "COLLISION_CUTTING": "#f2726f",
+    "COLLISION_NECK": "#e1504f",
+    "COLLISION_SHANK": "#c93a42",
+    "COLLISION_HOLDER": "#a52836",
+    "COLLISION_SPINDLE": "#7d1b2a",
+    "MACHINE_COLLISION": "#5c1220",
+}
+
+#: Familles, pour les compteurs du panneau ACCESSIBILITE.
+REASON_FAMILY = {
+    "OK": "admissible",
+    "BACK_FACING": "geometrie",
+    "LEAD_LIMIT": "geometrie",
+    "AXIS_LIMITS": "cinematique",
+    "MACHINE_TRAVEL": "cinematique",
+    "SINGULARITY": "singularite",
+    "COLLISION_CUTTING": "collision outil",
+    "COLLISION_NECK": "collision outil",
+    "COLLISION_SHANK": "collision outil",
+    "COLLISION_HOLDER": "collision outil",
+    "COLLISION_SPINDLE": "collision outil",
+    "MACHINE_COLLISION": "collision machine",
+}
+
+FAMILY_COLOR = {
+    "admissible": VALID,
+    "geometrie": "#7c8189",
+    "cinematique": WARNING,
+    "singularite": "#9b59d0",
+    "collision outil": COLLISION,
+    "collision machine": "#5c1220",
+}
+
+
+def reason_color(reason_name: str) -> str:
+    return REASON_COLOR.get(str(reason_name), NEUTRAL)
+
+
+def reason_family(reason_name: str) -> str:
+    return REASON_FAMILY.get(str(reason_name), "autre")

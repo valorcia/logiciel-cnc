@@ -1,4 +1,4 @@
-# Banc de debug visuel — V0
+# Banc de debug visuel — V1
 
 Outil de contrôle pour le porteur du projet : **voir** ce que le moteur calcule
 au lieu d'en lire les journaux. Ce n'est pas l'IHM destinée au client.
@@ -129,6 +129,83 @@ planter dans VTK.
 | Panneau X/Y/Z/A/C | valeurs réelles d'une **pose d'inspection**, transport par le `KinematicsSolver` |
 | Capture | bouton `CAPTURE DEBUG`, ou `--capture` |
 
+## V1 — accessibilité et orientations 5 axes
+
+C'est le différenciateur du projet rendu manipulable. Toutes les données
+existaient déjà dans `AccessibilityMap` ; la V1 les affiche.
+
+```bash
+# Lister les faces d'une pièce
+python -m xyzac.ui.debug --step tests/corpus/step/C04_rainure_profonde.step --faces
+
+# Analyser une face, placer l'outil à la meilleure orientation, capturer
+python -m xyzac.ui.debug --step tests/corpus/step/C04_rainure_profonde.step \
+    --analyse-face 1 --points 8 --capture out/orient.png
+```
+
+Dans la fenêtre : onglet **Accessibilité** à droite → choisir une face, un
+outil, un nombre de points, puis `ANALYSER L'ACCESSIBILITÉ`. La liste des
+orientations s'affiche, admissibles d'abord ; **cliquer une ligne place l'outil
+à cette orientation** dans la vue 3D.
+
+### Les flèches
+
+Un éventail part du point de contact, une couleur par famille de rejet, un
+calque par famille — pour pouvoir demander « montre-moi seulement ce que le
+porte-outil interdit ».
+
+| couleur | famille |
+|---|---|
+| vert | admissible |
+| rouges, du clair au sombre | collision d'un tronçon : arête → col → tige → porte-outil → nez de broche |
+| rouge très sombre | collision d'un organe machine |
+| orange | hors course A/C ou X/Y/Z |
+| violet | singularité |
+| gris | écarté par le filtre géométrique, avant tout calcul physique |
+
+### Deux réglages par défaut qui changent tout, et pourquoi
+
+**Outil hémisphérique par défaut.** Sur la face supérieure du bloc C01, une
+fraise à bout **droit** a 2 orientations admissibles, une hémisphérique en a
+**106** — un facteur 53. Ce n'est pas un défaut du moteur mais une physique
+connue depuis M1 : sur une face plane une fraise à bout droit ne peut ni
+travailler verticale (singularité) ni inclinée (son talon enfonce la matière).
+Le banc ouvrait sur cet outil et faisait donc conclure que tout était
+inaccessible.
+
+**Singularité A = 0 permise par défaut.** Elle est un problème de *mouvement*,
+pas de position (ADR-003) : en indexation 3+2 l'axe C est bloqué et A = 0 est
+parfaitement utilisable. La rejeter fait déclarer inatteignable une face que
+trois axes suffisent à usiner. Effet mesuré : 106 orientations en la rejetant,
+118 en la permettant.
+
+Les deux réglages sont **affichés dans le panneau**, avec la jauge, le lead
+maximal, la finesse de grille, la hauteur de cales — et la mention que
+**l'absence de bridage rend le résultat optimiste**. Un nombre d'orientations
+admissibles ne veut rien dire sans ses hypothèses.
+
+### Le panneau Collision
+
+Tronçon par classe d'obstacle : arête, col, tige, porte-outil, nez de broche
+contre pièce, brut, bridage, et l'outil complet contre les organes machine.
+Trois choses qu'il ne fait pas, et chacune corrige un défaut de sa première
+version :
+
+- **pas de marge par ligne.** `min_margin` est un minimum global : le reporter
+  par ligne attribuait à la tige un nombre appartenant à l'arête, et affichait
+  « dégagé, −2,335 mm ». La marge figure une seule fois, avec le tronçon
+  auquel elle appartient ;
+- **agrégation par rôle**, pas par tronçon : un bec hémisphérique compte huit
+  tronçons `cutting` ;
+- il interroge le **garde machine**, car les organes machine ne sont pas dans
+  le champ d'obstacles — sans quoi la ligne MACHINE annonçait « aucun
+  obstacle » alors que c'est la cause de rejet la plus fréquente du corpus.
+
+Et il emploie la **même tolérance d'arête** que le solveur : sans elle il
+signalait « arête / PIÈCE : 804 points en violation » sur des orientations
+déclarées admissibles. Un panneau de debug qui contredit le moteur est pire
+que pas de panneau.
+
 ## Architecture
 
 Trois couches, et la séparation a une raison pratique autant que théorique :
@@ -180,11 +257,13 @@ Le bandeau « SIMULATION » de la fenêtre n'est pas un état : c'est une consta
 |---|---|
 | **Rotation à la souris non vérifiée par moi** | le conteneur de développement n'a pas d'écran. Elle est assurée par l'interacteur de VTK, qui n'est pas du code de ce projet. `--azimuth` / `--zoom` font la même chose par programme, et sont testés |
 | **Rendu dans le widget Qt non vérifié** | la fenêtre se construit, charge un STEP, attache la scène, bascule ses calques et se ferme proprement — tout cela est testé. Que des pixels apparaissent dans le widget ne l'est pas |
-| Organes machine justes à A = C = 0 seulement | ils ne sont pas animés par (A, C). À une autre pose d'inspection, le berceau et le plateau seraient au mauvais endroit |
+| ~~Organes machine justes à A = C = 0~~ | **corrigé en V1** : plateau, berceau et axe C sont animés par (A, C). Un test vérifie que la distance pièce/plateau est invariante à toute pose |
 | Pose d'inspection, pas trajectoire | les X/Y/Z/A/C sont ceux d'une pose **choisie**. Le panneau le dit |
-| Calques au-delà de la V0 | matière restante, bridage, trajectoire, orientations, volumes de collision : déclarés, désactivés, annoncés « non disponible » |
+| Calques restants | matière restante, bridage, trajectoire : déclarés, désactivés, annoncés « non disponible » |
+| Bridage non modélisé | l'analyse d'accessibilité est donc **optimiste**, et le panneau le dit |
+| Coût de l'analyse | ~70 ms par point de contact. Une face de mille points prendrait une minute : le nombre de points est un réglage, et le rapport dit toujours combien la face en contient |
+| Sélection de face à la souris | pas encore : la face se choisit dans une liste triée par aire. Les `face_id` sont déjà transportés dans le maillage |
 | Avances et vitesses | « non disponible » : `recipe_profiles` est une ébauche |
-| Sélection de face, d'outil, de trajectoire | pas en V0. Les identifiants de face sont déjà transportés dans le maillage |
 | Une capture reconstruit la scène | ~1 s. Voir `scene.capture` : sur le rendu logiciel sans écran, une fenêtre de rendu ne produit qu'une image et ignore tout changement ultérieur |
 
 ## Rendu sans écran

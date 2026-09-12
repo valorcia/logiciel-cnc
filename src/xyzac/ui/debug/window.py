@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+
 from . import palette, scene as scene_mod
 from .state import BenchState
 
@@ -90,9 +92,11 @@ class DebugWindow:
             self.win.setCentralWidget(QtWidgets.QLabel(
                 "vue 3D non initialisee (mode non interactif)"))
 
+        self.result = None          # dernier AccessibilityResult
         self._build_toolbar()
         self._build_layers_dock()
         self._build_info_dock()
+        self._build_analysis_dock()
         self._refresh_panels()
 
     # ------------------------------------------------------------------ widgets
@@ -153,7 +157,7 @@ class DebugWindow:
         self.win.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
         self.info_dock = dock
 
-    def _refresh_panels(self) -> None:
+    def _refresh_panels(self, candidate=None) -> None:
         QtCore, QtGui, QtWidgets = _qt()
         self.info_tabs.clear()
         st = self.state
@@ -164,8 +168,165 @@ class DebugWindow:
             ("Brut", st.stock_lines()),
             ("Outil", st.tool_lines()),
         ]
+        if candidate is not None:
+            pages.insert(0, ("Orientation", candidate.lines()))
+        if st.part is not None:
+            try:
+                mat = st.collision_matrix(
+                    candidate.direction if candidate is not None else None)
+                rows = [(f"{a} / {b}", c) for a, b, c in mat]
+            except Exception as exc:                             # noqa: BLE001
+                rows = [("Collision", f"non disponible : {exc}")]
+            pages.append(("Collision", rows))
         for name, rows in pages:
             self.info_tabs.addTab(_kv_table(rows, QtWidgets, QtCore), name)
+
+    def _build_analysis_dock(self) -> None:
+        """Onglet ACCESSIBILITE : le differenciateur du projet, rendu manipulable."""
+        QtCore, QtGui, QtWidgets = _qt()
+        dock = QtWidgets.QDockWidget("Accessibilite", self.win)
+        dock.setAllowedAreas(QtCore.Qt.RightDockWidgetArea
+                             | QtCore.Qt.BottomDockWidgetArea)
+        w = QtWidgets.QWidget()
+        lay = QtWidgets.QVBoxLayout(w)
+
+        form = QtWidgets.QFormLayout()
+        self.cb_face = QtWidgets.QComboBox()
+        form.addRow("Face", self.cb_face)
+
+        self.cb_tool = QtWidgets.QComboBox()
+        self.cb_tool.addItems(["hemispherique (bec rond)", "bout droit"])
+        self.cb_tool.currentIndexChanged.connect(self.on_tool_changed)
+        form.addRow("Outil", self.cb_tool)
+
+        self.sp_points = QtWidgets.QSpinBox()
+        self.sp_points.setRange(1, 200)
+        self.sp_points.setValue(8)
+        self.sp_points.setToolTip(
+            "Points de contact analyses. Environ 70 ms par point : une face "
+            "entiere prendrait des minutes. Le rapport dit toujours combien de "
+            "points la face contient reellement.")
+        form.addRow("Points analyses", self.sp_points)
+
+        self.chk_sing = QtWidgets.QCheckBox("rejeter la singularite A = 0")
+        self.chk_sing.setToolTip(
+            "Decoche par defaut : la singularite est un probleme de MOUVEMENT, "
+            "pas de position. En indexation 3+2 l'axe C est bloque et A = 0 est "
+            "utilisable. La rejeter fait declarer inatteignable une face que "
+            "trois axes suffisent a usiner.")
+        form.addRow("", self.chk_sing)
+        lay.addLayout(form)
+
+        self.btn_analyse = QtWidgets.QPushButton("ANALYSER L'ACCESSIBILITE")
+        self.btn_analyse.clicked.connect(self.on_analyse)
+        lay.addWidget(self.btn_analyse)
+
+        self.lbl_verdict = QtWidgets.QLabel("aucune analyse lancee")
+        self.lbl_verdict.setWordWrap(True)
+        self.lbl_verdict.setStyleSheet("font-weight: bold;")
+        lay.addWidget(self.lbl_verdict)
+
+        self.tbl_summary = QtWidgets.QTableWidget(0, 2)
+        self.tbl_summary.horizontalHeader().setVisible(False)
+        self.tbl_summary.verticalHeader().setVisible(False)
+        self.tbl_summary.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        lay.addWidget(self.tbl_summary)
+
+        lay.addWidget(QtWidgets.QLabel("Orientations (cliquer pour placer l'outil)"))
+        self.tbl_orient = QtWidgets.QTableWidget(0, 5)
+        self.tbl_orient.setHorizontalHeaderLabels(
+            ["#", "statut", "A", "C", "marge"])
+        self.tbl_orient.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.tbl_orient.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.tbl_orient.itemSelectionChanged.connect(self.on_orientation_selected)
+        lay.addWidget(self.tbl_orient)
+
+        dock.setWidget(w)
+        self.win.addDockWidget(QtCore.Qt.RightDockWidgetArea, dock)
+        self.analysis_dock = dock
+
+    def _fill_face_combo(self) -> None:
+        self.cb_face.clear()
+        for idx, stype, area in self.state.face_list():
+            self.cb_face.addItem(f"face {idx} — {stype} — {area:.0f} mm2", idx)
+
+    def on_tool_changed(self, *_):
+        kind = "endmill" if self.cb_tool.currentIndex() == 1 else "ballnose"
+        self.state.set_default_tool(kind)
+        self.rebuild_scene()
+        self._refresh_panels()
+        self.status(f"outil : {self.state.tool.tool_id}")
+
+    def on_analyse(self, *_):
+        """ANALYSER L'ACCESSIBILITE : appelle le solveur, affiche le resultat."""
+        QtCore, QtGui, QtWidgets = _qt()
+        if self.state.part_shape is None:
+            self.status("aucune piece chargee")
+            return
+        face = self.cb_face.currentData()
+        if face is None:
+            self.status("aucune face selectionnee")
+            return
+        n = int(self.sp_points.value())
+        self.status(f"analyse de la face {face} sur {n} points — "
+                    "environ 70 ms par point...")
+        QtWidgets.QApplication.processEvents()
+        try:
+            res = self.state.analyse_face(
+                int(face), max_points=n,
+                reject_singular=self.chk_sing.isChecked())
+        except Exception as exc:                                 # noqa: BLE001
+            QtWidgets.QMessageBox.critical(self.win, "Analyse impossible", str(exc))
+            self.status(f"analyse impossible : {exc}")
+            return
+        self.result = res
+        self._show_result(res)
+        self.rebuild_scene()
+        self.status(f"{res.verdict()} — {res.elapsed_s:.2f} s")
+
+    def _show_result(self, res) -> None:
+        QtCore, QtGui, QtWidgets = _qt()
+        self.lbl_verdict.setText(res.verdict())
+
+        rows = res.summary_lines()
+        self.tbl_summary.setRowCount(len(rows))
+        for i, (k, v) in enumerate(rows):
+            self.tbl_summary.setItem(i, 0, QtWidgets.QTableWidgetItem(str(k)))
+            self.tbl_summary.setItem(i, 1, QtWidgets.QTableWidgetItem(str(v)))
+        self.tbl_summary.resizeColumnsToContents()
+
+        # Admissibles en tete, par marge decroissante : la premiere ligne est
+        # l'orientation qu'on retiendrait.
+        cands = sorted(res.candidates,
+                       key=lambda c: (not c.feasible, -c.margin_mm))
+        self._ordered = cands
+        self.tbl_orient.setRowCount(len(cands))
+        for i, c in enumerate(cands):
+            col = palette.reason_color(c.reason_name)
+            vals = [str(c.index),
+                    "ADMISSIBLE" if c.feasible else c.reason_name,
+                    f"{c.a_deg:+.2f}", f"{c.c_deg:+.2f}",
+                    "—" if not np.isfinite(c.margin_mm) else f"{c.margin_mm:+.3f}"]
+            for j, v in enumerate(vals):
+                it = QtWidgets.QTableWidgetItem(v)
+                it.setForeground(QtGui.QBrush(QtGui.QColor(col)))
+                self.tbl_orient.setItem(i, j, it)
+        self.tbl_orient.resizeColumnsToContents()
+
+    def on_orientation_selected(self, *_):
+        """Place l'outil A l'orientation choisie et detaille ses valeurs."""
+        QtCore, QtGui, QtWidgets = _qt()
+        if self.result is None or not getattr(self, "_ordered", None):
+            return
+        rows = self.tbl_orient.selectionModel().selectedRows()
+        if not rows:
+            return
+        cnd = self._ordered[rows[0].row()]
+        self.state.set_inspect_from_candidate(self.result, cnd)
+        self.rebuild_scene()
+        self._refresh_panels(candidate=cnd)
+        self.status(f"orientation #{cnd.index} : "
+                    + ("ADMISSIBLE" if cnd.feasible else cnd.reason_name))
 
     # ------------------------------------------------------------------ actions
 
@@ -190,6 +351,8 @@ class DebugWindow:
                 self.win, "Import STEP refuse", str(exc))
             self.status(f"Import refuse : {exc}")
             return
+        self.result = None
+        self._fill_face_combo()
         self.rebuild_scene()
         self._refresh_panels()
         self.status(f"{self.state.part.path.name} charge — "
@@ -201,6 +364,11 @@ class DebugWindow:
         self.interactor.clear()
         self.scene = scene_mod.build_scene(
             self.state, plotter=self.interactor, off_screen=False)
+        if self.result is not None:
+            self.scene.add_orientations(
+                self.result, self.state.machine, self.state.mount_offset,
+                self.state.inspect_a_deg, self.state.inspect_c_deg,
+                length=scene_mod._arrow_length(self.state))
         self._apply_all_checkboxes()
 
     def _apply_all_checkboxes(self) -> None:
@@ -253,7 +421,8 @@ class DebugWindow:
         out = Path("out") / f"debug_{self.state.part.path.stem}.png"
         self.status("Capture en cours...")
         try:
-            p = scene_mod.capture(self.state, out, hidden=self.hidden_layers())
+            p = scene_mod.capture(self.state, out, hidden=self.hidden_layers(),
+                                  accessibility=self.result)
         except Exception as exc:                                 # noqa: BLE001
             # Un echec doit etre VU, donc modal. Un succes non : on capture
             # souvent sur un banc, et une boite a fermer chaque fois ferait

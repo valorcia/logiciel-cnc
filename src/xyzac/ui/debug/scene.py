@@ -48,9 +48,27 @@ LAYERS: list[tuple[str, str, bool]] = [
     ("limits", "Limites machine", True),
     ("fixtures", "Bridage", False),
     ("path", "Trajectoire", False),
-    ("orientations", "Orientations outil", False),
+    ("orient_ok", "Orientations admissibles", True),
+    ("orient_tool", "Rejets — collision outil", True),
+    ("orient_machine", "Rejets — collision machine", True),
+    ("orient_kin", "Rejets — courses A/C", True),
+    ("orient_sing", "Rejets — singularite", True),
+    ("orient_geom", "Rejets — geometrie", True),
+    ("contact", "Point de contact analyse", True),
     ("collisions", "Volumes de collision", False),
 ]
+
+#: Famille de motif de rejet -> calque. Un calque par famille permet d'isoler
+#: une cause : « montre-moi seulement ce que le porte-outil interdit » est la
+#: question qu'on se pose devant une face refusee.
+FAMILY_LAYER = {
+    "admissible": "orient_ok",
+    "collision outil": "orient_tool",
+    "collision machine": "orient_machine",
+    "cinematique": "orient_kin",
+    "singularite": "orient_sing",
+    "geometrie": "orient_geom",
+}
 
 #: Roles de troncons regroupes par calque, pour que l'operateur puisse isoler
 #: le porte-outil ou le nez de broche — les deux pieces dont le degagement est
@@ -148,6 +166,39 @@ def transport_to_machine(mesh, machine: MachineKinematics, mount_offset,
     return out
 
 
+def transport_by_frame(mesh, machine: MachineKinematics, frame: str,
+                       a_deg: float, c_deg: float):
+    """Amene un maillage du repere de son MAILLON vers le repere machine.
+
+    Les organes de collision sont decrits dans le repere du maillon qui les
+    porte (``machine``, ``cradle_A``, ``table_C``). Les dessiner sans les
+    animer les laisse a leur place de A = C = 0 : a A = -75 deg la piece part a
+    116 mm en Y et -61 mm en Z tandis que le plateau reste plat, donc l'image
+    montre une piece detachee du plateau sur lequel elle est bridee.
+
+    Sur une vue dont le sujet EST le degagement machine, c'est plus qu'un
+    defaut d'esthetique — c'est l'inverse de ce qu'on vient verifier. La chaine
+    employee ici est la meme que celle du transport de la piece, ce qui garantit
+    que les deux restent solidaires.
+    """
+    from ...kinematics_solver.solver import KinematicsSolver
+
+    if mesh is None or mesh.n_points == 0 or frame == "machine":
+        return mesh
+    ks = KinematicsSolver(machine)
+    out = mesh.copy()
+    pts = np.asarray(out.points, dtype=float)
+    if frame == "table_C":
+        # Porte par le plateau : subit C puis A, comme la piece elle-meme.
+        out.points = np.array([ks.part_to_machine_point(q, a_deg, c_deg) for q in pts])
+    elif frame == "cradle_A":
+        # Porte par le berceau : subit A seulement.
+        out.points = np.array([ks.part_to_machine_point(q, a_deg, 0.0) for q in pts])
+    else:
+        raise ValueError(f"repere de volume machine inconnu : {frame}")
+    return out
+
+
 def box_mesh(lo, hi):
     pv = _pv()
     lo = np.asarray(lo, dtype=float)
@@ -178,6 +229,9 @@ class DebugScene:
     meshes: dict[str, list] = field(default_factory=dict)
     visible: dict[str, bool] = field(default_factory=dict)
     unavailable: set[str] = field(default_factory=set)
+    #: famille -> (fleches dessinees, fleches totales). Non egaux = affichage
+    #: borne, et le panneau doit le dire.
+    drawn_counts: dict[str, tuple[int, int]] = field(default_factory=dict)
 
     # ------------------------------------------------------------------ calques
 
@@ -218,24 +272,26 @@ class DebugScene:
                       opacity=palette.OPACITY["tool"], smooth_shading=True,
                       name=f"tool_{i}_{seg.role.value}")
 
-    def add_machine_volumes(self, machine: MachineKinematics) -> None:
+    def add_machine_volumes(self, machine: MachineKinematics,
+                            a_deg: float = 0.0, c_deg: float = 0.0) -> None:
         """Organes machine, dans leur propre repere.
 
-        Dessines dans le repere MACHINE, qui est aussi celui ou toute la scene
-        est exprimee : la piece et le brut y sont transportes par
-        ``transport_to_machine``. Les organes portes par le berceau A et le
-        plateau C ne sont PAS animes par (A, C) en V0 — a la pose d'inspection
-        A = C = 0 ils coincident avec leur repere. Le calque est donc juste a
-        A = C = 0, et seulement la ; c'est dit ici plutot que corrige a moitie.
+        Dessines dans le repere MACHINE, comme toute la scene, et **animes par
+        (A, C)** : le plateau suit C puis A, le berceau suit A seulement, la
+        piece suit les deux. Les trois restent donc solidaires a toute pose, ce
+        qui est la condition pour que la vue des orientations veuille dire
+        quelque chose — c'est le degagement contre ces organes qu'elle montre.
         """
         for cv in machine.collision_volumes:
             mesh = (box_mesh(cv.lo, cv.hi) if cv.kind == "box"
                     else cylinder_mesh(cv.base, cv.axis, cv.radius, cv.height))
+            mesh = transport_by_frame(mesh, machine, cv.frame, a_deg, c_deg)
             self._add("machine", mesh, color=palette.MACHINE,
                       opacity=palette.OPACITY["machine"], show_edges=False,
                       name=f"mv_{cv.name}")
 
-    def add_machine_axes(self, machine: MachineKinematics, length: float = 90.0) -> None:
+    def add_machine_axes(self, machine: MachineKinematics, length: float = 90.0,
+                         a_deg: float = 0.0) -> None:
         """Les droites des axes A et C, a leur position declaree.
 
         Ce sont les grandeurs que ``assembly_calibration`` mesure ; les voir est
@@ -244,12 +300,20 @@ class DebugScene:
         calibration n'est chargee.
         """
         pv = _pv()
-        for point, direction, label in (
-            (machine.pivot_a, (1.0, 0.0, 0.0), "A"),
-            (machine.pivot_c, (0.0, 0.0, 1.0), "C"),
+        # L'axe A est fixe dans le repere machine ; l'axe C est porte par le
+        # berceau, donc il basculE avec A. Les dessiner tous deux fixes ferait
+        # croire a une cinematique ou le plateau ne s'incline pas.
+        rot_a = machine.rotation_machine_from_part(a_deg, 0.0)
+        for point, direction, label, moving in (
+            (machine.pivot_a, (1.0, 0.0, 0.0), "A", False),
+            (machine.pivot_c, (0.0, 0.0, 1.0), "C", True),
         ):
             p = np.asarray(point, dtype=float)
             d = normalize(np.asarray(direction, dtype=float))
+            if moving:
+                pa = np.asarray(machine.pivot_a, dtype=float)
+                p = rot_a @ (p - pa) + pa
+                d = normalize(rot_a @ d)
             line = pv.Line(p - d * length, p + d * length)
             self._add("machine_axes", line, color=palette.WARNING, line_width=3,
                       name=f"axis_{label}")
@@ -262,6 +326,94 @@ class DebugScene:
         hi = (machine.x.max_mm, machine.y.max_mm, machine.z.max_mm)
         self._add("limits", box_mesh(lo, hi), color=palette.WARNING,
                   style="wireframe", line_width=1, opacity=0.6, name="limits")
+
+    def add_orientations(self, result, machine: MachineKinematics, mount_offset,
+                         a_deg: float, c_deg: float, *,
+                         length: float = 20.0, only_family: str | None = None,
+                         max_arrows_per_family: int = 400) -> None:
+        """Fleches 3D des orientations candidates, un calque par famille de motif.
+
+        Les fleches partent toutes du MEME point de contact et s'ouvrent en
+        eventail : c'est la forme naturelle de la question posee — en ce point,
+        quelles directions d'outil sont utilisables.
+
+        Elles sont dessinees dans le repere de la scene (machine), donc les
+        directions sont tournees par la pose d'inspection. Sans cela, un
+        eventail calcule en repere piece serait affiche penche des que A ou C
+        n'est pas nul.
+
+        ``max_arrows_per_family`` borne l'affichage : une grille a 4
+        subdivisions produit 2562 directions, et autant de fleches noient la
+        piece au lieu de la montrer. Quand la borne mord, le nombre reellement
+        dessine est conserve dans ``self.drawn_counts`` pour que le panneau
+        puisse le dire.
+        """
+        pv = _pv()
+        from ...kinematics_solver.solver import KinematicsSolver
+
+        ks = KinematicsSolver(machine)
+        origin = ks.part_to_machine_point(
+            np.asarray(result.point, dtype=float) + np.asarray(mount_offset, float),
+            a_deg, c_deg)
+        rot = machine.rotation_machine_from_part(a_deg, c_deg)
+
+        groups: dict[str, list] = {}
+        for cnd in result.candidates:
+            fam = cnd.family
+            if only_family is not None and fam != only_family:
+                continue
+            groups.setdefault(fam, []).append(cnd)
+
+        from . import palette as pal
+
+        for fam, lst in groups.items():
+            layer = FAMILY_LAYER.get(fam, "orient_geom")
+            shown = lst[:max_arrows_per_family]
+            self.drawn_counts[fam] = (len(shown), len(lst))
+            dirs = np.array([rot @ normalize(c.direction) for c in shown])
+            pts = np.tile(origin, (len(shown), 1))
+            cloud = pv.PolyData(pts)
+            cloud["vectors"] = dirs
+            cloud.set_active_vectors("vectors")
+            glyph = cloud.glyph(orient="vectors", scale=False,
+                                factor=float(length), geom=pv.Arrow())
+            # Couleur du motif DOMINANT de la famille : dans une meme famille
+            # les nuances sont proches, et une couleur par fleche empecherait de
+            # lire la famille d'un coup d'oeil.
+            noms = {}
+            for c in shown:
+                noms[c.reason_name] = noms.get(c.reason_name, 0) + 1
+            dominant = max(noms, key=noms.get) if noms else "OK"
+            self._add(layer, glyph, color=pal.reason_color(dominant),
+                      name=f"orient_{fam.replace(' ', '_')}")
+
+        self._add("contact", pv.Sphere(radius=max(length * 0.06, 0.3),
+                                       center=origin),
+                  color=palette.PATH, name="contact_point")
+
+    def highlight_orientation(self, result, machine: MachineKinematics, mount_offset,
+                              a_deg: float, c_deg: float, candidate, *,
+                              length: float = 20.0) -> None:
+        """Met en evidence UNE orientation, celle que l'operateur interroge.
+
+        Remplace la precedente : deux fleches mises en evidence en meme temps
+        ne designeraient rien.
+        """
+        pv = _pv()
+        from ...kinematics_solver.solver import KinematicsSolver
+
+        for a in self.actors.pop("highlight", []):
+            self.plotter.remove_actor(a)
+        self.meshes.pop("highlight", None)
+
+        ks = KinematicsSolver(machine)
+        origin = ks.part_to_machine_point(
+            np.asarray(result.point, dtype=float) + np.asarray(mount_offset, float),
+            a_deg, c_deg)
+        d = machine.rotation_machine_from_part(a_deg, c_deg) @ normalize(candidate.direction)
+        arrow = pv.Arrow(start=origin, direction=d, scale=float(length) * 1.35,
+                         tip_radius=0.14, shaft_radius=0.05)
+        self._add("highlight", arrow, color="#ffffff", name="highlight")
 
     # ------------------------------------------------------------------ controle
 
@@ -407,8 +559,8 @@ def build_scene(state, *, plotter=None, off_screen: bool = True,
         # machine, sans transport.
         scene.add_tool(state.tool, state.machine_tcp(), np.array([0.0, 0.0, 1.0]))
 
-    scene.add_machine_volumes(state.machine)
-    scene.add_machine_axes(state.machine)
+    scene.add_machine_volumes(state.machine, a, c)
+    scene.add_machine_axes(state.machine, a_deg=a)
     scene.add_travel_limits(state.machine)
 
     plotter.add_axes(interactive=False)
@@ -419,9 +571,22 @@ def build_scene(state, *, plotter=None, off_screen: bool = True,
     return scene
 
 
+def _arrow_length(state) -> float:
+    """Longueur de fleche proportionnee a la piece.
+
+    Une longueur fixe donne des fleches minuscules sur une piece de 200 mm et
+    des fleches qui la traversent sur une piece de 10 mm.
+    """
+    if state.part is None:
+        return 20.0
+    diag = float(np.linalg.norm(state.part.bbox.hi - state.part.bbox.lo))
+    return max(diag * 0.45, 5.0)
+
+
 def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
             elevation_deg: float = 0.0, zoom: float = 1.0, fit: str = "part",
-            window_size=(1280, 860), deflection: float = 0.05) -> Path:
+            window_size=(1280, 860), deflection: float = 0.05,
+            accessibility=None, arrow_length: float | None = None) -> Path:
     """Capture PNG d'un etat, par un plotter NEUF a chaque appel.
 
     **Pourquoi un plotter neuf et non une capture du plotter vivant.** Mesure
@@ -474,11 +639,18 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
                        opacity=palette.OPACITY["tool"], smooth_shading=True,
                        name=f"tool_{i}_{seg.role.value}")
     if "machine" not in hide:
-        scene.add_machine_volumes(state.machine)
+        scene.add_machine_volumes(state.machine, a, c)
     if "machine_axes" not in hide:
-        scene.add_machine_axes(state.machine)
+        scene.add_machine_axes(state.machine, a_deg=a)
     if "limits" not in hide:
         scene.add_travel_limits(state.machine)
+
+    if accessibility is not None:
+        L = arrow_length if arrow_length is not None else _arrow_length(state)
+        scene.add_orientations(accessibility, state.machine, mo, a, c, length=L)
+        for key in list(scene.actors):
+            if key in hide:
+                scene.set_visible(key, False)
 
     plotter.add_axes(interactive=False)
     if fit == "part":

@@ -30,7 +30,7 @@ from ...kinematics_solver.solver import KinematicsSolver
 from ...machine_model import MachineKinematics, default_xyzac_kit
 from ...stock_engine import stock_from_part
 from ...stock_engine.stock import Stock
-from ...tool_model import build_endmill
+from ...tool_model import build_ballnose, build_endmill
 from ...tool_model.assembly import ToolAssembly
 
 
@@ -120,6 +120,7 @@ class BenchState:
     part: PartInfo | None = None
     stock: Stock | None = None
     tool: ToolAssembly | None = None
+    tool_kind: str = "ballnose"
     #: Pose a laquelle l'outil est DESSINE. Choisie, pas calculee.
     inspect_tcp: np.ndarray = field(default_factory=lambda: np.zeros(3))
     inspect_a_deg: float = 0.0
@@ -135,6 +136,9 @@ class BenchState:
     #: encastrerait la piece dans le plateau (voir ``Setup.part_to_table_mm``).
     mount_offset_mm: list[float] = field(default_factory=lambda: [0.0, 0.0, 25.0])
     messages: list[str] = field(default_factory=list)
+    #: Champ d'obstacles mis en cache : son echantillonnage coute plusieurs
+    #: dizaines de milliers de points et ne depend que du montage.
+    _obstacles: object | None = field(default=None, repr=False)
 
     # ------------------------------------------------------------------ chargement
 
@@ -165,6 +169,7 @@ class BenchState:
         self.part_shape = shape
         self.part = info
         self.messages = []
+        self._obstacles = None      # la scene change : le cache est perime
         if heal.describe():
             self.messages.append(f"Import : {heal.describe()}")
 
@@ -176,15 +181,39 @@ class BenchState:
         self.inspect_tcp = np.array([bb.center[0], bb.center[1], bb.hi[2]])
         return info
 
-    def set_default_tool(self) -> ToolAssembly:
-        """Outil de demonstration : fraise 2 tailles complete avec porte-outil.
+    def set_default_tool(self, kind: str = "ballnose", *, diameter: float = 6.0,
+                         stickout: float = 45.0,
+                         holder: str = "ER16") -> ToolAssembly:
+        """Outil du banc, complet avec porte-outil et nez de broche.
 
-        « Complete » est le mot qui compte : le differenciateur du projet est de
+        « Complet » est le mot qui compte : le differenciateur du projet est de
         modeliser bec, goujure, col, tige, porte-outil et nez de broche, donc le
-        banc doit les montrer tous — c'est precisement ce qu'on vient verifier.
+        banc doit les montrer tous.
+
+        **Hemispherique par defaut, et ce n'est pas un detail d'agrement.**
+        Mesure sur la face superieure du bloc C01 : une fraise a bout DROIT y a
+        2 orientations admissibles, une hemispherique en a 106 — un facteur 53.
+        Ce n'est pas un defaut du moteur mais une physique connue depuis M1 :
+        sur une face plane, une fraise a bout droit ne peut ni travailler
+        verticale (singularite) ni inclinee (son talon enfonce la matiere). Un
+        banc qui ouvrirait sur cet outil ferait conclure a l'operateur que tout
+        est inaccessible, alors que le calcul est juste.
+
+        ``kind`` vaut ``"ballnose"`` ou ``"endmill"`` : les deux sont utiles, et
+        comparer l'un a l'autre est justement une des choses que ce banc sert a
+        faire.
         """
-        self.tool = build_endmill("EM6", diameter=6.0, flute_length=20.0,
-                                  stickout=45.0, holder_type="ER16")
+        if kind == "endmill":
+            self.tool = build_endmill("EM6", diameter=diameter, flute_length=20.0,
+                                      stickout=stickout, holder_type=holder)
+        elif kind == "ballnose":
+            self.tool = build_ballnose("BN6", diameter=diameter, flute_length=20.0,
+                                       stickout=stickout, holder_type=holder)
+        else:
+            raise ValueError(f"type d'outil inconnu : {kind!r} "
+                             "(attendu 'ballnose' ou 'endmill')")
+        self.tool_kind = kind
+        self._obstacles = None          # la scene change avec l'outil
         return self.tool
 
     # ------------------------------------------------------------------ lectures
@@ -227,6 +256,299 @@ class BenchState:
                                and self.machine.z.contains(p[2])),
             singular=bool(self.machine.is_singular(a)),
         )
+
+    # ------------------------------------------------------- accessibilite
+
+    def build_setup(self):
+        """Montage minimal, pour que le solveur dispose d'une scene.
+
+        Le banc ne connait pas de bridage en V1 : le montage ne porte que la
+        machine, la piece, le brut et l'outil. C'est une hypothese ASSUMEE, et
+        elle est optimiste — un bridage reel retire des orientations. Le panneau
+        d'accessibilite le dit, pour qu'un resultat favorable ne soit pas lu
+        comme un feu vert.
+        """
+        from ...machine_model import Setup
+
+        if self.part is None:
+            raise RuntimeError("aucune piece chargee")
+        if self.tool is None:
+            self.set_default_tool()
+        return Setup(
+            setup_id=f"banc-{self.part.path.stem}", machine=self.machine,
+            part_step_path=str(self.part.path), stock=self.stock,
+            tools=[self.tool],
+            part_to_table_mm=list(self.mount_offset_mm),
+        )
+
+    def obstacle_field(self, *, material: str = "finished"):
+        """Champ d'obstacles de la scene, mis en cache.
+
+        Son calcul echantillonne piece, brut et organes machine : quelques
+        dizaines de milliers de points. Le refaire a chaque analyse doublerait
+        le temps percu pour un resultat identique.
+        """
+        if self._obstacles is None:
+            from ...simulation_engine.scene import build_scene as build_sim_scene
+
+            self._obstacles = build_sim_scene(
+                self.build_setup(), material_state=material).obstacles
+        return self._obstacles
+
+    def analyse_face(self, face_index: int, *, max_points: int = 12,
+                     spacing: float = 2.0, subdivisions: int = 3,
+                     max_lead_deg: float = 45.0, reject_singular: bool = False,
+                     point_choice: str = "median"):
+        """Analyse l'accessibilite d'une face. Appelle le SOLVEUR, ne calcule rien.
+
+        ``max_points`` borne le coût : une resolution complete coûte de l'ordre
+        de 70 ms par point de contact (mesure du jalon M6), donc une face de
+        mille points prendrait plus d'une minute. Le resultat annonce toujours
+        combien de points il a reellement traites sur combien la face en
+        contient — un echantillon qui se presenterait comme la face entiere
+        serait un mensonge par omission.
+
+        ``reject_singular=False`` par defaut, contrairement au solveur. Le banc
+        repond a « cette face est-elle ATTEIGNABLE », pas a « peut-on s'y
+        deplacer en continu ». Or la singularite A -> 0 est un probleme de
+        MOUVEMENT et non de position (ADR-003) : en indexation 3+2 l'axe C est
+        bloque et A = 0 est parfaitement utilisable. La rejeter ferait declarer
+        inatteignable une face que trois axes suffisent a usiner. Effet mesure
+        sur la face superieure de C01 avec un bec hemispherique : 106
+        orientations admissibles en la rejetant, 118 en la permettant.
+
+        ``point_choice`` designe le point dont les orientations sont detaillees :
+        ``"median"`` prend celui de rang median en nombre d'admissibles, donc
+        representatif ; ``"worst"`` le plus contraint, ce qui est souvent le plus
+        instructif ; ``"first"`` le premier, utile pour comparer deux executions.
+        """
+        import time
+
+        from ...accessibility_solver.solver import (
+            REMEDY,
+            AccessibilityConfig,
+            AccessibilitySolver,
+        )
+        from . import palette
+
+        if self.part_shape is None:
+            raise RuntimeError("aucune piece chargee")
+
+        samp = brep.sample_face(self.part_shape, face_index, spacing=spacing)
+        n_face = len(samp.points)
+        if n_face == 0:
+            raise RuntimeError(f"face {face_index} sans point echantillonne")
+
+        take = min(int(max_points), n_face)
+        # Prefixe contigu et non echantillonnage reparti : un ``linspace``
+        # detruirait le voisinage des points, defaut mesure au jalon M4.
+        pts, nrm = samp.points[:take], samp.normals[:take]
+
+        cfg = AccessibilityConfig(subdivisions=subdivisions,
+                                  max_lead_deg=max_lead_deg, cutting_depth=0.0,
+                                  reject_singular=reject_singular)
+        solver = AccessibilitySolver(self.tool or self.set_default_tool(),
+                                     self.machine, self.obstacle_field(), cfg,
+                                     mount_offset_mm=self.mount_offset)
+
+        t0 = time.perf_counter()
+        maps = solver.solve_points(pts, nrm)
+        elapsed = time.perf_counter() - t0
+
+        n_ok_points = sum(1 for m in maps if m.accessible)
+        if point_choice == "worst":
+            k = int(np.argmin([m.n_feasible for m in maps]))
+        elif point_choice == "first":
+            k = 0
+        else:
+            order = np.argsort([m.n_feasible for m in maps])
+            k = int(order[len(order) // 2])
+        chosen = maps[k]
+
+        infos = {f.index: f for f in brep.face_info(self.part_shape)}
+        stype = infos[face_index].surface_type if face_index in infos else "?"
+
+        cands: list[OrientationCandidate] = []
+        counts: dict[str, int] = {}
+        for i in range(len(chosen.directions)):
+            name = self._reason_name(int(chosen.reason[i]))
+            fam = palette.reason_family(name)
+            counts[fam] = counts.get(fam, 0) + 1
+            cands.append(OrientationCandidate(
+                index=i, direction=np.asarray(chosen.directions[i], dtype=float),
+                a_deg=float(chosen.a_deg[i]), c_deg=float(chosen.c_deg[i]),
+                feasible=bool(chosen.feasible[i]),
+                margin_mm=float(chosen.margin[i]),
+                reason_name=name,
+                remedy=REMEDY.get(int(chosen.reason[i]), ""),
+            ))
+
+        # TCP machine, seulement pour les orientations admissibles : les autres
+        # n'ont pas de pose realisable, et en afficher une serait inventer.
+        from ...accessibility_solver.solver import tcp_from_contact
+        from ...kinematics_solver.solver import KinematicsSolver
+
+        ks = KinematicsSolver(self.machine)
+        for cnd in cands:
+            if not cnd.feasible:
+                continue
+            tcp = tcp_from_contact(chosen.point, chosen.normal, cnd.direction,
+                                   self.tool)
+            cnd.tcp_machine = ks.part_to_machine_point(
+                np.asarray(tcp) + self.mount_offset, cnd.a_deg, cnd.c_deg)
+
+        return AccessibilityResult(
+            face_index=int(face_index), surface_type=stype,
+            n_points_face=n_face, n_points_solved=take,
+            point=np.asarray(chosen.point, dtype=float),
+            normal=np.asarray(chosen.normal, dtype=float),
+            candidates=cands, counts=counts,
+            per_point_accessible=n_ok_points,
+            stage_counts=dict(chosen.stage_counts), elapsed_s=elapsed,
+            hypotheses={
+                "outil": f"{self.tool.tool_id} ({self.tool_kind})",
+                "jauge": f"{self.tool.gauge_length:.1f} mm",
+                "lead maximal": f"{max_lead_deg:.0f} deg",
+                "grille de directions": f"{subdivisions} subdivisions",
+                "singularite A=0": "rejetee" if reject_singular else "permise",
+                "bridage": "AUCUN pris en compte — resultat OPTIMISTE",
+                "cales sous piece": f"{self.mount_offset_mm[2]:.1f} mm",
+            },
+        )
+
+    def collision_matrix(self, direction: np.ndarray | None = None,
+                         tcp_part: np.ndarray | None = None
+                         ) -> list[tuple[str, str, str]]:
+        """Detail des collisions, par ROLE de troncon et classe d'obstacle.
+
+        Rend des lignes ``(troncon, obstacle, verdict)``. C'est le panneau du
+        point 8 du cahier des charges : savoir non pas « ca touche » mais
+        **quoi touche quoi**, parce que le remede en depend entierement — une
+        tige qui touche demande une jauge plus longue, un nez de broche qui
+        touche demande souvent de renoncer.
+
+        Trois choses que ce tableau ne fait PAS, et chacune corrige un defaut
+        de sa premiere version :
+
+        1. il n'affiche **pas de marge par ligne**. ``CollisionReport.min_margin``
+           est un minimum GLOBAL sur tous les troncons : le reporter ligne par
+           ligne attribuait a la tige un nombre appartenant a l'arete, et
+           affichait « degage, -2,335 mm » — un verdict et une valeur qui se
+           contredisent. La marge globale figure sur une ligne de synthese, une
+           seule fois, avec le troncon auquel elle appartient.
+        2. il **agrege par role** et non par troncon. Un bec hemispherique
+           compte huit troncons de role ``cutting`` ; les lister huit fois
+           repetait la meme information.
+        3. il interroge le **garde machine** pour les organes machine, qui ne
+           sont pas dans le champ d'obstacles. Sans cela la ligne MACHINE
+           annoncait « aucun obstacle », alors que c'est la cause de rejet la
+           plus fréquente sur ce corpus.
+
+        Et il emploie la **meme tolerance d'arete** que le solveur
+        (``cutting_allowance``, deduite de l'inflation du champ sur la classe
+        PART). Sans elle le panneau signalait « arete / PART : 804 points en
+        violation » sur des orientations que le solveur declare admissibles :
+        un panneau de debug qui contredit le moteur est pire que pas de panneau.
+        """
+        from ...collision_engine.field import PENETRATION_ALLOWED, ObstacleClass, ObstacleField
+        from ...collision_engine.machine_guard import MachineGuard
+        from ...collision_engine.tool_collision import ToolCollisionChecker
+        from ...kinematics_solver.solver import KinematicsSolver
+
+        if self.tool is None:
+            self.set_default_tool()
+        field_ = self.obstacle_field()
+        d = (np.asarray(direction, dtype=float) if direction is not None
+             else self.machine.tool_axis_in_part(self.inspect_a_deg,
+                                                 self.inspect_c_deg))
+        tcp = (np.asarray(tcp_part, dtype=float) if tcp_part is not None
+               else np.asarray(self.inspect_tcp, dtype=float))
+
+        roles = []
+        for seg in self.tool.segments:
+            if seg.role not in roles:
+                roles.append(seg.role)
+
+        checker = ToolCollisionChecker(self.tool)
+        # Meme tolerance d'arete que ``AccessibilitySolver`` : le maximum de
+        # l'inflation sur les points de classe PART.
+        is_part = field_.classes == int(ObstacleClass.PART)
+        cut_allow = (float(field_.inflation[is_part].max()) if is_part.any() else 0.0)
+
+        rows: list[tuple[str, str, str]] = []
+        for cls in (ObstacleClass.PART, ObstacleClass.STOCK, ObstacleClass.FIXTURE):
+            m = field_.classes == int(cls)
+            if not np.any(m):
+                rows.append(("—", cls.name, "aucun obstacle de cette classe"))
+                continue
+            sub = ObstacleField(field_.points[m], field_.classes[m],
+                                field_.inflation[m])
+            rep = checker.check(tcp, d, sub, cutting_depth=0.0,
+                                cutting_allowance=cut_allow)
+            for role in roles:
+                if PENETRATION_ALLOWED.get((role, cls), False):
+                    rows.append((role.value, cls.name,
+                                 "penetration toleree (contact voulu)"))
+                    continue
+                n = int(rep.violations_by_role.get(role, 0))
+                rows.append((role.value, cls.name,
+                             f"COLLISION — {n} points en violation" if n else "degage"))
+            worst = rep.worst_role.value if rep.worst_role else "—"
+            rows.append(("(synthese)", cls.name,
+                         f"marge minimale {rep.min_margin:+.3f} mm, "
+                         f"troncon le plus proche : {worst}"))
+
+        # --- organes machine : ils ne sont pas dans le champ d'obstacles
+        guard = MachineGuard(self.machine, self.tool)
+        ks = KinematicsSolver(self.machine)
+        tcp_m = ks.part_to_machine_point(tcp + self.mount_offset,
+                                         self.inspect_a_deg, self.inspect_c_deg)
+        chk = guard.check_pose(tcp_m, self.inspect_a_deg, self.inspect_c_deg)
+        rows.append(("outil complet", "MACHINE", chk.reason()))
+        if not chk.axis_limits_ok:
+            rows.append(("(synthese)", "MACHINE", f"hors course : {chk.detail}"))
+        return rows
+
+    def set_inspect_from_candidate(self, result, candidate) -> None:
+        """Place l'outil A l'orientation interrogee.
+
+        C'est le geste le plus informatif du banc : on ne regarde plus une
+        fleche, on voit la pose reelle — et donc pourquoi le porte-outil passe
+        ou pourquoi il touche. Le TCP vient de ``tcp_from_contact``, la meme
+        fonction que le solveur emploie, de sorte que la pose affichee est
+        exactement celle qu'il a evaluee.
+        """
+        from ...accessibility_solver.solver import tcp_from_contact
+
+        if self.tool is None:
+            self.set_default_tool()
+        self.inspect_tcp = np.asarray(
+            tcp_from_contact(result.point, result.normal,
+                             np.asarray(candidate.direction, dtype=float), self.tool),
+            dtype=np.float64)
+        self.inspect_a_deg = float(candidate.a_deg)
+        self.inspect_c_deg = float(candidate.c_deg)
+
+    @staticmethod
+    def _reason_name(value: int) -> str:
+        from ...accessibility_solver.solver import RejectReason
+
+        try:
+            return RejectReason(value).name
+        except ValueError:
+            return f"INCONNU_{value}"
+
+    def face_list(self) -> list[tuple[int, str, float]]:
+        """(index, type de surface, aire) de chaque face, aire decroissante.
+
+        L'aire sert a trier : sur une piece du corpus, les faces qui comptent
+        sont les grandes, et une liste dans l'ordre topologique les noie.
+        """
+        if self.part_shape is None:
+            return []
+        infos = brep.face_info(self.part_shape)
+        rows = [(f.index, f.surface_type, float(f.area)) for f in infos]
+        return sorted(rows, key=lambda r: -r[2])
 
     def machine_lines(self) -> list[tuple[str, str]]:
         """Panneau machine. ``SIMULATION`` est une constante, pas un etat.
@@ -279,3 +601,133 @@ class BenchState:
             ("Dimensions", f"{d[0]:.2f} x {d[1]:.2f} x {d[2]:.2f} mm"),
             ("Volume brut", f"{float(np.prod(d)):.1f} mm3"),
         ]
+
+
+# ---------------------------------------------------------------------------
+# Accessibilite : le differenciateur du projet, rendu lisible
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class OrientationCandidate:
+    """Une direction candidate, avec tout ce qui decide de son sort.
+
+    Reprend tel quel ce que ``AccessibilityMap`` contient — rien n'est recalcule
+    ici. La seule valeur ajoutee est la mise en forme : nom du motif, remede, et
+    position machine, pour que l'operateur n'ait pas a les deduire.
+    """
+
+    index: int
+    direction: np.ndarray
+    a_deg: float
+    c_deg: float
+    feasible: bool
+    margin_mm: float
+    reason_name: str
+    remedy: str
+    tcp_machine: np.ndarray | None = None
+
+    @property
+    def family(self) -> str:
+        from . import palette
+
+        return palette.reason_family(self.reason_name)
+
+    def lines(self) -> list[tuple[str, str]]:
+        """Detail d'une orientation, tel que le panneau l'affiche."""
+        m = ("non disponible" if not np.isfinite(self.margin_mm)
+             else f"{self.margin_mm:+.3f} mm")
+        t = self.tcp_machine
+        rows = [
+            ("Statut", "ADMISSIBLE" if self.feasible else f"REJETEE — {self.reason_name}"),
+            ("A", f"{self.a_deg:+.3f} deg"),
+            ("C", f"{self.c_deg:+.3f} deg"),
+            ("X", "non disponible" if t is None else f"{t[0]:+.3f} mm"),
+            ("Y", "non disponible" if t is None else f"{t[1]:+.3f} mm"),
+            ("Z", "non disponible" if t is None else f"{t[2]:+.3f} mm"),
+            ("Direction d'outil", f"{self.direction[0]:+.4f}, "
+                                  f"{self.direction[1]:+.4f}, {self.direction[2]:+.4f}"),
+            ("Marge minimale", m),
+        ]
+        if self.feasible:
+            # La « marge » est une distance signee au plus proche obstacle
+            # interdit. Un rejet non geometrique (butee, singularite) n'en a pas,
+            # d'ou le -inf, affiche « non disponible » plutot que -1e308.
+            rows.append(("Remede", "sans objet"))
+        else:
+            rows.append(("Remede", self.remedy or "aucun remede enregistre"))
+        return rows
+
+
+@dataclass
+class AccessibilityResult:
+    """Resultat d'une analyse d'accessibilite sur une face.
+
+    Deux granularites, parce que les deux questions sont differentes :
+
+      - ``candidates`` decrit UN point de contact en detail. C'est ce que les
+        fleches 3D montrent, et ce qu'on interroge orientation par orientation.
+      - ``counts`` agrege sur tous les points echantillonnes de la face. C'est
+        ce qui repond a « cette surface est-elle usinable ».
+
+    Confondre les deux ferait conclure d'un point sur toute une face — l'erreur
+    exacte que le rapport de finition du moteur signale depuis M4 en distinguant
+    l'etalement du segment de celui de la passe.
+    """
+
+    face_index: int
+    surface_type: str
+    n_points_face: int
+    n_points_solved: int
+    point: np.ndarray
+    normal: np.ndarray
+    candidates: list[OrientationCandidate] = field(default_factory=list)
+    counts: dict[str, int] = field(default_factory=dict)
+    per_point_accessible: int = 0
+    stage_counts: dict[str, int] = field(default_factory=dict)
+    elapsed_s: float = 0.0
+    #: Reglages qui ont produit ces chiffres.
+    #:
+    #: Un nombre d'orientations admissibles ne veut rien dire sans eux : le
+    #: meme point passe de 2 a 118 orientations selon l'outil et le traitement
+    #: de la singularite. Les taire rendrait le panneau trompeur.
+    hypotheses: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def n_feasible(self) -> int:
+        return sum(1 for c in self.candidates if c.feasible)
+
+    def summary_lines(self) -> list[tuple[str, str]]:
+        cov = (f"{self.n_points_solved} sur {self.n_points_face} points de la face"
+               if self.n_points_solved < self.n_points_face
+               else f"{self.n_points_solved} points (face entiere)")
+        rows = [
+            ("Face", f"{self.face_index} ({self.surface_type})"),
+            ("Points analyses", cov),
+            ("Points accessibles", f"{self.per_point_accessible} / {self.n_points_solved}"),
+            ("Duree", f"{self.elapsed_s:.2f} s"),
+            ("", ""),
+            ("— au point affiche —", f"{len(self.candidates)} orientations evaluees"),
+            ("Admissibles", str(self.counts.get("admissible", 0))),
+        ]
+        for fam in ("collision outil", "collision machine", "cinematique",
+                    "singularite", "geometrie"):
+            rows.append((f"Rejetees — {fam}", str(self.counts.get(fam, 0))))
+        if self.hypotheses:
+            rows.append(("", ""))
+            rows.append(("— hypotheses —", ""))
+            rows.extend(self.hypotheses.items())
+        return rows
+
+    def verdict(self) -> str:
+        """Phrase que l'operateur lit en premier."""
+        if self.n_feasible == 0:
+            worst = max((f for f in self.counts if f != "admissible"),
+                        key=lambda f: self.counts[f], default="inconnu")
+            return (f"Face {self.face_index} INACCESSIBLE au point analyse — "
+                    f"cause dominante : {worst}")
+        if self.per_point_accessible < self.n_points_solved:
+            return (f"Face {self.face_index} partiellement accessible : "
+                    f"{self.per_point_accessible}/{self.n_points_solved} points")
+        return (f"Face {self.face_index} accessible — {self.n_feasible} "
+                f"orientations admissibles au point analyse")
