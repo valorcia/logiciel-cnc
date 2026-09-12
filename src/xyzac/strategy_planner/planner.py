@@ -33,9 +33,11 @@ from ..machine_model.setup import Setup
 from ..stock_engine.material import MaterialState
 from ..subtractive_slicer.slicer import (
     SliceResult,
+    continuous_path,
     simulate_removal,
     slice_for_direction,
     toolpath_points,
+    with_approach_retract,
 )
 from ..tool_model.assembly import ToolAssembly
 from .interfaces import Kinematic, Operation, ProcessPlan, Toolpath
@@ -214,12 +216,25 @@ def plan_roughing(
             pool = [d for d in pool if not np.allclose(d, best.direction)]
             continue
 
-        pts, nrm = toolpath_points(sl, point_spacing)
+        # Chemin CONTINU, et non les seuls points de coupe.
+        #
+        # Defaut trouve en comblant le trou de l'approche : l'operation portait
+        # ``toolpath_points``, qui ecarte les liaisons parce qu'il sert a la
+        # simulation d'enlevement de matiere — celle-ci ne doit compter que la
+        # coupe. Mais une OPERATION doit porter tout le mouvement, liaisons
+        # comprises : sans elles le post-processeur relie deux passes par une
+        # avance travail en ligne droite, donc a travers la piece. Ce qui
+        # aurait ete poste n'etait pas ce qui avait ete valide.
+        P, rapid = continuous_path(sl, point_spacing)
+        P, rapid = with_approach_retract(P, rapid, best.direction,
+                                         sl.clearance_z, sl.frame,
+                                         standoff_mm=max(sl.safety_clearance, 1.0))
+        nrm = np.tile(np.asarray(best.direction, dtype=float), (len(P), 1))
         plan.operations.append(Operation(
             op_id=f"ebauche-{step + 1}-{best.label}",
             kinematic=Kinematic.MILLING_3PLUS2,
             tool=tool,
-            toolpath=Toolpath(points=pts, normals=nrm,
+            toolpath=Toolpath(points=P, normals=nrm, is_rapid=rapid,
                               depth_of_cut=layer_thickness,
                               label=f"ebauche indexee {best.label}"),
             notes=(f"A={best.a_deg:.2f} C={best.c_deg:.2f} ; "

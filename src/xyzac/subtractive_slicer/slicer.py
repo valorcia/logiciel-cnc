@@ -587,3 +587,75 @@ def simulate_removal(material: MaterialState, result: SliceResult, tool: ToolAss
         max_stock_left_mm=max_left,
         gouged_voxels=gouged,
     )
+
+
+def with_approach_retract(
+    points: np.ndarray, is_rapid: np.ndarray, direction: np.ndarray,
+    clearance_z: float, frame: np.ndarray, *,
+    standoff_mm: float = 2.0, plunge_feed: bool = True,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Encadre un chemin par son approche et son degagement.
+
+    Trou reste ouvert jusqu'ici, et il rendait tout programme emis
+    inexecutable : le chemin commencait AU premier point de coupe et finissait
+    AU dernier. Un controleur qui recoit cela amene l'outil au premier point
+    par un mouvement non decrit — au mieux depuis la position courante, en
+    ligne droite a travers la piece — puis le laisse dans la matiere a la fin.
+
+    Ce que cette fonction ajoute, dans le repere INDEXE ou le plan de
+    degagement est defini :
+
+      approche : rapide au plan de degagement au-dessus du premier point,
+                 rapide jusqu'a ``standoff_mm`` au-dessus de lui,
+                 puis AVANCE TRAVAIL jusqu'au point ;
+      degagement : avance travail de ``standoff_mm``, puis rapide au plan.
+
+    Le dernier segment de l'approche est en avance travail et non en rapide :
+    un rapide qui finit exactement sur la surface n'a aucune marge pour une
+    erreur d'origine palpee, et c'est le mouvement qui casse les outils.
+    ``standoff_mm`` est la hauteur a partir de laquelle on ralentit ; la mettre
+    a zero supprimerait cette marge.
+
+    **Ces mouvements sont du MOUVEMENT** : ils sont marques rapides ou non,
+    mais ils passent les memes portes que les autres. Le balayage les subdivise
+    et le validateur les refuse s'ils traversent quoi que ce soit. Les ajouter
+    sans les faire valider serait exactement la faute que ce projet refuse.
+    """
+    P = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    R = np.asarray(is_rapid, dtype=bool).reshape(-1)
+    if len(P) == 0:
+        return P, R
+    if len(P) != len(R):
+        raise ValueError(f"{len(P)} points pour {len(R)} indicateurs de rapide")
+
+    F = np.asarray(frame, dtype=np.float64).reshape(3, 3)
+    d = normalize(np.asarray(direction, dtype=np.float64))
+    so = max(float(standoff_mm), 0.0)
+
+    def to_indexed(p: np.ndarray) -> np.ndarray:
+        return F @ p
+
+    def to_part(p: np.ndarray) -> np.ndarray:
+        return F.T @ p
+
+    first_i = to_indexed(P[0])
+    last_i = to_indexed(P[-1])
+    # Le plan de degagement doit etre AU-DESSUS du point, sinon l'approche
+    # descendrait depuis sous la matiere.
+    cz = max(float(clearance_z), float(first_i[2]) + so, float(last_i[2]) + so)
+
+    pre = [
+        to_part(np.array([first_i[0], first_i[1], cz])),
+        to_part(np.array([first_i[0], first_i[1], first_i[2] + so])),
+    ]
+    pre_rapid = [True, True]
+    post = [
+        to_part(np.array([last_i[0], last_i[1], last_i[2] + so])),
+        to_part(np.array([last_i[0], last_i[1], cz])),
+    ]
+    post_rapid = [not plunge_feed, True]
+
+    pts = np.vstack([np.array(pre), P, np.array(post)])
+    rap = np.concatenate([np.array(pre_rapid, dtype=bool), R,
+                          np.array(post_rapid, dtype=bool)])
+    return pts, rap

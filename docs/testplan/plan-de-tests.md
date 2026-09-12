@@ -1,4 +1,4 @@
-# Plan de tests — jalons M1 à M7
+# Plan de tests — jalons M1 à M8
 
 ## 1. Principe
 
@@ -298,11 +298,31 @@ simule le palpage à travers elle, et on exige que la procédure la retrouve.
 | **`no_rapid_move_goes_to_a_contact_point`** | **régression : le premier point sortait en `G0`, c'est-à-dire un rapide dans la pièce** |
 | `the_gateway_is_still_locked` | M7 lève la moitié **logicielle** du verrou. L'envoi reste interdit |
 
-## 10. État actuel
+## 10. Suite ajoutée au jalon M8
+
+### `test_m8_recipes_approach.py`
+
+| Test | Ce qu'il protège |
+|---|---|
+| `an_unknown_material_is_refused_not_guessed` | usiner de l'inox avec des paramètres d'aluminium casse l'outil au premier engagement |
+| `no_recipe_is_ever_declared_qualified` | le logiciel ne peut pas qualifier une chaîne mécanique assemblée par l'acheteur |
+| **`load_is_derated_by_default_and_says_so`** | **une note disant « commencer nettement en dessous » ne protège personne si le code livre quand même les valeurs de table** |
+| **`effective_diameter_of_a_ball_nose`** (5 profondeurs) | **à 0,2 mm une fraise de 6 mm coupe à 2,15 mm : ignorer cela divise la vitesse de coupe réelle par trois** |
+| `radial_chip_thinning_is_one_at_half_diameter_and_grows_below` | vaut 1 à `ae = D/2`, croît en dessous, et reste borné |
+| `spindle_clamping_is_reported_and_vc_recomputed` | la Vc rapportée vient de la vitesse **bridée**, pas de celle qu'on visait |
+| **`a_cutting_speed_out_of_reach_raises_a_warning`** | **cas réel : plancher de broche à 6 000 tr/min → acier à 113 m/min au lieu de 40. Un `clamped` discret ne suffit pas** |
+| **`the_remedy_points_in_the_right_direction`** | **régression d'un conseil INVERSÉ : la broche étant bridée, Vc croît avec le diamètre, donc il faut un outil plus PETIT** |
+| `approach_starts_above_and_retract_ends_above` | le chemin commence et finit au plan de dégagement, en rapide |
+| `clearance_below_the_path_is_raised_not_obeyed` | l'obéir ferait descendre l'approche depuis l'intérieur de la pièce |
+| `approach_works_for_any_indexation` (3 directions) | l'approche est définie dans le repère **indexé**, pas seulement selon +Z |
+| **`roughing_operations_carry_links_and_approach`** | **ce qui serait POSTÉ n'était pas ce qui avait été validé : l'opération portait les points de coupe seuls** |
+| **`approach_and_retract_pass_the_sweep_gate`** | **l'en-tête du G-code affirme que ces mouvements sont validés ; ce test est ce qui autorise la phrase** |
+
+## 11. État actuel
 
 ```
 $ python -m pytest tests/ -q
-276 passed
+328 passed
 ```
 
 Cinq défauts réels ont été trouvés **par ces tests** pendant le développement,
@@ -461,7 +481,27 @@ jalon impose : **quand une grandeur reste stable alors qu'un paramètre varie,
 c'est une information, pas une confirmation.** Un résidu qui ne bouge pas n'est
 pas un bon résidu ; c'est un résidu qui ne mesure pas ce qu'on croit.
 
-## 11. Ce qui n'est PAS testé, et doit l'être
+Trois de plus au jalon M8, de la meme famille :
+
+30. **Affirmation de sens inversée** (la troisième du projet) : le conseil de
+    remède disait « outil plus grand » pour baisser une vitesse de coupe, alors
+    que la broche étant bridée Vc croît avec le diamètre. La mesure le montrait
+    — 6 → 12 mm faisait passer Vc de 113 à 226 m/min — et le texte disait le
+    contraire.
+31. **Une note qui contredit la valeur qu'elle accompagne** : « commencer
+    nettement en dessous » livré avec les valeurs de table. L'information est
+    là et ne protège de rien — variante du silence documenté de M6.
+32. **Deux désynchronisations** : une mention d'en-tête devenue fausse quand le
+    manque qu'elle annonçait a été comblé, et un plan qui ne portait pas ce qui
+    avait été validé (les liaisons étaient reconstruites par le validateur mais
+    absentes de l'opération).
+
+D'où l'addition à la règle que ce jalon suggère : **toute phrase qui décrit un
+manque doit être calculée depuis l'état réel, pas écrite.** Une justification
+écrite à la main vieillit sans prévenir ; celle qui regarde les données
+vieillit avec elles.
+
+## 12. Ce qui n'est PAS testé, et doit l'être
 
 | Manque | État |
 |---|---|
@@ -481,13 +521,15 @@ pas un bon résidu ; c'est un résidu qui ne mesure pas ce qu'on croit.
 | Ordonnancement hybride fraisage + tournage dans une même gamme | M8 |
 | Erreurs non géométriques (thermique, flexion, hystérésis) | hors budget, non modélisées |
 | Erreurs d'échelle des vis | modélisées et compensables, aucune procédure ne les mesure |
-| Approche et dégagement dans le G-code | non générés (ADR-007 / D65) |
+| ~~Approche et dégagement dans le G-code~~ | **levée M8** : portées par la trajectoire et validées au balayage |
+| Rampe de plongée, hélice, pré-perçage | non générés : une plongée verticale dans la matière pleine passe en alu, pas en acier |
+| Approche des opérations de **finition** | leurs plans sont des maquettes : les encadrer donnerait l'illusion d'un programme complet |
 | ~~Tournage : génération de trajectoires~~ | **levée M5** (profil, ovalité robuste, passes, refus motivé) |
 | Poids d'orientation calibrés | exige une machine |
 | Les cinq étapes de calibration matérielles | exigent la machine, dont la pièce d'épreuve |
 | Tout ce qui touche une machine réelle | après qualification |
 
-## 12. Précision — ce que les tests ne disent pas
+## 13. Précision — ce que les tests ne disent pas
 
 Aucun test de ce dépôt ne dit quoi que ce soit de la précision d'une pièce
 usinée. Ils portent sur la **justesse numérique** du moteur.

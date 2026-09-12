@@ -71,13 +71,31 @@ def _fmt(v: float) -> str:
     return f"{v:.4f}".rstrip("0").rstrip(".") or "0"
 
 
+def _wrap(text: str, width: int) -> list[str]:
+    """Decoupe un texte pour qu'il tienne dans des commentaires G-code.
+
+    Une parenthese trop longue est illisible dans un editeur de controleur, et
+    un avertissement illisible n'avertit personne.
+    """
+    mots, lignes, cur = str(text).split(), [], ""
+    for m in mots:
+        if len(cur) + len(m) + 1 > width:
+            lignes.append(cur)
+            cur = m
+        else:
+            cur = f"{cur} {m}".strip()
+    if cur:
+        lignes.append(cur)
+    return lignes or [""]
+
+
 def post_process(
     plan: ProcessPlan,
     safety: SafetyStateMachine,
     current_setup_hash: str,
     calibration: CalibrationRecord,
     *,
-    feed_mm_min: float = 300.0,
+    recipe=None,
 ) -> tuple[str, EmitReport]:
     """Genere le G-code LinuxCNC d'une gamme approuvee, compense.
 
@@ -86,6 +104,15 @@ def post_process(
     calculer quoi que ce soit. Si l'etat n'autorise pas la generation, rien
     d'autre n'a de sens ; si la geometrie n'est pas mesuree, tout calcul
     ulterieur serait faux avec elegance.
+
+    **``recipe`` n'a plus de valeur par defaut, et c'est une correction.** Une
+    version precedente ecrivait ``F300`` faute de mieux : un nombre invente
+    dans du code livre, exactement ce que ce projet refuse partout ailleurs.
+    Une operation sans avance propre exige donc desormais une recette
+    (``recipe_profiles.build_recipe``), sinon la generation est REFUSEE. Les
+    avertissements de la recette — une vitesse de coupe hors domaine, par
+    exemple — sont recopies dans l'en-tete : c'est le seul endroit ou
+    l'operateur les lira avant de lancer.
     """
     safety.require_postprocess(current_setup_hash)
 
@@ -144,10 +171,43 @@ def post_process(
             w(f"(TOLERANCE : {line.strip().rstrip('.')})")
     w(f"(budget geometrique a 100 mm des pivots : "
       f"{calibration.uncertainty_at_100mm_mm * 1000:.1f} um, pire cas)")
-    w("(AVANCES ET VITESSES NON QUALIFIEES : recipe_profiles est une ebauche)")
-    w("(APPROCHE ET DEGAGEMENT NON GENERES : ce module ne connait pas le plan de)")
-    w("(degagement des operations. Tout mouvement est en avance travail, et les)")
-    w("(liaisons doivent etre ajoutees avant tout usage reel.)")
+    if recipe is not None:
+        w(f"(RECETTE : {recipe.material} / {recipe.quality} / {recipe.tool_id})")
+        w(f"(  S{recipe.spindle_rpm:.0f} F{recipe.feed_mm_min:.0f} "
+          f"ap {recipe.depth_of_cut_mm:.2f} ae {recipe.width_of_cut_mm:.2f} mm)")
+        w(f"(  Vc obtenue {recipe.vc_effective_m_min:.0f} m/min, "
+          f"diametre effectif {recipe.effective_diameter_mm:.2f} mm)")
+        w(f"(  source : {recipe.source})")
+        w(f"(  incertitude : {recipe.uncertainty})")
+        if recipe.derating != 1.0:
+            w(f"(  charge reduite a {recipe.derating * 100:.0f} % : "
+              f"{recipe.derating_reason})")
+        for c in recipe.clamped:
+            w(f"(  bride par {c})")
+        for wa in recipe.warnings:
+            for chunk in _wrap(wa, 70):
+                w(f"(  AVERTISSEMENT : {chunk})")
+    w("(AVANCES ET VITESSES NON QUALIFIEES : point de depart a valider sur"
+      " machine)")
+    # La mention sur l'approche depend de ce que le PLAN porte reellement.
+    #
+    # Elle etait inconditionnelle, et elle est devenue fausse le jour ou les
+    # operations ont porte leurs liaisons : un en-tete qui annonce un manque
+    # comble est aussi trompeur qu'un en-tete qui cache un manque reel. On
+    # regarde donc les trajectoires au lieu de l'affirmer.
+    sans_liaisons = [o.op_id for o in plan.operations
+                     if o.kinematic is not Kinematic.TURNING
+                     and o.toolpath.is_rapid is None
+                     and len(np.asarray(o.toolpath.points).reshape(-1, 3)) > 0]
+    if sans_liaisons:
+        w("(APPROCHE ET DEGAGEMENT NON GENERES pour les operations suivantes :)")
+        for oid in sans_liaisons:
+            w(f"(  {oid})")
+        w("(Leur trajectoire ne porte aucune liaison : tout y est en avance)")
+        w("(travail, et les approches doivent etre ajoutees avant usage reel.)")
+    else:
+        w("(Approches, liaisons et degagements portes par la trajectoire et)")
+        w("(valides comme le reste du mouvement.)")
     w("(Ce fichier n'a pas ete envoye a une machine : linuxcnc_gateway est verrouille)")
     w("G21 G90 G94 (mm, absolu, avance par minute)")
     w("G17")
@@ -165,9 +225,16 @@ def post_process(
         w(f"({op.op_id} — {op.kinematic.value}, outil {op.tool.tool_id})")
         if op.notes:
             w(f"({op.notes})")
-        rpm = op.spindle_rpm or machine.spindle_min_rpm
+        rpm = op.spindle_rpm or (recipe.spindle_rpm if recipe is not None
+                                 else machine.spindle_min_rpm)
         w(f"S{_fmt(rpm)} M3")
-        feed = op.feed_mm_min or feed_mm_min
+        feed = op.feed_mm_min or (recipe.feed_mm_min if recipe is not None else 0.0)
+        if feed <= 0.0:
+            raise RuntimeError(
+                f"operation '{op.op_id}' sans avance : ni ``feed_mm_min`` sur "
+                "l'operation, ni recette fournie. Une avance inventee est "
+                "exactement ce que ce module refusait d'ecrire ; passer une "
+                "recette de recipe_profiles.build_recipe.")
 
         for i, (p, n) in enumerate(zip(pts, nrm)):
             d = normalize(n)
