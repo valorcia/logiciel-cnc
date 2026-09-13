@@ -11,6 +11,9 @@
 
 <header>
   <h1>Atelier XYZAC</h1>
+  <p class="sous-titre">Chargez votre pièce, regardez-la s'usiner, et voyez ce
+  que votre machine peut en faire. Aucune connaissance d'usinage n'est
+  nécessaire pour lire cette page.</p>
   <p class="securite">SIMULATION UNIQUEMENT — aucune machine n'est reliée à cette
   fenêtre. Rien de ce que vous cliquez ici ne peut faire bouger un axe.</p>
 </header>
@@ -18,20 +21,40 @@
 <main>
 
 <section class="etape" id="etape-piece">
-  <div class="tete"><span class="num">1</span><h2>Choisissez une pièce</h2></div>
-  <p class="consigne">Prenez un exemple pour essayer l'outil, ou partez de votre
-  propre pièce si vous en avez une au format STEP.</p>
-  <div class="actions">
-    <select id="exemples" aria-label="Exemples de pièces"></select>
-    <button id="charger" class="primaire">CHARGER CETTE PIÈCE</button>
+  <div class="tete"><span class="num">1</span><h2>Votre pièce</h2></div>
+  <p class="consigne">Un fichier <strong>.step</strong> ou <strong>.stp</strong> :
+  clé USB, pièce jointe, dossier de votre logiciel de dessin. Tous les logiciels
+  de CAO savent en exporter — cherchez «&nbsp;Exporter&nbsp;» puis
+  «&nbsp;STEP&nbsp;».</p>
+
+  <div id="depot" class="depot" tabindex="0" role="button"
+       aria-label="Déposer un fichier STEP">
+    <div class="depot-icone" aria-hidden="true">⬇</div>
+    <p class="depot-titre">Glissez votre fichier ici</p>
+    <p class="depot-ou">ou</p>
+    <button id="parcourir" class="primaire grand">CHOISIR UN FICHIER</button>
+    <input id="fichier" type="file" accept=".step,.stp" hidden>
   </div>
+
+  <details class="replie" id="bloc-exemples">
+    <summary>Je n'ai pas encore de fichier — me prêter une pièce d'exemple</summary>
+    <p class="consigne">Vingt pièces servent aux essais du moteur. Trois sont
+    volontairement abîmées&nbsp;: voir ce que le logiciel fait d'un mauvais
+    fichier vaut mieux que de le découvrir avec le vôtre.</p>
+    <div class="actions">
+      <select id="exemples" aria-label="Exemples de pièces"></select>
+      <button id="charger">CHARGER CET EXEMPLE</button>
+    </div>
+  </details>
+
   <div id="piece-info" class="info" hidden></div>
 </section>
 
-<section class="etape" id="etape-vue">
+<section class="etape verrouille" id="etape-vue" data-requiert="piece">
   <div class="tete"><span class="num">2</span><h2>Regardez</h2></div>
-  <p class="consigne">La pièce est posée sur le plateau, dans la machine. Faites
-  tourner la vue pour vérifier que tout est à sa place.</p>
+  <p class="consigne">Votre pièce est posée sur le plateau, dans la machine.
+  Tournez la vue pour vérifier que c'est bien la bonne pièce et qu'elle est à
+  l'endroit.</p>
   <div class="vue">
     <img id="image" alt="Vue de la machine et de la pièce">
     <div class="vue-boutons">
@@ -43,17 +66,8 @@
   </div>
 </section>
 
-<section class="etape" id="etape-machine">
-  <div class="tete"><span class="num">3</span><h2>Réglez votre machine</h2></div>
-  <p class="consigne">Ce sont les cotes que vous n'avez pas encore coulées dans
-  le métal. Changez-en une, relancez la vérification, et regardez ce que cela
-  change — c'est à cela que sert cet outil.</p>
-  <div id="reglages" class="grille"></div>
-  <button id="defaut" class="lien">revenir aux valeurs du kit</button>
-</section>
-
-<section class="etape" id="etape-verif">
-  <div class="tete"><span class="num">4</span><h2>Cette machine peut-elle faire cette pièce&nbsp;?</h2></div>
+<section class="etape verrouille" id="etape-verif" data-requiert="piece">
+  <div class="tete"><span class="num">3</span><h2>Cette machine peut-elle faire cette pièce&nbsp;?</h2></div>
   <p class="consigne">Le moteur essaie les six façons de poser la pièce sur le
   plateau et vous dit, surface par surface, ce qu'il faut faire.</p>
   <button id="verifier" class="primaire grand">VÉRIFIER</button>
@@ -66,20 +80,44 @@
     <ul id="surfaces" class="surfaces"></ul>
     <ul id="avertissements" class="avert"></ul>
   </div>
+
+  <details class="replie" id="bloc-reglages">
+    <summary>Ma machine n'a pas ces cotes — les ajuster</summary>
+    <p class="consigne">Ce sont les cotes qui changent la réponse ci-dessus.
+    Changez-en une, relancez la vérification, et regardez ce que cela change —
+    c'est à cela que sert cet atelier. Les vitesses et les avances ne sont pas
+    ici&nbsp;: elles changent le TEMPS d'usinage, pas la faisabilité.</p>
+    <div id="reglages" class="grille"></div>
+    <button id="defaut" class="lien">revenir aux valeurs du kit</button>
+  </details>
 </section>
 
-<section class="etape" id="etape-simu">
-  <div class="tete"><span class="num">5</span><h2>Simulez</h2></div>
-  <p class="consigne">Un tour complet autour de la scène, pour voir la pièce
-  dans la machine sous tous les angles.</p>
-  <button id="simuler" class="primaire">LANCER LA SIMULATION</button>
+<section class="etape verrouille" id="etape-simu" data-requiert="piece">
+  <div class="tete"><span class="num">4</span><h2>Regardez-la s'usiner</h2></div>
+  <p class="consigne">L'outil parcourt la trajectoire d'ébauche réellement
+  calculée, avec les basculements A et C que cette gamme a choisis. La caméra ne
+  bouge pas&nbsp;: ce qui bouge à l'écran, c'est la machine.</p>
+  <button id="simuler" class="primaire grand">SIMULER L'USINAGE</button>
   <div class="vue" id="bloc-simu" hidden>
-    <img id="film" alt="Simulation">
+    <img id="film" alt="Simulation de l'usinage">
+    <p id="film-titre" class="film-titre"></p>
     <div class="vue-boutons">
       <button id="jouer">▶ jouer</button>
       <input id="curseur" type="range" min="0" max="0" value="0"
              aria-label="Position dans la simulation">
     </div>
+    <div id="axes" class="axes"></div>
+  </div>
+  <p id="simu-note" class="note" hidden></p>
+</section>
+
+<section class="etape verrouille" id="etape-lancer" data-requiert="piece">
+  <div class="tete"><span class="num">5</span><h2>Lancer</h2></div>
+  <p class="consigne" id="jamais"></p>
+  <button id="lancer" class="primaire grand">LANCER L'USINAGE</button>
+  <div id="lancement" hidden>
+    <p id="lancement-resume" class="resume"></p>
+    <ul id="conditions" class="conditions"></ul>
   </div>
 </section>
 

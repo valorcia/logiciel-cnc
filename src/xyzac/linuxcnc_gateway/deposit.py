@@ -35,6 +35,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
+from .. import production_gate
+
 
 class Target(str, Enum):
     """Destination d'un programme. Les conditions ne sont pas les memes."""
@@ -118,33 +120,22 @@ def deposit_program(
     # 1. porte de securite, avant tout le reste
     safety.require_postprocess(setup_hash)
 
-    # 2. geometrie mesuree
-    geom = getattr(calibration, "geometry", None)
-    if geom is None or not getattr(geom, "measured", False):
-        raise DepositRefused(
-            "depot refuse : geometrie machine NON MESUREE. Les pivots A et C "
-            "sont provisoires, et sur une cinematique table/table leur erreur "
-            "se retrouve telle quelle sur la piece. Executer "
-            "assembly_calibration avant de deposer.")
-    if not getattr(calibration, "geometry_complete", False):
-        bloquantes = ", ".join(getattr(calibration, "steps_blocking", [])[:5])
-        raise DepositRefused(
-            f"depot refuse : calibration geometrique incomplete ({bloquantes}).")
+    # 2 a 4 : les memes conditions que celles que l'atelier AFFICHE.
+    #
+    # Elles sont evaluees par ``production_gate`` et non re-ecrites ici. Ecrites
+    # deux fois, elles auraient fini par diverger, et la copie divergente aurait
+    # ete celle qu'on lit a l'ecran — donc celle sur laquelle quelqu'un se
+    # serait fie. La porte de securite (1) reste au-dessus : elle porte sur
+    # l'etat courant, pas sur un dossier.
+    for exigence in production_gate.exigences(
+            approbation=True, calibration=calibration, destination=tgt):
+        if exigence.cle != "approbation" and exigence.bloque:
+            raise DepositRefused(exigence.refus)
 
-    # 3. concordance
     ch = calibration.calibration_hash()
 
     warnings: list[str] = []
     qualified = bool(getattr(calibration, "qualified", False))
-
-    # 4. destination materielle
-    if tgt == Target.HARDWARE.value and not qualified:
-        raise DepositRefused(
-            "depot MATERIEL refuse : machine non qualifiee. Il manque la piece "
-            "d'epreuve usinee PUIS mesuree sur un moyen independant "
-            "(assembly_calibration, etape QUALIFICATION_PART). Deposer en "
-            "simulation est en revanche autorise, et c'est le chemin pour y "
-            "arriver.")
     if tgt == Target.SIMULATION.value:
         warnings.append(
             "destination SIMULATION : ce programme n'est pas destine a une "

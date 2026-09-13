@@ -2,12 +2,13 @@
 // Atelier XYZAC — pilotage de la page. Aucun calcul metier ici : la page
 // affiche ce que le serveur rend, et rien d'autre. Si une phrase apparait a
 // l'ecran, elle a ete redigee par la session cote Python a partir d'un verdict
-// du moteur.
+// du moteur. Ce fichier ouvre des volets, colore des bordures et compte des
+// images.
 
 const $ = (s) => document.querySelector(s);
 let etat = null;
 let azimut = 35, elevation = 18;
-let film = { n: 0, i: 0, timer: null };
+let film = { n: 0, i: 0, timer: null, images: [] };
 
 const ETIQUETTES = {
   course_x: "Course X (± mm)", course_y: "Course Y (± mm)",
@@ -32,6 +33,34 @@ function rafraichirVue() {
   $("#image").src = `/api/vue?a=${azimut}&e=${elevation}&t=${Date.now()}`;
 }
 
+// ------------------------------------------------------------- chargement
+
+async function envoyerFichier(f) {
+  if (!f) return;
+  $("#depot").classList.add("occupe");
+  try {
+    const r = await fetch("/api/televerser", {
+      method: "POST", body: f,
+      // le nom vient d'un disque quelconque : il est encode ici et nettoye
+      // cote serveur, jamais repris tel quel pour ecrire sur le disque
+      headers: { "X-Fichier": encodeURIComponent(f.name) },
+    });
+    etat = await r.json();
+  } finally {
+    $("#depot").classList.remove("occupe");
+  }
+  apresChargement();
+}
+
+function apresChargement() {
+  appliquer();
+  rafraichirVue();
+  reinitialiserFilm();
+  if (etat.chargee) $("#etape-vue").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// --------------------------------------------------------------- reglages
+
 function dessinerReglages() {
   const c = $("#reglages");
   if (c.dataset.pret === "1") {
@@ -55,9 +84,12 @@ function dessinerReglages() {
       etat = await post("/api/reglages", { [e.target.name]: e.target.value });
       appliquer();
       rafraichirVue();
+      reinitialiserFilm();
     }
   });
 }
+
+// --------------------------------------------------------------- resultats
 
 function dessinerResultat() {
   const bloc = $("#resultat");
@@ -79,12 +111,21 @@ function appliquer() {
   $("#verifier").disabled = !chargee || etat.occupe;
   $("#simuler").disabled = !chargee || etat.occupe;
   $("#charger").disabled = etat.occupe;
+  $("#parcourir").disabled = etat.occupe;
+
+  // Divulgation progressive : une etape qui ne peut rien faire est grisee et
+  // dit pourquoi, plutot que d'offrir un bouton qui ne repond pas.
+  document.querySelectorAll("[data-requiert='piece']").forEach((s) =>
+    s.classList.toggle("verrouille", !chargee));
 
   const info = $("#piece-info");
   info.hidden = !chargee;
   if (chargee) {
+    const source = etat.origine === "votre fichier"
+      ? "votre fichier" : "exemple fourni";
     info.innerHTML = `<strong>${etat.piece}</strong> — ${etat.dimensions}` +
-      (etat.import_detail ? `<br><span style="color:#99a2b3">${etat.import_detail}</span>` : "");
+      ` <span class="jeton">${source}</span>` +
+      (etat.import_detail ? `<br><span class="doux">${etat.import_detail}</span>` : "");
   }
 
   const p = $("#progres");
@@ -103,6 +144,11 @@ function appliquer() {
       : `Cette pièce ne peut pas être usinée telle quelle. ${etat.erreur}`;
     (chargee ? $("#etape-verif") : $("#etape-piece")).appendChild(d);
   }
+
+  const note = $("#simu-note");
+  note.hidden = !etat.simulation_note;
+  note.textContent = etat.simulation_note || "";
+
   dessinerReglages();
   dessinerResultat();
 }
@@ -120,8 +166,18 @@ async function sonder() {
   }
 }
 
+// ------------------------------------------------------------------- film
+
+function reinitialiserFilm() {
+  if (film.timer) { clearInterval(film.timer); film.timer = null; }
+  film = { n: 0, i: 0, timer: null, images: [] };
+  $("#bloc-simu").hidden = true;
+  $("#jouer").textContent = "▶ jouer";
+}
+
 function preparerFilm() {
   film.n = etat.n_images;
+  film.images = etat.film || [];
   if (!film.n) return;
   $("#bloc-simu").hidden = false;
   const c = $("#curseur");
@@ -133,6 +189,19 @@ function montrer(i) {
   film.i = ((i % film.n) + film.n) % film.n;
   $("#film").src = `/api/image?i=${film.i}`;
   $("#curseur").value = String(film.i);
+  const f = film.images[film.i];
+  if (!f) { $("#axes").innerHTML = ""; $("#film-titre").textContent = ""; return; }
+  $("#film-titre").textContent = f.titre;
+  const etats = [
+    ["X", `${f.x} mm`], ["Y", `${f.y} mm`], ["Z", `${f.z} mm`],
+    ["A", `${f.a}°`], ["C", `${f.c}°`],
+  ];
+  $("#axes").innerHTML =
+    etats.map(([k, v]) => `<span class="axe"><b>${k}</b> ${v}</span>`).join("") +
+    `<span class="axe ${f.coupe ? "coupe" : "rapide"}">` +
+    `${f.coupe ? "l'outil coupe" : "déplacement rapide"}</span>` +
+    (f.dans_courses ? "" :
+      `<span class="axe hors">hors des courses réglées</span>`);
 }
 
 function jouerPause() {
@@ -142,10 +211,31 @@ function jouerPause() {
     return;
   }
   $("#jouer").textContent = "❚❚ pause";
-  film.timer = setInterval(() => montrer(film.i + 1), 110);
+  film.timer = setInterval(() => montrer(film.i + 1), 160);
 }
 
+// ---------------------------------------------------------------- lancer
+
+function dessinerLancement(l) {
+  $("#lancement").hidden = false;
+  const bloquantes = l.conditions.filter((c) => c.bloque);
+  $("#lancement-resume").textContent = l.possible
+    ? "Toutes les conditions sont remplies : un programme peut être préparé."
+    : `Pas encore : ${bloquantes.length} condition(s) sur ` +
+      `${l.conditions.length} ne sont pas remplies.`;
+  $("#conditions").innerHTML = l.conditions.map((c) => `
+    <li class="${c.satisfaite ? "ok" : (c.bloque ? "bloque" : "avert")}">
+      <div class="titre">${c.satisfaite ? "✔" : "✖"} ${c.titre}</div>
+      ${c.satisfaite ? "" : `<p class="consigne-s">${c.action}</p>`}
+    </li>`).join("");
+}
+
+// ------------------------------------------------------------------ init
+
 async function init() {
+  const l = await get("/api/lancement");
+  $("#jamais").textContent = l.jamais;
+
   const ex = await get("/api/exemples");
   $("#exemples").innerHTML = ex.exemples
     .map((e) => `<option value="${e.fichier}">${e.nom}</option>`).join("");
@@ -154,9 +244,37 @@ async function init() {
   $("#charger").addEventListener("click", async () => {
     $("#charger").disabled = true;
     etat = await post("/api/piece", { fichier: $("#exemples").value });
-    appliquer();
-    rafraichirVue();
-    $("#etape-vue").scrollIntoView({ behavior: "smooth", block: "start" });
+    apresChargement();
+  });
+
+  // Depot du fichier : glisser-deposer ET bouton. Les deux, parce qu'un
+  // glisser-deposer ne s'utilise pas au doigt sur une tablette d'atelier, et
+  // qu'un selecteur de fichier ne se devine pas quand on tient deja le fichier.
+  const depot = $("#depot");
+  ["dragenter", "dragover"].forEach((t) => depot.addEventListener(t, (e) => {
+    e.preventDefault(); depot.classList.add("survol");
+  }));
+  ["dragleave", "drop"].forEach((t) => depot.addEventListener(t, (e) => {
+    e.preventDefault(); depot.classList.remove("survol");
+  }));
+  depot.addEventListener("drop", (e) => {
+    const f = e.dataTransfer && e.dataTransfer.files[0];
+    if (f) envoyerFichier(f);
+  });
+  $("#parcourir").addEventListener("click", (e) => {
+    e.stopPropagation(); $("#fichier").click();
+  });
+  depot.addEventListener("click", (e) => {
+    if (e.target === depot || e.target.closest(".depot-titre, .depot-icone")) {
+      $("#fichier").click();
+    }
+  });
+  depot.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#fichier").click(); }
+  });
+  $("#fichier").addEventListener("change", (e) => {
+    envoyerFichier(e.target.files[0]);
+    e.target.value = "";            // pour pouvoir recharger le meme fichier
   });
 
   document.querySelectorAll("[data-tourne]").forEach((b) =>
@@ -175,7 +293,7 @@ async function init() {
       course_z_haut: 60, a_min: -120, a_max: 30, rayon_plateau: 75,
       diametre_outil: 6, jauge_outil: 45 };
     etat = await post("/api/reglages", kit);
-    appliquer(); rafraichirVue();
+    appliquer(); rafraichirVue(); reinitialiserFilm();
   });
 
   $("#verifier").addEventListener("click", async () => {
@@ -184,8 +302,13 @@ async function init() {
   });
 
   $("#simuler").addEventListener("click", async () => {
-    etat = await post("/api/simuler", { images: 24 });
+    reinitialiserFilm();
+    etat = await post("/api/simuler", { images: 36 });
     appliquer(); sonder();
+  });
+
+  $("#lancer").addEventListener("click", async () => {
+    dessinerLancement(await get("/api/lancement"));
   });
 
   $("#jouer").addEventListener("click", jouerPause);

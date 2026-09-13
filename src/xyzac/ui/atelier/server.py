@@ -20,9 +20,9 @@ import shutil
 import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
-from .session import CORPUS, Session
+from .session import CORPUS, TAILLE_MAX, Session
 
 STATIQUE = Path(__file__).resolve().parent / "static"
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript",
@@ -83,13 +83,18 @@ class Atelier(BaseHTTPRequestHandler):
             return self._json(s.etat())
         if u.path == "/api/exemples":
             return self._json({"exemples": Session.exemples()})
+        if u.path == "/api/lancement":
+            return self._json(s.lancement())
         if u.path == "/api/vue":
             if not s.piece_chargee:
                 return self._json({"erreur": "aucune piece"}, 409)
             az = float(q.get("a", ["35"])[0])
             el = float(q.get("e", ["18"])[0])
             cadrage = q.get("c", ["machine"])[0]
-            out = type(self).travail / f"vue_{az:.0f}_{el:.0f}_{cadrage}.png"
+            # La REVISION entre dans le nom : sans elle, la vue d'une piece
+            # pouvait etre servie pour la suivante (voir Session.revision).
+            out = (type(self).travail /
+                   f"vue_{s.revision}_{az:.0f}_{el:.0f}_{cadrage}.png")
             if not out.exists():
                 s.vue(out, azimut=az, elevation=el, cadrage=cadrage)
             return self._fichier(out)
@@ -103,6 +108,10 @@ class Atelier(BaseHTTPRequestHandler):
     def do_POST(self) -> None:                     # noqa: N802
         u = urlparse(self.path)
         s = type(self).session
+
+        if u.path == "/api/televerser":
+            return self._televerser(s)
+
         try:
             corps = self._corps()
         except (ValueError, json.JSONDecodeError):
@@ -119,8 +128,6 @@ class Atelier(BaseHTTPRequestHandler):
                 chemin = CORPUS.parent / "step_degraded" / n
             if not chemin.is_file():
                 return self._json({"erreur": f"exemple inconnu : {nom}"}, 400)
-            for f in type(self).travail.glob("vue_*.png"):
-                f.unlink()
             try:
                 s.charger(chemin)
             except Exception as e:                 # noqa: BLE001
@@ -133,12 +140,7 @@ class Atelier(BaseHTTPRequestHandler):
             for k, v in corps.items():
                 if hasattr(s.reglages, k):
                     setattr(s.reglages, k, float(v))
-            for f in type(self).travail.glob("vue_*.png"):
-                f.unlink()
-            if s.piece_chargee:
-                # les reglages changent la scene : le verdict precedent ne
-                # s'y applique plus, et le garder affiche serait un mensonge
-                s.surfaces, s.resume, s.montages = [], "", []
+            s.invalider()
             return self._json(s.etat())
 
         if u.path == "/api/verifier":
@@ -152,6 +154,36 @@ class Atelier(BaseHTTPRequestHandler):
             return self._json(s.etat())
 
         self._json({"erreur": "route inconnue"}, 404)
+
+    def _televerser(self, s: Session) -> None:
+        """Recoit le fichier de l'operateur : corps BRUT, nom dans un en-tete.
+
+        Pas de ``multipart/form-data``, alors que c'est la forme habituelle
+        d'un envoi de fichier. Motif : l'analyser correctement demande soit une
+        dependance, soit une centaine de lignes d'analyse de frontieres — pour
+        transporter une seule chose, que le corps brut transporte tel quel. Le
+        navigateur sait poster un ``File`` directement ; seul le NOM a besoin
+        d'un canal, et un en-tete suffit.
+
+        La taille est verifiee sur ``Content-Length`` AVANT lecture. Lire
+        d'abord puis mesurer laisserait n'importe quel envoi remplir la memoire
+        du Raspberry Pi — la borne ne servirait alors qu'apres le mal.
+        """
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return self._json({"erreur": "taille illisible"}, 400)
+        if n > TAILLE_MAX:
+            return self._json(
+                {"erreur": f"fichier trop gros : {n / 1e6:.0f} Mo pour une "
+                           f"limite de {TAILLE_MAX // 10**6} Mo"}, 413)
+        nom = unquote(self.headers.get("X-Fichier", "") or "piece.step")
+        donnees = self.rfile.read(n) if n else b""
+        try:
+            s.televerser(nom, donnees, type(self).travail / "televerse")
+        except Exception as e:                     # noqa: BLE001
+            s.erreur = f"{type(e).__name__} : {e}"
+        return self._json(s.etat())
 
 
 def servir(port: int = 8765, *, travail: Path | None = None,

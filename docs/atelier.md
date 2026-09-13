@@ -32,19 +32,68 @@ depuis votre poste avec un tunnel `ssh -L 8765:127.0.0.1:8765 pi@…`.
 
 ## 3. Les cinq étapes
 
-1. **Choisissez une pièce** — 20 géométries d'exemple, plus 3 volontairement
-   abîmées : voir ce que le logiciel fait d'un mauvais fichier vaut mieux que
-   le découvrir avec le sien.
+1. **Votre pièce** — glissez votre fichier `.step` ou `.stp` sur la page, ou
+   choisissez-le avec le bouton. Clé USB, pièce jointe, dossier de CAO : le
+   fichier passe par l'importeur **contrôlé** du moteur, celui qui refuse une
+   coque non fermée en disant pourquoi. Vous n'avez pas encore de fichier ? Un
+   volet replié prête 20 géométries d'exemple, plus 3 volontairement abîmées —
+   voir ce que le logiciel fait d'un mauvais fichier vaut mieux que le
+   découvrir avec le sien.
 2. **Regardez** — la pièce sur le plateau, dans la machine. Quatre boutons
    pour tourner la vue.
-3. **Réglez votre machine** — neuf cotes. Ce sont celles qui changent
-   l'**accessibilité** ; les avances changent le temps d'usinage, pas la
-   faisabilité, et les mélanger ferait croire qu'elles se valent.
-4. **Cette machine peut-elle faire cette pièce ?** — le moteur essaie les six
+3. **Cette machine peut-elle faire cette pièce ?** — le moteur essaie les six
    façons de poser la pièce et répond **surface par surface**, chaque surface
    nommée par ce qu'on peut montrer du doigt (« le dessous », « le flanc
-   droit ») et chaque verdict assorti d'une action.
-5. **Simulez** — un tour complet autour de la scène.
+   droit ») et chaque verdict assorti d'une action. Un volet replié,
+   *« ma machine n'a pas ces cotes »*, donne les neuf réglages : ce sont ceux
+   qui changent l'**accessibilité**, les avances changent le temps d'usinage
+   et pas la faisabilité.
+4. **Regardez-la s'usiner** — voir §3bis.
+5. **Lancer** — voir §3ter.
+
+Les étapes 2 à 5 restent grisées tant qu'aucune pièce n'est chargée, et disent
+pourquoi. Un bouton qui ne répond pas est pire qu'un bouton absent.
+
+### 3bis. La simulation d'usinage
+
+Ce n'est **pas** un tour de manège autour de la pièce. La caméra ne bouge pas ;
+c'est l'outil qui parcourt la trajectoire que `plan_roughing` a réellement
+calculée, avec les A/C que ce plan a choisis, et la trajectoire déjà parcourue
+se dessine derrière lui. Sous chaque image : X, Y, Z, A, C de la pose, si
+l'outil coupe ou se déplace en rapide, et **s'il sort des courses réglées** —
+ce dernier point a trouvé un cas réel dès le premier essai (plan de dégagement
+à Z = 62 mm pour une course qui s'arrête à 60).
+
+Ce que la simulation **ne** montre **pas**, et qu'elle écrit sous elle, chiffré
+depuis l'état réel :
+
+- les passes de **finition** — seule l'ébauche est calculée ;
+- la **matière qui disparaît** — la pièce finie est dessinée dès la première
+  image ;
+- les **brides**, qui ne sont modélisées nulle part dans le projet ;
+- la matière restante, séparée en deux : celle qu'**aucune** indexation
+  candidate ne voit (il faut reposer la pièce) et celle que l'aperçu laisse
+  parce qu'il **se limite à 2 indexations** pour tenir en quelques secondes.
+
+### 3ter. Le bouton LANCER
+
+Il ne fait pas partir la machine, et **aucun bouton de ce logiciel ne le
+fera** : déposer un fichier programme puis laisser l'opérateur l'ouvrir et
+appuyer garde un humain dans la boucle au dernier moment, celui où l'on regarde
+la machine avant qu'elle bouge.
+
+Ce qu'il fait : il affiche les **quatre conditions** à remplir, et ce qu'il faut
+faire pour chacune. Aujourd'hui les quatre sont non remplies, parce qu'une
+machine en kit qu'on vient d'assembler n'a ni gamme approuvée ni dossier de
+calibration. C'est exact, et il n'y a aucune raison de l'habiller.
+
+Ces conditions ne sont **pas** écrites dans l'interface. Elles viennent de
+`xyzac/production_gate.py`, c'est-à-dire du même endroit que celui où
+`linuxcnc_gateway.deposit` les fait respecter en refusant. Écrites deux fois,
+elles auraient fini par diverger — et la copie divergente aurait été celle
+qu'on lit à l'écran, donc celle sur laquelle quelqu'un se serait fié. Un test
+(`test_the_page_and_the_deposit_refuse_for_the_same_reasons`) les attache
+l'une à l'autre.
 
 ## 4. Trois décisions de construction
 
@@ -56,6 +105,14 @@ mise à jour, pour un service que `http.server` rend ici très bien.
 **Vue 3D calculée côté serveur, envoyée en image.** Marche sans pilote
 graphique — donc sur un Pi sans écran comme sur un portable — et sans charger
 de bibliothèque 3D dans le navigateur.
+
+**Le fichier téléversé arrive en corps brut, son nom dans un en-tête.** Pas de
+`multipart/form-data` : l'analyser correctement demande soit une dépendance,
+soit une centaine de lignes, pour transporter une seule chose que le corps brut
+transporte tel quel. La taille est vérifiée sur `Content-Length` **avant**
+lecture — mesurer après avoir lu laisserait n'importe quel envoi remplir la
+mémoire du Pi. Le nom est reconstruit caractère par caractère côté serveur :
+il vient de la machine de quelqu'un d'autre et n'a aucune raison d'être sain.
 
 **La page ne demande rien au réseau.** Aucune balise ne pointe vers un domaine
 extérieur, l'icône est en ligne dans le HTML. Elle fonctionne hors ligne, et un
@@ -101,8 +158,12 @@ dans `tools/` : il ne doit pas alourdir la suite du projet. Il clique
 réellement sur les boutons, attend les images, lit les verdicts, et laisse ses
 captures dans `out/atelier/`.
 
-Résultat de la dernière exécution, sur le dôme C10 avec les cotes du kit :
-page chargée, pièce importée (60 × 60 × 44 mm), vue tournée, réglage changé,
-**verdict en 41 s** — 4 surfaces usinables telles quelles, 1 après
-retournement, 3 à changer —, simulation de 24 images, lecture. **Aucune erreur
-dans la console.**
+Résultat de la dernière exécution : fichier `.step` **téléversé** par le
+sélecteur (60 × 60 × 25 mm, annoncé « votre fichier »), un `.txt` **refusé** en
+clair, puis le dôme C10 chargé depuis les exemples, vue tournée, réglage
+changé, **verdict en 46 s** — 4 surfaces usinables telles quelles, 1 après
+retournement, 3 à changer —, **simulation d'usinage de 36 images** sur
+22 587 points de trajectoire en 2 opérations d'ébauche (79 % de la matière
+enlevée), lecture, pose d'axes affichée sous chaque image, puis les 4
+conditions de lancement, toutes non remplies. **Aucune erreur dans la
+console.**

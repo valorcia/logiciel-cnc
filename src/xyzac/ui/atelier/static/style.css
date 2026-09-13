@@ -63,3 +63,52 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .pied{color:var(--doux);font-size:13.5px;margin:26px 0 0;text-align:center}
 .erreur{background:#3a1717;border:1px solid #6b2020;color:#ffc9c9;
   padding:12px 14px;border-radius:8px;margin-top:14px}
+
+/* --- etape 1 : le depot de fichier --------------------------------------- */
+.sous-titre{color:var(--doux);margin:0 0 14px;font-size:15px}
+.depot{border:2px dashed var(--trait);border-radius:14px;padding:30px 20px;
+  text-align:center;background:#11151b;cursor:pointer;transition:.15s}
+.depot:hover,.depot:focus{border-color:var(--primaire);background:#141b26}
+.depot.survol{border-color:var(--primaire);background:#16233a}
+.depot.occupe{opacity:.5;pointer-events:none}
+.depot-icone{font-size:34px;color:var(--primaire);line-height:1}
+.depot-titre{margin:8px 0 2px;font-size:18px;font-weight:600}
+.depot-ou{margin:6px 0 12px;color:var(--doux);font-size:13px;
+  text-transform:uppercase;letter-spacing:.08em}
+details.replie{margin-top:16px;border-top:1px solid var(--trait);padding-top:12px}
+details.replie summary{cursor:pointer;color:var(--primaire);font-size:15px;
+  padding:6px 0;list-style:none}
+details.replie summary::before{content:"▸ ";display:inline-block;transition:.15s}
+details.replie[open] summary::before{transform:rotate(90deg)}
+.jeton{display:inline-block;font-size:12px;padding:2px 8px;border-radius:20px;
+  background:#1d2a3f;color:#9dc0ff;border:1px solid #2e4568}
+.doux{color:var(--doux)}
+
+/* --- divulgation progressive --------------------------------------------- */
+.etape.verrouille{opacity:.42}
+.etape.verrouille::after{content:"Chargez d'abord une pièce à l'étape 1.";
+  display:block;margin-top:12px;font-size:13.5px;color:var(--doux)}
+.etape.verrouille button,.etape.verrouille input,.etape.verrouille select,
+.etape.verrouille details{pointer-events:none}
+
+/* --- simulation d'usinage ------------------------------------------------ */
+.film-titre{margin:10px 0 0;font-weight:600;font-size:15px}
+.axes{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+.axe{font-size:13px;padding:4px 10px;border-radius:6px;background:#11151b;
+  border:1px solid var(--trait);color:var(--doux)}
+.axe b{color:var(--texte);margin-right:4px}
+.axe.coupe{color:#a8d8ff;border-color:#2b4a6b}
+.axe.rapide{color:#f0c98c;border-color:#5a4520}
+.axe.hors{color:#ffc9c9;border-color:#6b2020;background:#2a1414}
+.note{margin-top:14px;font-size:13.5px;color:var(--doux);background:#11151b;
+  border:1px solid var(--trait);border-radius:8px;padding:12px 14px}
+
+/* --- conditions de lancement --------------------------------------------- */
+.conditions{list-style:none;padding:0;margin:14px 0 0}
+.conditions li{border-left:4px solid var(--trait);background:#11151b;
+  padding:12px 15px;margin-bottom:9px;border-radius:0 8px 8px 0}
+.conditions li.ok{border-left-color:var(--ok)}
+.conditions li.bloque{border-left-color:var(--non)}
+.conditions li.avert{border-left-color:var(--attention)}
+.conditions .titre{font-weight:600;font-size:14.5px}
+.conditions .consigne-s{margin:6px 0 0;color:var(--doux);font-size:13.5px}

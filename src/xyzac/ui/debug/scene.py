@@ -637,11 +637,50 @@ def _arrow_length(state) -> float:
     return max(diag * 0.45, 5.0)
 
 
+def camera_serie(state, *, azimuth_deg: float = 0.0, elevation_deg: float = 0.0,
+                 window_size=(1280, 860), deflection: float = 0.05):
+    """Camera FIXE a passer a ``capture`` pour une suite d'images.
+
+    Le cadrage automatique de ``capture`` porte sur « piece + brut + outil ».
+    C'est le bon cadrage pour UNE image, et le mauvais pour une suite : l'outil
+    se deplace, donc le cadrage suit l'outil, donc la piece saute d'une image a
+    l'autre. Sur une animation, ce saut se lit comme un mouvement de la
+    machine — l'image raconte alors quelque chose que la machine ne fait pas.
+
+    Le cadrage rendu ici porte sur « piece + brut + ORGANES machine ». Les
+    organes ne bougent pas avec l'outil, et ils englobent le plateau, donc la
+    piece quelle que soit son indexation A/C. Le meme cadrage convient ainsi a
+    toutes les images d'une serie, y compris de part et d'autre d'une
+    reindexation.
+    """
+    pv = _pv()
+    pv.OFF_SCREEN = True
+    plotter = pv.Plotter(off_screen=True, window_size=window_size)
+    scene = DebugScene(plotter=plotter)
+    mo = state.mount_offset
+    a, c = float(state.inspect_a_deg), float(state.inspect_c_deg)
+    if state.part_shape is not None:
+        scene.add_part(transport_to_machine(
+            occt_to_mesh(state.part_shape, deflection), state.machine, mo, a, c))
+    if state.stock is not None and state.stock.lo is not None:
+        scene.add_stock(transport_to_machine(
+            box_mesh(state.stock.lo, state.stock.hi), state.machine, mo, a, c))
+    scene.add_machine_volumes(state.machine, a, c)
+    scene.fit_layers("part", "stock", "machine")
+    if azimuth_deg:
+        plotter.camera.azimuth += float(azimuth_deg)
+    if elevation_deg:
+        plotter.camera.elevation += float(elevation_deg)
+    cam = tuple(tuple(float(x) for x in v) for v in plotter.camera_position)
+    plotter.close()
+    return cam
+
+
 def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
             elevation_deg: float = 0.0, zoom: float = 1.0, fit: str = "part",
             window_size=(1280, 860), deflection: float = 0.05,
             accessibility=None, arrow_length: float | None = None,
-            toolpath=None) -> Path:
+            toolpath=None, camera=None) -> Path:
     """Capture PNG d'un etat, par un plotter NEUF a chaque appel.
 
     **Pourquoi un plotter neuf et non une capture du plotter vivant.** Mesure
@@ -713,16 +752,25 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
             scene.set_visible(key, False)
 
     plotter.add_axes(interactive=False)
-    if fit == "part":
-        scene.fit_layers("part", "stock", "tool")
+    if camera is not None:
+        # Cadrage IMPOSE. Une suite d'images ne peut pas se recadrer a chaque
+        # vue : le cadrage automatique suit l'outil, et l'outil bouge, donc
+        # la piece sauterait d'une image a l'autre. Le spectateur lirait ce
+        # saut comme un mouvement de la machine — il faut donc pouvoir fixer
+        # la camera une fois pour toute la serie.
+        plotter.camera_position = camera
+        plotter.reset_camera_clipping_range()
     else:
-        scene.reset_view()
-    if azimuth_deg:
-        plotter.camera.azimuth += float(azimuth_deg)
-    if elevation_deg:
-        plotter.camera.elevation += float(elevation_deg)
-    if zoom and zoom != 1.0:
-        plotter.camera.zoom(float(zoom))
+        if fit == "part":
+            scene.fit_layers("part", "stock", "tool")
+        else:
+            scene.reset_view()
+        if azimuth_deg:
+            plotter.camera.azimuth += float(azimuth_deg)
+        if elevation_deg:
+            plotter.camera.elevation += float(elevation_deg)
+        if zoom and zoom != 1.0:
+            plotter.camera.zoom(float(zoom))
 
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)

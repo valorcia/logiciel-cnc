@@ -46,13 +46,34 @@ with sync_playwright() as pw:
     print("   bouton VERIFIER desactive au depart :",
           page.is_disabled("#verifier"))
 
+    # --- 2. le fichier de l'operateur, par le selecteur de fichier ---------
+    # Le chemin que quelqu'un empruntera reellement : il a un STEP sur une cle
+    # et il le depose. Le corpus sert de fichier « a lui » — ce qui compte est
+    # qu'il passe par /api/televerser et non par la liste d'exemples.
+    sien = str(sorted((Path(__file__).resolve().parents[1] / "tests" / "corpus"
+                       / "step").glob("C02*.step"))[0])
+    page.set_input_files("#fichier", sien)
+    page.wait_for_selector("#piece-info:not([hidden])", timeout=60000)
+    print("2. fichier televerse :", page.inner_text("#piece-info").split("\n")[0])
+    assert "votre fichier" in page.inner_text("#piece-info"), \
+        "la piece doit etre annoncee comme venant de l'operateur"
+
+    # un fichier qui n'est pas du STEP doit etre refuse en clair, pas en 500
+    mauvais = SORTIE / "pas_un_step.txt"
+    mauvais.write_text("ceci n'est pas un STEP")
+    page.set_input_files("#fichier", str(mauvais))
+    page.wait_for_selector("#etape-piece .erreur", timeout=30000)
+    print("   refus d'un non-STEP :",
+          page.inner_text("#etape-piece .erreur")[:90])
+
+    page.get_by_text("Je n'ai pas encore de fichier").click()
     page.select_option("#exemples", "C10_dome_convexe.step")
     page.click("#charger")
     page.wait_for_selector("#piece-info:not([hidden])", timeout=60000)
     page.wait_for_function(
         "document.querySelector('#image').complete && "
         "document.querySelector('#image').naturalWidth > 0", timeout=90000)
-    print("2. piece chargee :", page.inner_text("#piece-info").split("\n")[0])
+    print("3. exemple charge :", page.inner_text("#piece-info").split("\n")[0])
     print("   image affichee :",
           page.eval_on_selector("#image", "e => e.naturalWidth + 'x' + e.naturalHeight"))
     page.screenshot(path=SORTIE / "2-chargee.png", full_page=True)
@@ -60,16 +81,17 @@ with sync_playwright() as pw:
     av = page.get_attribute("#image", "src")
     page.click("[data-tourne='45']")
     page.wait_for_timeout(3000)
-    print("3. rotation :", "l'image a change" if page.get_attribute("#image","src") != av else "IMAGE INCHANGEE")
+    print("4. rotation :", "l'image a change" if page.get_attribute("#image","src") != av else "IMAGE INCHANGEE")
 
+    page.get_by_text("Ma machine n'a pas ces cotes").click()
     page.fill("#r-diametre_outil", "6")
     page.dispatch_event("#r-diametre_outil", "change")
     page.wait_for_timeout(1500)
-    print("4. reglage outil -> 3 mm, verdict precedent efface :",
+    print("5. reglage outil -> 3 mm, verdict precedent efface :",
           page.is_hidden("#resultat"))
 
     page.click("#verifier")
-    print("5. verification lancee...")
+    print("6. verification lancee...")
     page.wait_for_selector("#progres:not([hidden])", timeout=15000)
     t0 = time.time()
     page.wait_for_selector("#resultat:not([hidden])", timeout=600000)
@@ -87,12 +109,27 @@ with sync_playwright() as pw:
     page.wait_for_function(
         "document.querySelector('#film').complete && "
         "document.querySelector('#film').naturalWidth > 0", timeout=60000)
-    print("6. simulation :", page.get_attribute("#curseur", "max"), "images")
+    print("7. simulation :", page.get_attribute("#curseur", "max"), "images")
+    print("   pose affichee :", page.inner_text("#film-titre"))
+    print("   axes           :", page.inner_text("#axes").replace("\n", " | "))
     page.click("#jouer")
-    page.wait_for_timeout(1200)
+    page.wait_for_timeout(1600)
     print("   lecture :", page.inner_text("#jouer"),
           "| image", page.input_value("#curseur"))
+    apres = page.inner_text("#film-titre")
+    page.click("#jouer")                          # pause
+    print("   la pose suit le film :", apres)
+    print("   ce que la simulation NE montre PAS :")
+    print("     ", page.inner_text("#simu-note"))
     page.screenshot(path=SORTIE / "4-simulation.png", full_page=True)
+
+    # --- 8. le bouton LANCER -----------------------------------------------
+    page.click("#lancer")
+    page.wait_for_selector("#lancement:not([hidden])", timeout=30000)
+    print("8. LANCER :", page.inner_text("#lancement-resume"))
+    for li in page.query_selector_all("#conditions li"):
+        print("     ", li.inner_text().replace("\n", " — ")[:110])
+    page.screenshot(path=SORTIE / "5-lancer.png", full_page=True)
     nav.close()
 
 srv.shutdown()
