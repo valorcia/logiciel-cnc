@@ -141,8 +141,8 @@ with sync_playwright() as pw:
     print("   axes           :", page.inner_text("#axes").replace("\n", " | "))
     page.click("#jouer")
     page.wait_for_timeout(1600)
-    print("   lecture :", page.inner_text("#jouer"),
-          "| image", page.input_value("#curseur"))
+    print("   lecture :", page.inner_text("#compteur").strip(),
+          "| bouton", page.inner_text("#jouer"))
     apres = page.inner_text("#film-titre")
     page.click("#jouer")                          # pause
     print("   la pose suit le film :", apres)
@@ -170,6 +170,12 @@ with sync_playwright() as pw:
     page.screenshot(path=SORTIE / "4-simulation.png", full_page=True)
     # ET un gros plan du seul bloc de simulation : sur une page longue, la
     # vignette de la trajectoire est illisible.
+    # Le fil d'etapes est ``sticky`` : il se superpose au haut de l'element si
+    # l'on capture sans avoir degage la place. La capture montrait alors une
+    # barre de navigation en travers de la trajectoire.
+    page.locator("#bloc-simu").scroll_into_view_if_needed()
+    page.evaluate("window.scrollBy(0, -90)")
+    page.wait_for_timeout(300)
     page.locator("#bloc-simu").screenshot(path=SORTIE / "4b-trajectoire.png")
 
     # --- 8. le bouton LANCER -----------------------------------------------

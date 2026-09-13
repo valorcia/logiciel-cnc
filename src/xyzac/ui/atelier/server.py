@@ -90,14 +90,12 @@ class Atelier(BaseHTTPRequestHandler):
                 return self._json({"erreur": "aucune piece"}, 409)
             az = float(q.get("a", ["35"])[0])
             el = float(q.get("e", ["18"])[0])
-            cadrage = q.get("c", ["machine"])[0]
             # La REVISION entre dans le nom : sans elle, la vue d'une piece
             # pouvait etre servie pour la suivante (voir Session.revision).
-            out = (type(self).travail /
-                   f"vue_{s.revision}_{az:.0f}_{el:.0f}_{cadrage}.png")
+            out = type(self).travail / f"vue_{s.revision}_{az:.0f}_{el:.0f}.png"
             if not out.exists():
                 try:
-                    s.vue(out, azimut=az, elevation=el, cadrage=cadrage)
+                    s.vue(out, azimut=az, elevation=el)
                 except Exception as e:             # noqa: BLE001
                     # Sans ce filet, une panne de rendu remontait dans
                     # ``http.server``, qui coupe la connexion : le navigateur

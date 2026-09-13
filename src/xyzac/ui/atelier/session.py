@@ -47,6 +47,40 @@ TAILLE_MAX = 80 * 1024 * 1024
 #: dans la note de simulation, chiffre a l'appui, plutot que laisse a deviner.
 MAX_INDEXATIONS = 2
 
+#: Fond des vues 3D de l'atelier.
+#:
+#: Le banc de debug a un fond sombre, et c'est justifie la-bas : le degrade de
+#: l'outil va du clair (l'arete de coupe, ce qui DOIT toucher) au sombre (le
+#: nez de broche, ce qui ne doit JAMAIS toucher), de sorte que la gravite d'un
+#: contact se lise sur la teinte. Mais pour quelqu'un qui regarde simplement
+#: son usinage, le porte-outil et le nez de broche devenaient une tache noire
+#: sur un fond noir. Le code couleur reste l'unique source ; seul le fond
+#: change, et il change ici.
+FOND_3D = "#eef1f6"
+
+
+def legende() -> list[dict]:
+    """Ce que chaque couleur de la vue 3D veut dire.
+
+    Les teintes viennent de ``ui.debug.palette``, l'unique source du code
+    couleur : les recopier dans la feuille de style aurait cree une deuxieme
+    verite, et c'est la copie affichee qui aurait fini par mentir.
+
+    Manque signale a la relecture des captures : rien a l'ecran ne disait
+    « bleu = le brut ». Une image qu'il faut se faire expliquer n'informe pas.
+    """
+    from ..debug import palette
+
+    return [
+        {"couleur": palette.PART, "nom": "la pièce finie"},
+        {"couleur": palette.STOCK, "nom": "le brut"},
+        {"couleur": palette.PATH, "nom": "la coupe"},
+        {"couleur": palette.WARNING, "nom": "les déplacements rapides"},
+        {"couleur": palette.TOOL_ROLE["cutting"], "nom": "l'arête de l'outil"},
+        {"couleur": palette.TOOL_ROLE["holder"], "nom": "le porte-outil"},
+        {"couleur": palette.MACHINE, "nom": "le plateau et le berceau"},
+    ]
+
 #: Caracteres gardes dans un nom de fichier televerse. Tout le reste est
 #: remplace. Le nom vient de la machine de quelqu'un d'autre — cle USB, piece
 #: jointe — et il n'a aucune raison d'etre sain.
@@ -245,6 +279,18 @@ class Surface:
     consigne: str
     montage: str = ""
     detail: str = ""
+
+    @property
+    def etiquette(self) -> str:
+        """Le verdict en un mot, pour la pastille de couleur.
+
+        Redige ici et non dans la page : « a-changer » est un nom de champ,
+        « a retourner » est une phrase, et les phrases se redigent du cote qui
+        connait le verdict. La page colore, elle ne traduit pas.
+        """
+        return {"faisable": "usinable",
+                "a-changer": "à retourner",
+                "impossible": "à changer"}.get(self.verdict, self.verdict)
 
 
 @dataclass
@@ -635,8 +681,8 @@ class Session:
         self.film, self.simulation_note = [], ""
         self.n_images = 0
 
-    def vue(self, chemin: Path, *, azimut: float = 35.0, elevation: float = 18.0,
-            cadrage: str = "machine") -> Path:
+    def vue(self, chemin: Path, *, azimut: float = 35.0,
+            elevation: float = 18.0) -> Path:
         """Une vue fixe de la scene. Rendue une a la fois.
 
         Le verrou n'est pas du zele : deux rendus PyVista simultanes ecrivant
@@ -646,8 +692,20 @@ class Session:
         from ..debug import scene as sc
 
         with self._verrou:
-            return sc.capture(self._banc, chemin, azimuth_deg=azimut,
-                              elevation_deg=elevation, fit=cadrage)
+            # MEME cadrage qu'a la simulation : « piece + brut + organes ».
+            #
+            # Le cadrage « machine » encadrait tout le volume de courses —
+            # 300 x 240 x 180 mm — ce qui rendait une piece de 60 mm minuscule
+            # au centre d'une cage en fil de fer. Et la vue de l'etape 2 ne
+            # ressemblait alors pas a celle de l'etape 4, alors que c'est la
+            # meme scene : l'operateur avait deux images a reconcilier au lieu
+            # d'une a comprendre.
+            camera = sc.camera_serie(self._banc, azimuth_deg=azimut,
+                                     elevation_deg=elevation,
+                                     window_size=(1100, 740))
+            return sc.capture(self._banc, chemin, camera=camera,
+                              window_size=(1100, 740), background=FOND_3D,
+                              hidden=("limits", "machine_axes"))
 
     def simuler(self, dossier: Path, *, n: int = 40) -> None:
         """Rend les images de la simulation d'usinage, en tache de fond."""
@@ -758,7 +816,7 @@ class Session:
                 self.etape = (f"usinage {numero}/{len(plans)} — "
                               f"image {k + 1} sur {n_total}")
                 sc.capture(banc, dossier / f"f{k:03d}.png", camera=camera,
-                           window_size=(900, 620),
+                           window_size=(960, 640), background=FOND_3D,
                            hidden=("limits", "machine_axes"),
                            toolpath=(P[:i + 1],
                                      None if R is None else R[:i + 1]))
@@ -876,10 +934,12 @@ class Session:
             "n_images": self.n_images,
             "revision": self.revision,
             "rendu": rendu_3d(),
+            "legende": legende(),
             "origine": self.origine,
             "film": self.film,
             "simulation_note": self.simulation_note,
             "reglages": {k: getattr(self.reglages, k)
                          for k in vars(Reglages()) if not k.startswith("_")},
-            "surfaces": [vars(s) for s in self.surfaces],
+            "surfaces": [dict(vars(s), etiquette=s.etiquette)
+                         for s in self.surfaces],
         }

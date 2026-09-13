@@ -208,7 +208,7 @@ def televerser(tmp_path):
 def test_the_page_and_its_assets_are_served(serveur):
     assert b"Atelier XYZAC" in serveur("/")
     assert b"function" in serveur("/app.js") or b"const" in serveur("/app.js")
-    assert b"--primaire" in serveur("/style.css")
+    assert b":root{" in serveur("/style.css")
 
 
 def test_the_page_asks_the_network_for_nothing():
@@ -971,3 +971,60 @@ def test_a_real_native_crash_does_not_take_the_workshop_down(monkeypatch):
     assert "pilote" in message, message
     # et on est toujours vivant pour le dire
     assert sess.rendu_3d() == message
+
+
+# ------------------------------------------------------- le code couleur
+
+def test_the_legend_comes_from_the_single_colour_source():
+    """La legende de la vue 3D ne doit pas etre recopiee dans l'interface.
+
+    ``ui.debug.palette`` est l'unique source du code couleur. Une deuxieme
+    liste de teintes dans la feuille de style ou dans le JavaScript aurait
+    fini par diverger — et c'est la copie AFFICHEE qui aurait menti, donc
+    celle sur laquelle quelqu'un se serait fie pour lire une image.
+
+    Manque signale a la relecture des captures : rien a l'ecran ne disait
+    « bleu = le brut ». Une image qu'il faut se faire expliquer n'informe pas.
+    """
+    from xyzac.ui.atelier.session import legende
+    from xyzac.ui.debug import palette
+
+    entrees = legende()
+    assert entrees, "la legende ne doit pas etre vide"
+    connues = ({palette.PART, palette.STOCK, palette.PATH, palette.WARNING,
+                palette.MACHINE} | set(palette.TOOL_ROLE.values()))
+    for e in entrees:
+        assert e["couleur"] in connues, e
+        assert e["nom"] and e["nom"][0].islower(), e
+
+    # et aucune teinte en dur dans les fichiers de la page
+    for nom in ("style.css", "app.js"):
+        texte = (ATELIER / "static" / nom).read_text(encoding="utf-8")
+        for teinte in connues:
+            assert teinte.lower() not in texte.lower(), (nom, teinte)
+
+
+def test_every_word_shown_to_the_operator_is_accented():
+    """Une interface francaise qui ecrit « la piece finie » a quelqu'un qui
+    n'est pas developpeur a l'air cassee.
+
+    Ne porte que sur les textes RENDUS a l'ecran, pas sur les commentaires ni
+    les noms de champs : le code du projet est volontairement sans accents.
+    """
+    from xyzac.ui.atelier.session import REMEDES, Session, legende
+
+    a_verifier = [e["nom"] for e in legende()]
+    a_verifier += list(REMEDES.values())
+    a_verifier += [Session().lancement()["jamais"]]
+    for c in Session().lancement()["conditions"]:
+        a_verifier += [c["titre"], c["action"]]
+
+    suspects = []
+    for phrase in a_verifier:
+        for mot in ("piece", "arete", "deplacement", "etre", "mesures",
+                    "geometrique", "complete", "qualifiee", "epreuve",
+                    "executer", "cinematique", "etapes", "securite",
+                    "demarre", "meme", "ecrit", "operateur", "reduit"):
+            if mot in phrase.lower().split() or f" {mot} " in f" {phrase.lower()} ":
+                suspects.append((mot, phrase[:60]))
+    assert not suspects, suspects

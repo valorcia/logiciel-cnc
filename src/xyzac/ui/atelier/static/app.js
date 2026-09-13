@@ -102,7 +102,10 @@ function dessinerResultat() {
   $("#resume").textContent = etat.resume;
   $("#surfaces").innerHTML = etat.surfaces.map((s) => `
     <li class="${s.verdict}">
-      <div class="titre">${s.titre}</div>
+      <div class="haut">
+        <span class="titre">${s.titre}</span>
+        <span class="pastille">${s.etiquette}</span>
+      </div>
       <p class="consigne-s">${s.consigne}</p>
       ${s.detail ? `<p class="detail">${s.detail}</p>` : ""}
     </li>`).join("");
@@ -170,8 +173,47 @@ function appliquer() {
   note.hidden = !etat.simulation_note;
   note.textContent = etat.simulation_note || "";
 
+  dessinerLegende();
+  dessinerFil();
   dessinerReglages();
   dessinerResultat();
+}
+
+// La legende vient du SERVEUR, qui la tire de ``ui.debug.palette`` — l'unique
+// source du code couleur. La recopier ici aurait cree une deuxieme verite, et
+// c'est la copie affichee qui aurait fini par mentir.
+function dessinerLegende() {
+  if (!etat.legende || !etat.legende.length) return;
+  const html = etat.legende.map((l) =>
+    `<span><i style="background:${l.couleur}"></i>${l.nom}</span>`).join("");
+  for (const cible of ["#legende", "#legende-film"]) {
+    const n = $(cible);
+    if (n && n.dataset.pret !== "1") { n.innerHTML = html; n.dataset.pret = "1"; }
+  }
+}
+
+// Le fil d'etapes montre ou l'on en est. Une etape est « faite » quand ce
+// qu'elle produit EXISTE — pas quand on l'a cliquee : un bouton presse dont le
+// calcul a echoue n'a rien fait.
+function dessinerFil() {
+  const faites = {
+    "etape-piece": etat.chargee,
+    "etape-vue": etat.chargee,
+    "etape-verif": etat.surfaces.length > 0,
+    "etape-simu": etat.n_images > 0,
+    "etape-lancer": false,
+  };
+  document.querySelectorAll("[data-fil]").forEach((a) => {
+    a.classList.toggle("faite", !!faites[a.dataset.fil]);
+    a.classList.toggle("ouverte", a.dataset.fil === etapeCourante());
+  });
+}
+
+function etapeCourante() {
+  if (!etat.chargee) return "etape-piece";
+  if (!etat.surfaces.length) return "etape-verif";
+  if (!etat.n_images) return "etape-simu";
+  return "etape-lancer";
 }
 
 // --------------------------------------------------------- le battement
@@ -243,7 +285,7 @@ function reinitialiserFilm() {
   if (film.timer) { clearInterval(film.timer); film.timer = null; }
   film = { n: 0, i: 0, timer: null, images: [] };
   $("#bloc-simu").hidden = true;
-  $("#jouer").textContent = "▶ jouer";
+  $("#jouer").textContent = "▶";
 }
 
 function preparerFilm() {
@@ -260,6 +302,7 @@ function montrer(i) {
   film.i = ((i % film.n) + film.n) % film.n;
   $("#film").src = `/api/image?i=${film.i}`;
   $("#curseur").value = String(film.i);
+  $("#compteur").textContent = `${film.i + 1} / ${film.n}`;
   const f = film.images[film.i];
   if (!f) { $("#axes").innerHTML = ""; $("#film-titre").textContent = ""; return; }
   $("#film-titre").textContent = f.titre;
@@ -269,19 +312,21 @@ function montrer(i) {
   ];
   $("#axes").innerHTML =
     etats.map(([k, v]) => `<span class="axe"><b>${k}</b> ${v}</span>`).join("") +
-    `<span class="axe ${f.coupe ? "coupe" : "rapide"}">` +
+    `<span class="axe axe--etat ${f.coupe ? "axe--coupe" : "axe--rapide"}">` +
     `${f.coupe ? "l'outil coupe" : "déplacement rapide"}</span>` +
     (f.dans_courses ? "" :
-      `<span class="axe hors">hors des courses réglées</span>`);
+      `<span class="axe axe--etat axe--hors">hors des courses réglées</span>`);
 }
 
 function jouerPause() {
   if (film.timer) {
     clearInterval(film.timer); film.timer = null;
-    $("#jouer").textContent = "▶ jouer";
+    $("#jouer").textContent = "▶";
+    $("#jouer").title = "Jouer";
     return;
   }
-  $("#jouer").textContent = "❚❚ pause";
+  $("#jouer").textContent = "❚❚";
+  $("#jouer").title = "Pause";
   film.timer = setInterval(() => montrer(film.i + 1), 160);
 }
 

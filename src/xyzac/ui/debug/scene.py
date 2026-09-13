@@ -680,7 +680,7 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
             elevation_deg: float = 0.0, zoom: float = 1.0, fit: str = "part",
             window_size=(1280, 860), deflection: float = 0.05,
             accessibility=None, arrow_length: float | None = None,
-            toolpath=None, camera=None) -> Path:
+            toolpath=None, camera=None, background=None) -> Path:
     """Capture PNG d'un etat, par un plotter NEUF a chaque appel.
 
     **Pourquoi un plotter neuf et non une capture du plotter vivant.** Mesure
@@ -706,7 +706,14 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
     pv.OFF_SCREEN = True
     plotter = pv.Plotter(off_screen=True, window_size=window_size)
     scene = DebugScene(plotter=plotter)
-    plotter.set_background(palette.BACKGROUND)
+    # Le fond du BANC est sombre, et c'est justifie la-bas : le degrade de
+    # l'outil va du clair (l'arete, qui doit toucher) au sombre (le nez de
+    # broche, qui ne doit jamais toucher), de sorte que la gravite d'un contact
+    # se lise sur la teinte. Mais pour quelqu'un qui regarde simplement son
+    # usinage, le porte-outil et le nez deviennent une tache noire sur un fond
+    # noir. Le fond est donc REGLABLE par l'appelant, sans toucher au code
+    # couleur, qui reste l'unique source.
+    plotter.set_background(background or palette.BACKGROUND)
 
     mo = state.mount_offset
     a, c = float(state.inspect_a_deg), float(state.inspect_c_deg)

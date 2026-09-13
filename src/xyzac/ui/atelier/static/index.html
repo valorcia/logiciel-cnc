@@ -4,84 +4,120 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Atelier XYZAC</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%234f8cff'/><circle cx='16' cy='19' r='7' fill='%23e6e9ef'/><rect x='14' y='4' width='4' height='9' fill='%23e6e9ef'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231a5fb4'/><circle cx='16' cy='20' r='6.5' fill='%23fff'/><rect x='14' y='4' width='4' height='10' rx='1' fill='%23fff'/></svg>">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 
-<div id="coupe" class="coupe" hidden>
-  <strong>L'atelier est arrêté.</strong>
-  <span>La fenêtre noire a été fermée, ou vous y avez fait Ctrl+C. Cette page
-  n'est plus reliée à rien : les boutons ne répondront pas.</span>
-  <span><b>Pour reprendre :</b> double-cliquez à nouveau sur
-  <code>demarrer-atelier.bat</code> (ou <code>demarrer-atelier.command</code>).
-  Cette page se rebranchera toute seule.</span>
-  <span class="coupe-attente">Recherche de l'atelier…</span>
+<div id="coupe" class="bandeau bandeau--non" hidden>
+  <div class="bandeau-in">
+    <strong>L'atelier est arrêté.</strong>
+    <span>La fenêtre noire a été fermée, ou vous y avez fait Ctrl+C. Cette page
+    n'est plus reliée à rien : les boutons ne répondront pas.</span>
+    <span><b>Pour reprendre :</b> double-cliquez à nouveau sur
+    <code>demarrer-atelier.bat</code> (ou <code>demarrer-atelier.command</code>).
+    Cette page se rebranchera toute seule.</span>
+  </div>
 </div>
 
-<header>
-  <h1>Atelier XYZAC</h1>
-  <p class="sous-titre">Chargez votre pièce, regardez-la s'usiner, et voyez ce
-  que votre machine peut en faire. Aucune connaissance d'usinage n'est
-  nécessaire pour lire cette page.</p>
-  <p class="securite">SIMULATION UNIQUEMENT — aucune machine n'est reliée à cette
-  fenêtre. Rien de ce que vous cliquez ici ne peut faire bouger un axe.</p>
+<header class="tete-site">
+  <div class="largeur">
+    <div class="marque">
+      <span class="marque-signe" aria-hidden="true"></span>
+      <span class="marque-nom">Atelier <b>XYZAC</b></span>
+    </div>
+    <h1>Votre machine peut-elle faire cette pièce&nbsp;?</h1>
+    <p class="chapeau">Chargez votre fichier, regardez-la s'usiner, et voyez
+    surface par surface ce qu'il faut faire. Aucune connaissance d'usinage
+    n'est nécessaire pour lire cette page.</p>
+    <p class="securite">
+      <span class="securite-etiquette">SIMULATION UNIQUEMENT</span>
+      Aucune machine n'est reliée à cette fenêtre. Rien de ce que vous cliquez
+      ici ne peut faire bouger un axe.
+    </p>
+  </div>
 </header>
 
-<main>
+<nav class="fil" aria-label="Progression">
+  <div class="largeur fil-in">
+    <a href="#etape-piece" data-fil="etape-piece"><i>1</i>Votre pièce</a>
+    <a href="#etape-vue" data-fil="etape-vue"><i>2</i>Regardez</a>
+    <a href="#etape-verif" data-fil="etape-verif"><i>3</i>Vérifiez</a>
+    <a href="#etape-simu" data-fil="etape-simu"><i>4</i>Usinage</a>
+    <a href="#etape-lancer" data-fil="etape-lancer"><i>5</i>Lancer</a>
+  </div>
+</nav>
+
+<main class="largeur">
 
 <section class="etape" id="etape-piece">
-  <div class="tete"><span class="num">1</span><h2>Votre pièce</h2></div>
-  <p class="consigne">Un fichier <strong>.step</strong> ou <strong>.stp</strong> :
-  clé USB, pièce jointe, dossier de votre logiciel de dessin. Tous les logiciels
-  de CAO savent en exporter — cherchez «&nbsp;Exporter&nbsp;» puis
-  «&nbsp;STEP&nbsp;».</p>
+  <div class="tete"><span class="num">1</span>
+    <div><h2>Votre pièce</h2>
+      <p class="consigne">Un fichier <b>.step</b> ou <b>.stp</b> — clé USB,
+      pièce jointe, dossier de votre logiciel de dessin. Tous les logiciels de
+      CAO savent en exporter&nbsp;: cherchez «&nbsp;Exporter&nbsp;» puis
+      «&nbsp;STEP&nbsp;».</p></div>
+  </div>
 
   <div id="depot" class="depot" tabindex="0" role="button"
        aria-label="Déposer un fichier STEP">
-    <div class="depot-icone" aria-hidden="true">⬇</div>
+    <svg class="depot-icone" viewBox="0 0 48 48" aria-hidden="true">
+      <path d="M24 32V10m0 0-8 8m8-8 8 8" fill="none" stroke="currentColor"
+            stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M8 30v6a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4v-6" fill="none"
+            stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    </svg>
     <p class="depot-titre">Glissez votre fichier ici</p>
-    <p class="depot-ou">ou</p>
-    <button id="parcourir" class="primaire grand">CHOISIR UN FICHIER</button>
+    <p class="depot-ou"><span>ou</span></p>
+    <button id="parcourir" class="btn btn--primaire btn--grand">
+      Choisir un fichier
+    </button>
     <input id="fichier" type="file" accept=".step,.stp" hidden>
   </div>
 
-  <details class="replie" id="bloc-exemples">
+  <details class="volet" id="bloc-exemples">
     <summary>Je n'ai pas encore de fichier — me prêter une pièce d'exemple</summary>
-    <p class="consigne">Vingt pièces servent aux essais du moteur. Trois sont
-    volontairement abîmées&nbsp;: voir ce que le logiciel fait d'un mauvais
-    fichier vaut mieux que de le découvrir avec le vôtre.</p>
-    <div class="actions">
-      <select id="exemples" aria-label="Exemples de pièces"></select>
-      <button id="charger">CHARGER CET EXEMPLE</button>
+    <div class="volet-in">
+      <p class="consigne">Vingt pièces servent aux essais du moteur. Trois sont
+      volontairement abîmées&nbsp;: voir ce que le logiciel fait d'un mauvais
+      fichier vaut mieux que de le découvrir avec le vôtre.</p>
+      <div class="rangee">
+        <select id="exemples" aria-label="Exemples de pièces"></select>
+        <button id="charger" class="btn">Charger cet exemple</button>
+      </div>
     </div>
   </details>
 
-  <div id="piece-info" class="info" hidden></div>
+  <div id="piece-info" class="fiche" hidden></div>
 </section>
 
 <section class="etape verrouille" id="etape-vue" data-requiert="piece">
-  <div class="tete"><span class="num">2</span><h2>Regardez</h2></div>
-  <p class="consigne">Votre pièce est posée sur le plateau, dans la machine.
-  Tournez la vue pour vérifier que c'est bien la bonne pièce et qu'elle est à
-  l'endroit.</p>
-  <div id="sans-rendu" class="erreur" hidden></div>
-  <div class="vue">
+  <div class="tete"><span class="num">2</span>
+    <div><h2>Regardez</h2>
+      <p class="consigne">Votre pièce est posée sur le plateau, dans la
+      machine. Tournez la vue pour vérifier que c'est la bonne pièce et qu'elle
+      est à l'endroit.</p></div>
+  </div>
+  <div id="sans-rendu" class="alerte" hidden></div>
+  <figure class="scene">
     <img id="image" alt="Vue de la machine et de la pièce">
-    <div class="vue-boutons">
-      <button data-tourne="-45">◀ tourner</button>
-      <button data-haut="-12">▼ baisser</button>
-      <button data-haut="12">▲ monter</button>
-      <button data-tourne="45">tourner ▶</button>
-    </div>
+    <figcaption class="legende" id="legende"></figcaption>
+  </figure>
+  <div class="rangee rangee--outils">
+    <button class="btn btn--icone" data-tourne="-45" title="Tourner à gauche">↺</button>
+    <button class="btn btn--icone" data-haut="12" title="Monter">↑</button>
+    <button class="btn btn--icone" data-haut="-12" title="Baisser">↓</button>
+    <button class="btn btn--icone" data-tourne="45" title="Tourner à droite">↻</button>
   </div>
 </section>
 
 <section class="etape verrouille" id="etape-verif" data-requiert="piece">
-  <div class="tete"><span class="num">3</span><h2>Cette machine peut-elle faire cette pièce&nbsp;?</h2></div>
-  <p class="consigne">Le moteur essaie les six façons de poser la pièce sur le
-  plateau et vous dit, surface par surface, ce qu'il faut faire.</p>
-  <button id="verifier" class="primaire grand">VÉRIFIER</button>
+  <div class="tete"><span class="num">3</span>
+    <div><h2>Vérifiez l'accessibilité</h2>
+      <p class="consigne">Le moteur essaie les six façons de poser la pièce sur
+      le plateau et répond surface par surface, avec ce qu'il faut faire.</p></div>
+  </div>
+  <button id="verifier" class="btn btn--primaire btn--bloc">Vérifier</button>
   <div id="progres" class="progres" hidden>
     <div class="barre"><div id="barre-in"></div></div>
     <p id="etape-texte"></p>
@@ -89,50 +125,61 @@
   <div id="resultat" hidden>
     <p id="resume" class="resume"></p>
     <ul id="surfaces" class="surfaces"></ul>
-    <ul id="avertissements" class="avert"></ul>
+    <ul id="avertissements" class="reserves"></ul>
   </div>
 
-  <details class="replie" id="bloc-reglages">
+  <details class="volet" id="bloc-reglages">
     <summary>Ma machine n'a pas ces cotes — les ajuster</summary>
-    <p class="consigne">Ce sont les cotes qui changent la réponse ci-dessus.
-    Changez-en une, relancez la vérification, et regardez ce que cela change —
-    c'est à cela que sert cet atelier. Les vitesses et les avances ne sont pas
-    ici&nbsp;: elles changent le TEMPS d'usinage, pas la faisabilité.</p>
-    <div id="reglages" class="grille"></div>
-    <button id="defaut" class="lien">revenir aux valeurs du kit</button>
+    <div class="volet-in">
+      <p class="consigne">Ce sont les cotes qui changent la réponse ci-dessus.
+      Changez-en une, relancez, et regardez ce que cela change — c'est à cela
+      que sert cet atelier. Les vitesses et les avances ne sont pas ici&nbsp;:
+      elles changent le TEMPS d'usinage, pas la faisabilité.</p>
+      <div id="reglages" class="grille"></div>
+      <button id="defaut" class="btn btn--lien">revenir aux valeurs du kit</button>
+    </div>
   </details>
 </section>
 
 <section class="etape verrouille" id="etape-simu" data-requiert="piece">
-  <div class="tete"><span class="num">4</span><h2>Regardez-la s'usiner</h2></div>
-  <p class="consigne">L'outil parcourt la trajectoire d'ébauche réellement
-  calculée, avec les basculements A et C que cette gamme a choisis. La caméra ne
-  bouge pas&nbsp;: ce qui bouge à l'écran, c'est la machine.</p>
-  <button id="simuler" class="primaire grand">SIMULER L'USINAGE</button>
-  <div class="vue" id="bloc-simu" hidden>
-    <img id="film" alt="Simulation de l'usinage">
-    <p id="film-titre" class="film-titre"></p>
-    <div class="vue-boutons">
-      <button id="jouer">▶ jouer</button>
+  <div class="tete"><span class="num">4</span>
+    <div><h2>Regardez-la s'usiner</h2>
+      <p class="consigne">L'outil parcourt la trajectoire d'ébauche réellement
+      calculée, avec les basculements A et C que cette gamme a choisis. La
+      caméra ne bouge pas&nbsp;: ce qui bouge à l'écran, c'est la machine.</p></div>
+  </div>
+  <button id="simuler" class="btn btn--primaire btn--bloc">Simuler l'usinage</button>
+
+  <div id="bloc-simu" class="lecteur" hidden>
+    <figure class="scene">
+      <img id="film" alt="Simulation de l'usinage">
+      <figcaption class="legende" id="legende-film"></figcaption>
+    </figure>
+    <div class="barre-lecture">
+      <button id="jouer" class="btn btn--icone btn--jouer" title="Jouer">▶</button>
       <input id="curseur" type="range" min="0" max="0" value="0"
              aria-label="Position dans la simulation">
+      <span id="compteur" class="compteur"></span>
     </div>
+    <p id="film-titre" class="film-titre"></p>
     <div id="axes" class="axes"></div>
   </div>
   <p id="simu-note" class="note" hidden></p>
 </section>
 
 <section class="etape verrouille" id="etape-lancer" data-requiert="piece">
-  <div class="tete"><span class="num">5</span><h2>Lancer</h2></div>
-  <p class="consigne" id="jamais"></p>
-  <button id="lancer" class="primaire grand">LANCER L'USINAGE</button>
+  <div class="tete"><span class="num">5</span>
+    <div><h2>Lancer</h2>
+      <p class="consigne" id="jamais"></p></div>
+  </div>
+  <button id="lancer" class="btn btn--primaire btn--bloc">Lancer l'usinage</button>
   <div id="lancement" hidden>
     <p id="lancement-resume" class="resume"></p>
     <ul id="conditions" class="conditions"></ul>
   </div>
 </section>
 
-<p class="pied">Ce que vous voyez est calculé, pas dessiné : chaque verdict
+<p class="pied">Ce que vous voyez est calculé, pas dessiné&nbsp;: chaque verdict
 vient du moteur et peut être rejoué en ligne de commande. Ce que le moteur ne
 sait pas, il le dit.</p>
 

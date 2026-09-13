@@ -129,6 +129,37 @@ qu'on lit à l'écran, donc celle sur laquelle quelqu'un se serait fié. Un test
 (`test_the_page_and_the_deposit_refuse_for_the_same_reasons`) les attache
 l'une à l'autre.
 
+## 3quater. Le design, et pourquoi il est clair
+
+Retouche complète après un premier jet jugé « vraiment moche », et le reproche
+était mérité : cinq cartes identiques empilées, tout au même poids
+typographique, et une vue 3D sombre dans laquelle le porte-outil était une
+tache noire sur un fond noir.
+
+**Thème clair.** Le banc de debug est sombre et doit le rester : son dégradé
+d'outil encode la gravité d'un contact, du clair (l'arête, qui *doit* toucher)
+au sombre (le nez de broche, qui ne doit *jamais* toucher). Sur fond noir, les
+deux extrémités de ce dégradé disparaissent. Un atelier se regarde de jour,
+souvent debout ; les logiciels de CAO sont clairs, ce qui évite à l'œil de
+changer de régime entre deux fenêtres. Seul le **fond** de la vue est réglable
+(`capture(background=…)`) : le code couleur reste l'unique source.
+
+**Une légende sous chaque vue**, parce que rien ne disait « bleu = le brut ».
+Une image qu'il faut se faire expliquer n'informe pas. Les teintes viennent de
+`ui.debug.palette` par le serveur : les recopier dans la feuille de style aurait
+créé une deuxième vérité, et c'est la copie *affichée* qui aurait menti. Un test
+interdit toute teinte en dur dans `style.css` et `app.js`.
+
+**Un fil d'étapes** collant en haut, où une étape est « faite » quand ce qu'elle
+produit *existe* — pas quand on l'a cliquée : un bouton pressé dont le calcul a
+échoué n'a rien fait.
+
+**Le même cadrage à l'étape 2 et à l'étape 4.** Le cadrage « machine »
+englobait tout le volume de courses (300 × 240 × 180 mm), ce qui rendait une
+pièce de 60 mm minuscule dans une cage en fil de fer — et la vue ne ressemblait
+pas à celle de la simulation, alors que c'est la même scène. L'opérateur avait
+deux images à réconcilier au lieu d'une à comprendre.
+
 ## 4. Trois décisions de construction
 
 **Serveur : bibliothèque standard de Python.** Pas Flask, pas FastAPI. Cet

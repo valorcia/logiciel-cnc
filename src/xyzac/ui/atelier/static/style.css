@@ -1,142 +1,289 @@
+/* Atelier XYZAC — feuille de style unique.
+ *
+ * Theme CLAIR, et c'est un choix motive. Le banc de debug est sombre parce que
+ * son degrade d'outil encode la gravite d'un contact du clair au sombre ; sur
+ * un fond noir, le porte-outil et le nez de broche devenaient une tache noire
+ * sur du noir. Un atelier se regarde de jour, souvent debout, parfois sur une
+ * tablette posee sur un etau — et les logiciels de CAO sont clairs, ce qui
+ * evite a l'oeil de changer de regime entre deux fenetres.
+ *
+ * Aucune police exterieure, aucune requete reseau : cette page doit s'afficher
+ * a l'identique sur un Raspberry Pi sans internet.
+ */
+
 :root{
-  --fond:#14171c; --carte:#1c2028; --trait:#2c323d; --texte:#e6e9ef;
-  --doux:#99a2b3; --primaire:#4f8cff; --ok:#3ec47a; --attention:#f0a63c;
-  --non:#e45c5c;
+  /* surfaces */
+  --fond:#f3f5f8;
+  --carte:#ffffff;
+  --creux:#f7f9fc;
+  --trait:#dde3ec;
+  --trait-fort:#c4cdda;
+
+  /* texte */
+  --texte:#141a22;
+  --doux:#5c6878;
+  --tres-doux:#8b95a4;
+
+  /* etats — memes significations que le code couleur 3D */
+  --accent:#1a5fb4;
+  --accent-sombre:#154d92;
+  --accent-pale:#e8f0fb;
+  --ok:#0f7b45;
+  --ok-pale:#e6f5ec;
+  --attention:#a86100;
+  --attention-pale:#fdf2e0;
+  --non:#b4232f;
+  --non-pale:#fdecec;
+
+  --ombre:0 1px 2px rgba(16,24,40,.05), 0 2px 6px rgba(16,24,40,.06);
+  --ombre-haute:0 4px 14px rgba(16,24,40,.10);
+  --r:14px;
+  --r-petit:9px;
 }
+
 *{box-sizing:border-box}
-/*
-   L'attribut ``hidden`` doit gagner contre TOUTE regle de ce fichier.
-   Defaut trouve sur une capture, et invisible a l'epreuve automatique : la
-   regle du navigateur est ``[hidden]{display:none}``, specificite 0-1-0. Une
-   regle de classe qui fixe ``display`` a la meme specificite, et comme elle
-   arrive plus loin dans la feuille, elle l'emporte. Le bandeau « l'atelier est
-   arrete », en ``display:flex``, restait donc affiche EN PERMANENCE — un
-   avertissement faux en haut d'une page qui fonctionne.
-   Pose ici une fois pour toutes, plutot que corrige sur le seul coupable :
-   le prochain element cache par ``hidden`` et stylé avec ``display`` tombera
-   dans le meme piege.
-*/
+/* L'attribut ``hidden`` doit gagner contre TOUTE regle de ce fichier.
+   Defaut trouve sur une capture, invisible a l'epreuve automatique : la regle
+   du navigateur est [hidden]{display:none}, specificite 0-1-0. Une regle de
+   classe qui fixe display a la meme specificite et, arrivant plus loin, elle
+   l'emporte. Le bandeau « l'atelier est arrete » restait donc affiche en
+   permanence. Pose ici une fois pour toutes, et non sur le seul coupable. */
 [hidden]{display:none!important}
+
+html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--fond);color:var(--texte);
-  font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-header{padding:28px 20px 8px;max-width:860px;margin:0 auto}
-h1{margin:0 0 6px;font-size:28px;letter-spacing:-.01em}
-.securite{margin:0;padding:10px 14px;border-radius:8px;font-size:14px;
-  background:#3a2a12;color:#f7d9a8;border:1px solid #6b4a18}
-main{max-width:860px;margin:0 auto;padding:12px 20px 60px}
-.etape{background:var(--carte);border:1px solid var(--trait);border-radius:12px;
-  padding:20px;margin:18px 0}
-.tete{display:flex;align-items:center;gap:12px}
-.num{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;
-  background:var(--primaire);color:#fff;font-weight:700;font-size:15px;flex:0 0 auto}
-h2{margin:0;font-size:19px;font-weight:650}
-.consigne{color:var(--doux);margin:10px 0 16px}
-.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-select,input[type=number]{background:#11151b;color:var(--texte);
-  border:1px solid var(--trait);border-radius:8px;padding:10px 12px;font-size:15px}
-select{min-width:230px}
-button{font:inherit;cursor:pointer;border-radius:8px;padding:11px 18px;
-  border:1px solid var(--trait);background:#252b35;color:var(--texte)}
-button:hover{background:#2e3542}
-button:disabled{opacity:.45;cursor:not-allowed}
-.primaire{background:var(--primaire);border-color:var(--primaire);color:#fff;
-  font-weight:600}
-.primaire:hover{background:#3f7ae8}
-.grand{font-size:18px;padding:15px 30px;width:100%}
-.lien{background:none;border:none;color:var(--doux);padding:8px 0;
-  text-decoration:underline}
-.info{margin-top:14px;padding:12px 14px;border-radius:8px;background:#11151b;
-  border:1px solid var(--trait);font-size:15px}
-.vue{margin-top:6px}
-.vue img{width:100%;border-radius:10px;background:#0d1015;display:block;
-  border:1px solid var(--trait);min-height:200px}
-.vue-boutons{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center}
-.vue-boutons input[type=range]{flex:1;min-width:140px}
-.grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
-  gap:12px}
-.champ{display:flex;flex-direction:column;gap:5px}
-.champ label{font-size:13px;color:var(--doux)}
-.progres{margin-top:16px}
-.barre{height:9px;border-radius:5px;background:#11151b;overflow:hidden}
-.barre>div{height:100%;width:0;background:var(--primaire);transition:width .3s}
-#etape-texte{margin:8px 0 0;color:var(--doux);font-size:14px}
-.resume{font-size:17px;font-weight:600;margin:18px 0 12px}
-.surfaces{list-style:none;padding:0;margin:0}
-.surfaces li{border-left:4px solid var(--trait);background:#11151b;
-  padding:13px 15px;margin-bottom:9px;border-radius:0 8px 8px 0}
-.surfaces li.faisable{border-left-color:var(--ok)}
-.surfaces li.a-changer{border-left-color:var(--attention)}
-.surfaces li.impossible{border-left-color:var(--non)}
-.surfaces .titre{font-weight:600;font-size:14px;color:var(--doux)}
-.surfaces .consigne-s{margin:5px 0 0}
-.surfaces .detail{margin:7px 0 0;font-size:13px;color:var(--doux)}
-.avert{list-style:none;padding:0;margin:18px 0 0}
-.avert li{font-size:13.5px;color:#f7d9a8;background:#2a2010;border-radius:8px;
-  padding:10px 13px;margin-bottom:7px;border:1px solid #4d3a13}
-.pied{color:var(--doux);font-size:13.5px;margin:26px 0 0;text-align:center}
-.erreur{background:#3a1717;border:1px solid #6b2020;color:#ffc9c9;
-  padding:12px 14px;border-radius:8px;margin-top:14px}
+  font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased}
+.largeur{max-width:940px;margin:0 auto;padding:0 22px}
 
-/* --- etape 1 : le depot de fichier --------------------------------------- */
-.sous-titre{color:var(--doux);margin:0 0 14px;font-size:15px}
-.depot{border:2px dashed var(--trait);border-radius:14px;padding:30px 20px;
-  text-align:center;background:#11151b;cursor:pointer;transition:.15s}
-.depot:hover,.depot:focus{border-color:var(--primaire);background:#141b26}
-.depot.survol{border-color:var(--primaire);background:#16233a}
-.depot.occupe{opacity:.5;pointer-events:none}
-.depot-icone{font-size:34px;color:var(--primaire);line-height:1}
-.depot-titre{margin:8px 0 2px;font-size:18px;font-weight:600}
-.depot-ou{margin:6px 0 12px;color:var(--doux);font-size:13px;
-  text-transform:uppercase;letter-spacing:.08em}
-details.replie{margin-top:16px;border-top:1px solid var(--trait);padding-top:12px}
-details.replie summary{cursor:pointer;color:var(--primaire);font-size:15px;
-  padding:6px 0;list-style:none}
-details.replie summary::before{content:"▸ ";display:inline-block;transition:.15s}
-details.replie[open] summary::before{transform:rotate(90deg)}
-.jeton{display:inline-block;font-size:12px;padding:2px 8px;border-radius:20px;
-  background:#1d2a3f;color:#9dc0ff;border:1px solid #2e4568}
-.doux{color:var(--doux)}
+/* ------------------------------------------------------------- en-tete */
+.tete-site{padding:34px 0 26px;background:
+  radial-gradient(1200px 260px at 50% -120px, #e3ecf9 0%, var(--fond) 70%)}
+.marque{display:flex;align-items:center;gap:9px;margin-bottom:20px}
+.marque-signe{width:22px;height:22px;border-radius:6px;flex:0 0 auto;
+  background:linear-gradient(150deg,var(--accent),#3f8fe0);
+  box-shadow:inset 0 0 0 3px rgba(255,255,255,.55)}
+.marque-nom{font-size:14px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--doux);font-weight:550}
+.marque-nom b{color:var(--texte);font-weight:700}
+h1{margin:0 0 10px;font-size:clamp(26px,4.4vw,36px);line-height:1.15;
+  letter-spacing:-.022em;font-weight:700}
+.chapeau{margin:0 0 20px;font-size:17px;color:var(--doux);max-width:62ch}
+.securite{margin:0;padding:12px 16px;border-radius:var(--r-petit);
+  background:var(--attention-pale);border:1px solid #f0d9ae;color:#6b4310;
+  font-size:14px;line-height:1.5}
+.securite-etiquette{display:inline-block;margin-right:8px;padding:2px 8px;
+  border-radius:20px;background:#8a5200;color:#fff;font-size:11px;
+  font-weight:700;letter-spacing:.06em;vertical-align:1px}
 
-/* --- divulgation progressive --------------------------------------------- */
-.etape.verrouille{opacity:.42}
+/* --------------------------------------------------------- fil d'etapes */
+.fil{position:sticky;top:0;z-index:30;background:rgba(243,245,248,.88);
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--trait)}
+.fil-in{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.fil-in::-webkit-scrollbar{display:none}
+.fil a{display:flex;align-items:center;gap:8px;padding:13px 12px;
+  text-decoration:none;color:var(--tres-doux);font-size:14px;font-weight:550;
+  white-space:nowrap;border-bottom:2px solid transparent}
+.fil a i{display:grid;place-items:center;width:20px;height:20px;flex:0 0 auto;
+  border-radius:50%;background:var(--trait);color:var(--doux);
+  font-size:11px;font-style:normal;font-weight:700}
+.fil a.ouverte{color:var(--texte)}
+.fil a.ouverte i{background:var(--accent);color:#fff}
+.fil a.faite i{background:var(--ok);color:#fff}
+.fil a.faite i::after{content:"✓";font-size:11px}
+.fil a.faite i{font-size:0}
+
+/* --------------------------------------------------------------- etapes */
+main{padding-bottom:70px}
+.etape{background:var(--carte);border-radius:var(--r);padding:26px;
+  margin:22px 0;box-shadow:var(--ombre)}
+.tete{display:flex;gap:15px;align-items:flex-start;margin-bottom:20px}
+.num{display:grid;place-items:center;width:32px;height:32px;flex:0 0 auto;
+  border-radius:50%;background:var(--accent-pale);color:var(--accent);
+  font-weight:700;font-size:15px;margin-top:1px}
+h2{margin:0;font-size:21px;font-weight:650;letter-spacing:-.012em}
+.consigne{color:var(--doux);margin:7px 0 0;font-size:15px;max-width:66ch}
+.consigne b{color:var(--texte);font-weight:600}
+
+.etape.verrouille{opacity:.5;box-shadow:none;border:1px dashed var(--trait-fort);
+  background:transparent}
 .etape.verrouille::after{content:"Chargez d'abord une pièce à l'étape 1.";
-  display:block;margin-top:12px;font-size:13.5px;color:var(--doux)}
-.etape.verrouille button,.etape.verrouille input,.etape.verrouille select,
-.etape.verrouille details{pointer-events:none}
+  display:block;margin-top:6px;font-size:14px;color:var(--tres-doux)}
+.etape.verrouille>*:not(.tete):not(::after){display:none}
+.etape.verrouille .depot,.etape.verrouille figure,.etape.verrouille .volet,
+.etape.verrouille .progres,.etape.verrouille .rangee{display:none}
+.etape.verrouille button,.etape.verrouille input,.etape.verrouille select{
+  pointer-events:none;filter:grayscale(1)}
 
-/* --- simulation d'usinage ------------------------------------------------ */
-.film-titre{margin:10px 0 0;font-weight:600;font-size:15px}
-.axes{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
-.axe{font-size:13px;padding:4px 10px;border-radius:6px;background:#11151b;
-  border:1px solid var(--trait);color:var(--doux)}
-.axe b{color:var(--texte);margin-right:4px}
-.axe.coupe{color:#a8d8ff;border-color:#2b4a6b}
-.axe.rapide{color:#f0c98c;border-color:#5a4520}
-.axe.hors{color:#ffc9c9;border-color:#6b2020;background:#2a1414}
-.note{margin-top:14px;font-size:13.5px;color:var(--doux);background:#11151b;
-  border:1px solid var(--trait);border-radius:8px;padding:12px 14px}
+/* -------------------------------------------------------------- boutons */
+.btn{font:inherit;font-weight:550;cursor:pointer;border-radius:var(--r-petit);
+  padding:11px 17px;border:1px solid var(--trait-fort);background:var(--carte);
+  color:var(--texte);transition:.14s background,.14s border-color,.14s box-shadow}
+.btn:hover{background:var(--creux);border-color:var(--doux)}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.btn--primaire{background:var(--accent);border-color:var(--accent);color:#fff;
+  font-weight:600;box-shadow:0 1px 2px rgba(21,77,146,.3)}
+.btn--primaire:hover{background:var(--accent-sombre);border-color:var(--accent-sombre)}
+.btn--grand{font-size:16px;padding:13px 26px}
+.btn--bloc{width:100%;font-size:17px;padding:15px}
+.btn--icone{width:42px;height:42px;padding:0;display:grid;place-items:center;
+  font-size:18px;line-height:1}
+.btn--jouer{width:46px;height:46px;background:var(--accent);color:#fff;
+  border-color:var(--accent);border-radius:50%;font-size:15px}
+.btn--jouer:hover{background:var(--accent-sombre)}
+.btn--lien{background:none;border:none;color:var(--accent);padding:8px 0;
+  text-decoration:underline;font-weight:500}
+.btn--lien:hover{background:none;color:var(--accent-sombre)}
 
-/* --- conditions de lancement --------------------------------------------- */
-.conditions{list-style:none;padding:0;margin:14px 0 0}
-.conditions li{border-left:4px solid var(--trait);background:#11151b;
-  padding:12px 15px;margin-bottom:9px;border-radius:0 8px 8px 0}
-.conditions li.ok{border-left-color:var(--ok)}
-.conditions li.bloque{border-left-color:var(--non)}
-.conditions li.avert{border-left-color:var(--attention)}
-.conditions .titre{font-weight:600;font-size:14.5px}
-.conditions .consigne-s{margin:6px 0 0;color:var(--doux);font-size:13.5px}
+/* --------------------------------------------------- depot de fichier */
+.depot{border:2px dashed var(--trait-fort);border-radius:var(--r);
+  padding:34px 22px;text-align:center;background:var(--creux);cursor:pointer;
+  transition:.16s}
+.depot:hover,.depot:focus-visible{border-color:var(--accent);
+  background:var(--accent-pale);outline:none}
+.depot.survol{border-color:var(--accent);background:var(--accent-pale);
+  box-shadow:var(--ombre-haute)}
+.depot.occupe{opacity:.5;pointer-events:none}
+.depot-icone{width:44px;height:44px;color:var(--accent);display:block;
+  margin:0 auto 4px}
+.depot-titre{margin:6px 0 0;font-size:19px;font-weight:600}
+.depot-ou{margin:12px 0;color:var(--tres-doux);font-size:12px;
+  text-transform:uppercase;letter-spacing:.12em;display:flex;
+  align-items:center;gap:12px}
+.depot-ou::before,.depot-ou::after{content:"";height:1px;flex:1;
+  background:var(--trait)}
 
-/* --- l'atelier s'est arrete ---------------------------------------------- */
-/*
-   Bandeau collant en HAUT et non un message dans une etape : quand le serveur
-   n'est plus la, aucune etape ne marche, et le dire a un seul endroit de la
-   page laisserait quelqu'un cliquer dix fois plus bas sans comprendre.
-*/
-.coupe{position:sticky;top:0;z-index:50;display:flex;flex-direction:column;
-  gap:6px;background:#3a1717;border-bottom:2px solid #8a2b2b;color:#ffd7d7;
-  padding:14px 20px;font-size:14.5px;line-height:1.5}
-.coupe strong{font-size:16px}
-.coupe code{background:#000;padding:1px 6px;border-radius:4px;font-size:13px}
-.coupe-attente{color:#e89b9b;font-size:13px;font-style:italic}
-body.coupee .etape{opacity:.35}
-body.coupee button{pointer-events:none}
+/* ---------------------------------------------------------- les volets */
+.volet{margin-top:20px;border-top:1px solid var(--trait);padding-top:6px}
+.volet summary{cursor:pointer;color:var(--accent);font-size:15px;
+  font-weight:550;padding:10px 0;list-style:none;display:flex;
+  align-items:center;gap:8px}
+.volet summary::-webkit-details-marker{display:none}
+.volet summary::before{content:"";width:0;height:0;flex:0 0 auto;
+  border:5px solid transparent;border-left-color:currentColor;
+  transition:transform .15s;transform-origin:3px 50%}
+.volet[open] summary::before{transform:rotate(90deg)}
+.volet-in{padding:2px 0 6px}
+
+/* ---------------------------------------------------- fiche de la piece */
+.fiche{margin-top:20px;padding:15px 17px;border-radius:var(--r-petit);
+  background:var(--creux);border:1px solid var(--trait);font-size:15px}
+.fiche strong{font-size:16px}
+.jeton{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:20px;
+  background:var(--accent-pale);color:var(--accent-sombre);font-size:12px;
+  font-weight:600;vertical-align:1px}
+.doux{color:var(--doux);font-size:14px}
+
+/* ------------------------------------------------------- la scene 3D */
+.scene{margin:0;background:#eef1f6;border:1px solid var(--trait);
+  border-radius:var(--r);overflow:hidden;box-shadow:inset 0 0 0 1px #fff}
+.scene img{display:block;width:100%;background:#eef1f6;min-height:220px}
+.legende{display:flex;flex-wrap:wrap;gap:7px 16px;padding:12px 15px;
+  border-top:1px solid var(--trait);background:var(--carte)}
+.legende span{display:flex;align-items:center;gap:7px;font-size:12.5px;
+  color:var(--doux)}
+.legende i{width:11px;height:11px;border-radius:3px;flex:0 0 auto;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
+.rangee{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.rangee--outils{margin-top:12px;justify-content:center}
+
+/* ------------------------------------------------------- la verification */
+.progres{margin-top:18px}
+.barre{height:8px;border-radius:6px;background:var(--trait);overflow:hidden}
+.barre>div{height:100%;width:0;border-radius:6px;
+  background:linear-gradient(90deg,var(--accent),#4a94e8);transition:width .3s}
+#etape-texte{margin:9px 0 0;color:var(--doux);font-size:14px}
+.resume{font-size:17.5px;font-weight:600;margin:22px 0 14px;line-height:1.45}
+.surfaces{list-style:none;padding:0;margin:0;display:grid;gap:10px}
+.surfaces li{background:var(--creux);border:1px solid var(--trait);
+  border-radius:var(--r-petit);padding:14px 16px}
+.surfaces .haut{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.surfaces .titre{font-weight:650;font-size:15.5px}
+.pastille{padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:700;
+  letter-spacing:.03em;white-space:nowrap}
+.faisable .pastille{background:var(--ok-pale);color:var(--ok)}
+.a-changer .pastille{background:var(--attention-pale);color:var(--attention)}
+.impossible .pastille{background:var(--non-pale);color:var(--non)}
+.faisable{border-left:3px solid var(--ok)}
+.a-changer{border-left:3px solid var(--attention)}
+.impossible{border-left:3px solid var(--non)}
+.surfaces .consigne-s{margin:8px 0 0;font-size:15px}
+.surfaces .detail{margin:7px 0 0;font-size:13.5px;color:var(--doux)}
+.reserves{list-style:none;padding:0;margin:20px 0 0;display:grid;gap:8px}
+.reserves li{font-size:13.5px;color:#6b4310;background:var(--attention-pale);
+  border:1px solid #f0d9ae;border-radius:var(--r-petit);padding:11px 14px}
+
+/* ------------------------------------------------------- le lecteur */
+.lecteur{margin-top:18px}
+.barre-lecture{display:flex;align-items:center;gap:14px;margin-top:14px}
+.barre-lecture input[type=range]{flex:1;min-width:120px;accent-color:var(--accent)}
+.compteur{font-variant-numeric:tabular-nums;font-size:13px;color:var(--doux);
+  min-width:62px;text-align:right}
+.film-titre{margin:14px 0 0;font-weight:600;font-size:15.5px}
+.axes{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.axe{display:flex;align-items:baseline;gap:6px;font-size:13px;padding:6px 11px;
+  border-radius:var(--r-petit);background:var(--creux);
+  border:1px solid var(--trait);color:var(--doux);
+  font-variant-numeric:tabular-nums}
+.axe b{color:var(--tres-doux);font-size:11px;font-weight:700;
+  letter-spacing:.06em}
+.axe--etat{font-weight:600}
+.axe--coupe{background:var(--accent-pale);border-color:#bcd5f2;
+  color:var(--accent-sombre)}
+.axe--rapide{background:var(--attention-pale);border-color:#f0d9ae;
+  color:var(--attention)}
+.axe--hors{background:var(--non-pale);border-color:#f3c7c7;color:var(--non);
+  font-weight:700}
+.note{margin-top:16px;font-size:13.5px;color:var(--doux);background:var(--creux);
+  border:1px solid var(--trait);border-radius:var(--r-petit);padding:13px 15px;
+  line-height:1.6}
+
+/* -------------------------------------------------- conditions de lancement */
+.conditions{list-style:none;padding:0;margin:16px 0 0;display:grid;gap:10px}
+.conditions li{background:var(--creux);border:1px solid var(--trait);
+  border-radius:var(--r-petit);padding:14px 16px;display:flex;gap:12px}
+.conditions li::before{flex:0 0 auto;width:20px;height:20px;border-radius:50%;
+  display:grid;place-items:center;font-size:12px;font-weight:700;margin-top:1px}
+.conditions li.ok::before{content:"✓";background:var(--ok-pale);color:var(--ok)}
+.conditions li.bloque::before{content:"✕";background:var(--non-pale);color:var(--non)}
+.conditions li.avert::before{content:"!";background:var(--attention-pale);
+  color:var(--attention)}
+.conditions .titre{font-weight:650;font-size:15px}
+.conditions .consigne-s{margin:6px 0 0;color:var(--doux);font-size:14px}
+
+/* -------------------------------------------------------- champs, divers */
+select,input[type=number]{font:inherit;background:var(--carte);
+  color:var(--texte);border:1px solid var(--trait-fort);
+  border-radius:var(--r-petit);padding:10px 12px;font-size:15px}
+select:focus,input[type=number]:focus{outline:2px solid var(--accent);
+  outline-offset:-1px;border-color:var(--accent)}
+select{min-width:230px}
+.grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:14px;margin-top:6px}
+.champ{display:flex;flex-direction:column;gap:5px}
+.champ label{font-size:12.5px;color:var(--doux);font-weight:550}
+code{background:var(--creux);border:1px solid var(--trait);padding:1px 6px;
+  border-radius:5px;font-size:13px}
+.pied{color:var(--tres-doux);font-size:13.5px;margin:34px auto 0;
+  text-align:center;max-width:60ch}
+
+/* ------------------------------------------------------------ bandeaux */
+.bandeau{position:sticky;top:0;z-index:60}
+.bandeau-in{max-width:940px;margin:0 auto;padding:14px 22px;display:flex;
+  flex-direction:column;gap:5px;font-size:14.5px;line-height:1.5}
+.bandeau--non{background:#fff1f1;border-bottom:2px solid var(--non);
+  color:#7d1a24}
+.bandeau--non strong{font-size:16px;color:var(--non)}
+.alerte{margin-bottom:16px;background:var(--non-pale);
+  border:1px solid #f3c7c7;color:#7d1a24;padding:13px 15px;
+  border-radius:var(--r-petit);font-size:14.5px}
+.erreur{background:var(--non-pale);border:1px solid #f3c7c7;color:#7d1a24;
+  padding:13px 15px;border-radius:var(--r-petit);margin-top:16px;font-size:15px}
+
+@media (max-width:620px){
+  .etape{padding:20px 17px;border-radius:11px}
+  .largeur{padding:0 14px}
+  .bandeau-in{padding:12px 14px}
+}
