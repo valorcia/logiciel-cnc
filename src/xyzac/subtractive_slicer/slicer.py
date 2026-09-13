@@ -23,6 +23,7 @@ contre-depouille des la premiere passe.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -71,6 +72,10 @@ class SliceResult:
     #: sienne : deux modeles conservatifs qui ne partagent pas leurs marges
     #: divergent, et c'est le validateur qui refuse.
     safety_clearance: float = 0.0
+    #: Sens de balayage employe. Porte par le resultat et non seulement passe
+    #: en argument : un chemin dont on ne sait pas dans quel sens il a ete
+    #: genere n'est pas auditable, et le sens de coupe se relit sur la piece.
+    balayage: str = "zigzag"
 
     @property
     def n_points(self) -> int:
@@ -159,9 +164,46 @@ def _segment_stays_inside(region: np.ndarray, a_px: tuple[float, float],
     return bool(region[iy, ix].all())
 
 
+#: Les deux sens de balayage possibles, nommes.
+#:
+#: Defaut signale par l'utilisateur : « attention au sens de l'attaque de
+#: l'outil ». Mesure sur une ebauche du corpus, avant toute correction :
+#: 4 634 segments de coupe dans un sens et 4 634 dans l'autre — exactement
+#: moitie-moitie, parce que le zigzag inverse chaque rangee. En fraisage cela
+#: signifie alterner l'avalant et l'opposition a chaque passe, ce qui change
+#: l'effort, l'etat de surface et le cote de la bavure.
+#:
+#: Le defaut n'etait pas l'alternance — c'est un choix defendable en ebauche —
+#: mais le fait que PERSONNE ne l'ait choisie : aucun parametre, aucune trace,
+#: aucune validation. Le mode est donc desormais nomme, transmis, et ECRIT
+#: dans les notes de l'operation, donc auditable.
+#: Nombre maximal d'allers-retours d'une rampe d'entree.
+#:
+#: Une rampe descend de ``standoff`` mm en restant sous l'angle que l'outil
+#: declare. Quand le premier segment de coupe est court, il faut plusieurs
+#: allers-retours ; au-dela de cette borne, le segment est trop court pour
+#: qu'une rampe ait un sens et le cas est refuse plutot que resolu en silence.
+RAMPE_MAX_ALLERS = 40
+
+BALAYAGE_ALTERNE = "zigzag"
+BALAYAGE_UNIDIRECTIONNEL = "unidirectionnel"
+BALAYAGES = (BALAYAGE_ALTERNE, BALAYAGE_UNIDIRECTIONNEL)
+
+
 def _zigzag(region: np.ndarray, pitch: float, stepover: float,
-            origin_xy: np.ndarray) -> list[np.ndarray]:
-    """Couvre une region 2D par des passes en zigzag CHAINEES.
+            origin_xy: np.ndarray, *,
+            balayage: str = BALAYAGE_ALTERNE) -> list[np.ndarray]:
+    """Couvre une region 2D par des passes CHAINEES.
+
+    ``balayage`` decide du SENS de coupe :
+
+      - ``"zigzag"`` inverse une rangee sur deux. Peu de remontees, mais
+        l'avalant et l'opposition alternent a chaque passe ;
+      - ``"unidirectionnel"`` parcourt toutes les rangees dans le meme sens,
+        donc un effort de coupe constant — au prix d'une remontee au plan de
+        degagement par rangee, puisque le retour a vide ne peut pas se faire
+        a la profondeur de coupe (il traverserait la matiere de la rangee
+        suivante).
 
     Choix du zigzag plutot que du contour-parallele a ce jalon : il est robuste
     a toute topologie (trous, regions multiples), il n'exige aucun offset de
@@ -176,6 +218,9 @@ def _zigzag(region: np.ndarray, pitch: float, stepover: float,
     donc deux rangees successives a la profondeur de coupe des que le trajet
     reste dans la region valide, et on ne remonte que lorsqu'il en sort.
     """
+    if balayage not in BALAYAGES:
+        raise ValueError(f"balayage inconnu : {balayage!r}")
+    alterne = balayage == BALAYAGE_ALTERNE
     ny, nx = region.shape
     row_step = max(1, int(round(stepover / pitch)))
     chains: list[list[tuple[float, float]]] = []
@@ -208,7 +253,18 @@ def _zigzag(region: np.ndarray, pitch: float, stepover: float,
                 current = [a_px]
             current.append(b_px)
             last_px = b_px
-        flip = not flip
+        if alterne:
+            flip = not flip
+        else:
+            # Sans alternance, le retour a vide partirait de la fin d'une
+            # rangee vers le debut de la suivante en traversant toute la
+            # largeur — a la profondeur de coupe, donc DANS la matiere. On
+            # coupe la chaine : ``continuous_path`` reliera les deux rangees
+            # par le plan de degagement, avec son approche en avance.
+            if len(current) >= 2:
+                chains.append(current)
+            current = []
+            last_px = None
 
     if len(current) >= 2:
         chains.append(current)
@@ -232,6 +288,7 @@ def slice_for_direction(
     grid_pitch: float | None = None,
     max_layers: int = 200,
     safety_clearance: float = 0.3,
+    balayage: str = BALAYAGE_ALTERNE,
 ) -> SliceResult:
     """Tranche la matiere enlevable atteignable depuis ``direction``.
 
@@ -255,7 +312,7 @@ def slice_for_direction(
     reach = material.reachable_from(d)
     result = SliceResult(direction=d, layer_thickness=layer_thickness,
                          stepover=tool.diameter * stepover_ratio,
-                         safety_clearance=safety_clearance,
+                         safety_clearance=safety_clearance, balayage=balayage,
                          reachable_mm3=float(reach.sum()) * material.grid.voxel_volume)
     if not reach.any():
         return result
@@ -383,7 +440,8 @@ def slice_for_direction(
             uncovered_px += int(target.sum())
             continue
 
-        polys2d = _zigzag(region, pitch, result.stepover, lo[:2])
+        polys2d = _zigzag(region, pitch, result.stepover, lo[:2],
+                          balayage=balayage)
         if not polys2d:
             uncovered_px += int(target.sum())
             continue
@@ -418,8 +476,81 @@ def _resample(a: np.ndarray, b: np.ndarray, spacing: float) -> np.ndarray:
     return a[None, :] * (1 - t) + b[None, :] * t
 
 
+def _entree_en_matiere(p_index: np.ndarray, standoff: float,
+                       tool: ToolAssembly | None,
+                       journal: list | None = None) -> np.ndarray:
+    """Points d'entree en matiere, du palier d'approche au point de coupe.
+
+    Rend les points dans le repere INDEXE, le dernier etant exactement le
+    premier point de coupe a sa profondeur. Tous se parcourent en avance
+    travail : c'est l'appelant qui pose les drapeaux.
+
+    ``journal``, s'il est fourni, recoit une ligne par passe ou la rampe n'a
+    pas pu etre construite. Un compte plutot qu'une exception : ces passes
+    existent reellement — mesure sur le corpus — et refuser toute la gamme
+    pour l'une d'elles serait disproportionne. Mais les resoudre en silence
+    serait pire : le planner ecrit le compte dans les notes de l'operation.
+    """
+    start = p_index[0]
+    if tool is None or tool.can_plunge:
+        # Plongee en AVANCE : legitime pour un outil qui le declare (une
+        # hemispherique coupe au centre).
+        return np.array([start])
+
+    angle = float(tool.max_ramp_angle_deg)
+    if angle <= 0.0:
+        raise ValueError(
+            f"outil {tool.tool_id} : can_plunge=False et "
+            f"max_ramp_angle_deg={angle} — il ne peut ni plonger ni ramper, "
+            f"donc il ne peut pas entrer en matiere. Corriger la description "
+            f"de l'outil.")
+
+    # Le PREMIER POINT DISTINCT, et non ``p_index[1]`` : mesure sur le corpus,
+    # des passes commencent par deux points confondus, et prendre l'indice 1
+    # donnait une direction de rampe nulle.
+    u = None
+    for q in p_index[1:]:
+        v = q - start
+        if float(np.linalg.norm(v)) > 1e-9:
+            u = v
+            break
+    if u is None:
+        if journal is not None:
+            journal.append("passe reduite a un point : entree en plongee")
+        return np.array([start])
+    longueur = float(np.linalg.norm(u))
+    u = u / longueur
+    # On reste sur les neuf dixiemes du segment : ramper jusqu'a son extremite
+    # exacte ferait coincider le point de retournement avec un point de coupe,
+    # et deux points confondus a des profondeurs differentes decrivent un
+    # mouvement vertical — precisement ce qu'on evite.
+    portee = 0.9 * longueur
+    descente_par_aller = portee * math.tan(math.radians(angle))
+    n = max(2, int(math.ceil(standoff / max(descente_par_aller, 1e-12))))
+    if n % 2:
+        n += 1                      # pair : on revient sur ``start``
+    if n > RAMPE_MAX_ALLERS:
+        if journal is not None:
+            journal.append(
+                f"segment de {longueur:.2f} mm trop court pour une rampe a "
+                f"{angle:.0f} deg ({n} allers-retours) : entree en plongee")
+        return np.array([start])
+
+    pts = []
+    for k in range(n + 1):
+        loin = (k % 2) == 1
+        p = start + (portee * u if loin else 0.0)
+        p = np.asarray(p, dtype=float).copy()
+        p[2] = start[2] + standoff * (1.0 - k / n)
+        pts.append(p)
+    return np.array(pts)
+
+
 def continuous_path(result: SliceResult, point_spacing: float = 2.0,
-                    layers: list[LayerToolpath] | None = None
+                    layers: list[LayerToolpath] | None = None,
+                    *, standoff_mm: float | None = None,
+                    tool: ToolAssembly | None = None,
+                    journal: list | None = None
                     ) -> tuple[np.ndarray, np.ndarray]:
     """Chemin CONTINU d'une operation : passes de coupe ET liaisons.
 
@@ -435,12 +566,69 @@ def continuous_path(result: SliceResult, point_spacing: float = 2.0,
     C'est ce que fait cette fonction, et c'est pour cela qu'elle remplace
     l'ancien reechantillonnage naif.
 
+    **Chaque passe est ABORDEE en avance travail**, jamais en rapide.
+
+    Defaut signale par l'utilisateur — « attention au sens de l'attaque de
+    l'outil » — puis mesure : sur une ebauche du corpus, 1 615 passes sur
+    1 615 arrivaient a la profondeur de coupe par une descente verticale EN
+    RAPIDE, s'arretant exactement sur le premier point de coupe, sans aucune
+    marge.
+
+    Le plus instructif est que la regle etait deja ecrite dans ce fichier.
+    ``with_approach_retract`` dit, mot pour mot : « un rapide qui finit
+    exactement sur la surface n'a aucune marge pour une erreur d'origine
+    palpee, et c'est le mouvement qui casse les outils ». Elle etait appliquee
+    UNE fois — au tout premier point de l'operation — et les liaisons entre
+    passes, qui sont des centaines, l'ignoraient. Un principe juste applique
+    une fois sur mille n'est pas un principe, c'est une exception.
+
+    La liaison compte donc cinq sommets au lieu de trois :
+
+      1. ``sortie``  — on quitte la matiere de ``standoff`` mm EN AVANCE ;
+      2. ``up``      — rapide jusqu'au plan de degagement ;
+      3. ``over``    — rapide au-dessus du point de depart suivant ;
+      4. ``haut``    — rapide jusqu'a ``standoff`` mm au-dessus de lui ;
+      5. ``start``   — **AVANCE TRAVAIL** jusqu'au point de coupe.
+
+    Un drapeau de rapide decrit le mouvement qui ARRIVE sur son point : c'est
+    la convention de ``with_approach_retract``, et la respecter est ce qui
+    fait que le dernier segment se parcourt en avance.
+
+    **Et l'entree est une RAMPE quand l'outil declare ne pas savoir plonger.**
+
+    Second defaut, trouve en ecrivant le test du premier : ``ToolAssembly``
+    porte depuis le debut ``can_plunge`` et ``max_ramp_angle_deg`` — et
+    personne ne les lisait. Une recherche sur tout le code source ne trouvait
+    aucune lecture de ces deux champs hors du module qui les definit. Le
+    slicer produisait donc des plongees avec une fraise a trois dents, qui
+    declare ``can_plunge = False``, c'est-a-dire un mouvement que l'outil dit
+    lui-meme ne pas pouvoir executer. Une donnee juste, presente, et ignoree
+    est pire qu'une donnee absente : on croit l'avoir prise en compte.
+
+    Quand ``tool.can_plunge`` est faux, l'entree devient une rampe en
+    ALLERS-RETOURS sur le premier segment de coupe, sous l'angle que l'outil
+    declare. Les allers-retours plutot qu'une descente oblique unique : une
+    rampe oblique arriverait a la profondeur APRES le point de depart, et
+    laisserait derriere elle un coin de matiere que ``simulate_removal`` ne
+    compte pas — le volume enleve rapporte deviendrait optimiste, et c'est
+    exactement le genre de silence que ce projet refuse. Les allers-retours
+    reviennent sur le point de depart a la profondeur voulue, en ayant
+    degage ce coin au passage : rien ne reste, et la mesure de matiere
+    enlevee reste juste.
+
     Retourne ``(points, is_rapid)``. Les points rapides ne coupent pas, mais ils
     doivent evidemment rester sans collision : ils sont valides comme les autres.
     """
     R = np.asarray(result.frame, float)
     d = normalize(result.direction)
     zc = float(result.clearance_z)
+    # Hauteur a partir de laquelle on ralentit. Reprise de la marge de
+    # securite du tranchage, pour que les deux modeles conservatifs partagent
+    # la meme, et jamais nulle : a zero il n'y a plus de marge du tout, ce qui
+    # est precisement le defaut corrige ici.
+    so = float(standoff_mm) if standoff_mm is not None else max(
+        float(result.safety_clearance), 1.0)
+    so = max(so, 1e-3)
 
     def to_part(p_index: np.ndarray) -> np.ndarray:
         return np.asarray(p_index, float) @ R
@@ -463,14 +651,39 @@ def continuous_path(result: SliceResult, point_spacing: float = 2.0,
                 # subdivision d'un segment est le travail du verificateur de
                 # balayage, qui la calcule sur une borne prouvee du deplacement
                 # — et la fait donc mieux, et seulement quand il le faut.
-                up = prev_end_index.copy(); up[2] = zc
-                over = start.copy(); over[2] = zc
-                link = np.array([up, over, start])
+                sortie = prev_end_index.copy(); sortie[2] += so
+                up = prev_end_index.copy(); up[2] = max(zc, sortie[2])
+                over = start.copy(); over[2] = up[2]
+                haut = start.copy(); haut[2] += so
+                if haut[2] > over[2]:
+                    over[2] = haut[2]
+                    up[2] = haut[2]
+                link = np.array([sortie, up, over, haut])
+                # Un drapeau decrit le mouvement qui ARRIVE sur son point :
+                # la sortie de matiere est donc en AVANCE, le reste en rapide.
+                drapeaux = np.array([False, True, True, True])
                 keep = [0] + [k for k in range(1, len(link))
                               if np.linalg.norm(link[k] - link[k - 1]) > 1e-9]
                 seg = link[keep]
                 chunks.append(to_part(seg))
-                rapid.append(np.ones(len(seg), dtype=bool))
+                rapid.append(drapeaux[keep])
+
+                # L'entree en matiere : rampe si l'outil ne sait pas plonger,
+                # descente en avance sinon. Dans les deux cas on FINIT sur
+                # ``start`` a la profondeur de coupe, en avance travail.
+                entree = _entree_en_matiere(p_index, so, tool, journal)
+                chunks.append(to_part(entree))
+                rapid.append(np.zeros(len(entree), dtype=bool))
+
+            else:
+                # La toute premiere passe de l'operation entre en matiere
+                # exactement comme les autres. ``with_approach_retract``
+                # amenera ensuite l'outil au-dessus du premier point de ces
+                # mouvements, qui est deja a distance de la matiere.
+                entree = _entree_en_matiere(p_index, so, tool, journal)
+                if len(entree) > 1:
+                    chunks.append(to_part(entree))
+                    rapid.append(np.zeros(len(entree), dtype=bool))
 
             for a, b in zip(p_index[:-1], p_index[1:]):
                 seg = _resample(a, b, point_spacing)

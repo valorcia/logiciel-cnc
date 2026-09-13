@@ -202,8 +202,16 @@ with sync_playwright() as pw:
     apres = page.inner_text("#film-titre")
     page.click("#jouer")                          # pause
     print("   la pose suit le film :", apres)
+    # La reserve longue est REPLIEE sur un petit ecran : il faut l'ouvrir pour
+    # la lire. Sans cela l'epreuve imprimait une ligne vide et n'aurait pas vu
+    # une reserve disparue.
+    print("   ce qui reste a l'ecran :", page.inner_text("#simu-resume"))
+    page.locator("#bloc-note summary").click()
+    texte_note = page.inner_text("#simu-note")
+    assert texte_note.strip(), "la reserve longue doit rester lisible"
     print("   ce que la simulation NE montre PAS :")
-    print("     ", page.inner_text("#simu-note"))
+    print("     ", texte_note)
+    page.locator("#bloc-note summary").click()
 
     # On s'arrete EN PLEINE COUPE, et non sur la premiere image : une capture
     # prise a l'image 0 montre l'outil au point de depart, c'est-a-dire la

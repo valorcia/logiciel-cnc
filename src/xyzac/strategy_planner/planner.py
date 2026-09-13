@@ -173,6 +173,7 @@ def plan_roughing(
     point_spacing: float = 1.5,
     min_gain_mm3: float = 50.0,
     max_setups: int = 4,
+    balayage: str | None = None,
 ) -> tuple[ProcessPlan, PlanReport]:
     """Construit une gamme d'ebauche par couverture gloutonne.
 
@@ -202,7 +203,8 @@ def plan_roughing(
         best = ranked[0]
         sl: SliceResult = slice_for_direction(
             material, best.direction, tool,
-            layer_thickness=layer_thickness, stepover_ratio=stepover_ratio)
+            layer_thickness=layer_thickness, stepover_ratio=stepover_ratio,
+            **({} if balayage is None else {"balayage": balayage}))
         if not sl.layers:
             # La direction voyait de la matiere mais l'outil n'a pas de position
             # valide : on la retire pour ne pas boucler dessus.
@@ -225,7 +227,14 @@ def plan_roughing(
         # comprises : sans elles le post-processeur relie deux passes par une
         # avance travail en ligne droite, donc a travers la piece. Ce qui
         # aurait ete poste n'etait pas ce qui avait ete valide.
-        P, rapid = continuous_path(sl, point_spacing)
+        # Le journal recueille les passes ou la rampe d'entree n'a pas pu
+        # etre construite. Elles existent — segments trop courts — et sont
+        # entrees en plongee ; le compte est ECRIT dans les notes, parce
+        # qu'une exception a la regle qu'on ne compte pas cesse d'etre une
+        # exception.
+        journal_entrees: list = []
+        P, rapid = continuous_path(sl, point_spacing, tool=tool,
+                                   journal=journal_entrees)
         P, rapid = with_approach_retract(P, rapid, best.direction,
                                          sl.clearance_z, sl.frame,
                                          standoff_mm=max(sl.safety_clearance, 1.0))
@@ -237,9 +246,16 @@ def plan_roughing(
             toolpath=Toolpath(points=P, normals=nrm, is_rapid=rapid,
                               depth_of_cut=layer_thickness,
                               label=f"ebauche indexee {best.label}"),
+            # Le SENS DE BALAYAGE est ecrit dans les notes, donc dans tout ce
+            # qui relit la gamme. Signale par l'utilisateur : le zigzag
+            # alterne l'avalant et l'opposition a chaque rangee, ce qui est un
+            # choix defendable en ebauche — mais qui n'etait consigne nulle
+            # part, donc que personne n'avait fait.
             notes=(f"A={best.a_deg:.2f} C={best.c_deg:.2f} ; "
                    f"{len(sl.layers)} couches de {layer_thickness} mm ; "
-                   f"{stats.removed_mm3:.0f} mm3"),
+                   f"{stats.removed_mm3:.0f} mm3 ; balayage {sl.balayage}"
+                   + (f" ; {len(journal_entrees)} entrees en plongee faute de "
+                      f"segment ou ramper" if journal_entrees else "")),
         ))
         report.chosen.append(best)
         report.removed_per_step.append(stats.removed_mm3)

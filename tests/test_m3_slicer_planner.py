@@ -361,3 +361,211 @@ def test_fixtures_are_protected_material(pocket, tool):
     centers = ms.grid.centers().reshape(ms.grid.shape + (3,))
     in_jaw = np.all((centers >= np.array(jaw.lo)) & (centers <= np.array(jaw.hi)), axis=-1)
     assert not (ms.removable() & in_jaw).any()
+
+
+# ------------------------------------------ le sens d'attaque de l'outil
+
+
+def _tranche(pocket, tool, **kw):
+    material = _material(pocket)
+    return slice_for_direction(material, np.array([0.0, 0.0, 1.0]), tool,
+                               layer_thickness=3.0, **kw)
+
+
+def test_no_pass_is_entered_at_rapid_feed(pocket, tool):
+    """LE defaut signale par l'utilisateur : « attention au sens de l'attaque
+    de l'outil ».
+
+    Mesure avant correction, sur une ebauche du corpus : 1 615 passes sur
+    1 615 arrivaient a la profondeur de coupe par une descente verticale EN
+    RAPIDE, s'arretant exactement sur le premier point de coupe, sans aucune
+    marge — et 0 palier d'approche en avance travail.
+
+    Le plus instructif est que la regle etait deja ecrite dans
+    ``with_approach_retract`` : « un rapide qui finit exactement sur la
+    surface n'a aucune marge pour une erreur d'origine palpee, et c'est le
+    mouvement qui casse les outils ». Elle etait appliquee UNE fois, au
+    premier point de l'operation. Un principe juste applique une fois sur
+    mille n'est pas un principe.
+    """
+    sl = _tranche(pocket, tool)
+    P, R = continuous_path(sl, point_spacing=2.0)
+    assert len(P) > 100
+    d = np.array([0.0, 0.0, 1.0])
+    h = P @ d
+    so = max(sl.safety_clearance, 1.0)
+
+    entrees = np.flatnonzero(R[:-1] & ~R[1:])
+    assert len(entrees) > 5, "il faut plusieurs passes pour que le test porte"
+    for i in entrees:
+        # le mouvement qui ARRIVE sur la coupe se parcourt en avance : c'est
+        # le drapeau du point d'arrivee qui le dit, et il vaut False
+        assert not R[i + 1]
+        # et il descend d'exactement la hauteur d'approche, a la verticale
+        dh = h[i + 1] - h[i]
+        lat = np.linalg.norm((P[i + 1] - P[i]) - dh * d)
+        assert dh < 0, (i, dh)
+        assert abs(abs(dh) - so) < 1e-6, (i, dh, so)
+        assert lat < 1e-6, (i, lat)
+
+
+def test_no_pass_is_left_at_rapid_feed(pocket, tool):
+    """La sortie de matiere est le defaut symetrique, et il casse aussi : un
+    rapide qui part de la profondeur de coupe arrache au lieu de couper."""
+    sl = _tranche(pocket, tool)
+    P, R = continuous_path(sl, point_spacing=2.0)
+    d = np.array([0.0, 0.0, 1.0])
+    h = P @ d
+    so = max(sl.safety_clearance, 1.0)
+
+    # un point rapide precede d'un point de coupe : la sortie
+    sorties = np.flatnonzero(~R[:-1] & R[1:])
+    assert len(sorties) > 5
+    for i in sorties:
+        # le degagement de ``so`` mm a deja eu lieu EN AVANCE avant ce rapide
+        dh = h[i] - h[i - 1]
+        assert dh > 0, (i, dh)
+        assert abs(dh - so) < 1e-6, (i, dh, so)
+
+
+def test_the_sweep_direction_is_a_declared_choice(pocket, tool):
+    """Mesure avant correction : 4 634 segments de coupe dans un sens et
+    4 634 dans l'autre — exactement moitie-moitie, parce que le zigzag inverse
+    chaque rangee. En fraisage, cela alterne l'avalant et l'opposition a
+    chaque passe.
+
+    Le defaut n'etait pas l'alternance, qui est defendable en ebauche, mais que
+    PERSONNE ne l'ait choisie : aucun parametre, aucune trace. Elle est
+    desormais nommee, portee par le resultat, et ecrite dans les notes.
+    """
+    from xyzac.subtractive_slicer.slicer import (BALAYAGE_ALTERNE,
+                                                 BALAYAGE_UNIDIRECTIONNEL)
+
+    def sens(sl):
+        P, R = continuous_path(sl, point_spacing=2.0)
+        coupe = ~(R[1:] | R[:-1])
+        v = (P[1:] - P[:-1])[coupe]
+        v = v[np.linalg.norm(v, axis=1) > 1e-9]
+        u = v / np.linalg.norm(v, axis=1, keepdims=True)
+        ps = u @ u[0]
+        return int((ps > 0.9).sum()), int((ps < -0.9).sum())
+
+    zz = _tranche(pocket, tool, balayage=BALAYAGE_ALTERNE)
+    uni = _tranche(pocket, tool, balayage=BALAYAGE_UNIDIRECTIONNEL)
+
+    assert zz.balayage == BALAYAGE_ALTERNE
+    assert uni.balayage == BALAYAGE_UNIDIRECTIONNEL
+
+    meme_zz, inv_zz = sens(zz)
+    meme_uni, inv_uni = sens(uni)
+    assert inv_zz > 0, "le zigzag DOIT alterner : c'est ce qui le definit"
+    assert inv_uni == 0, (meme_uni, inv_uni)
+    assert meme_uni > 10
+
+    # le mode par defaut ne change pas en silence : le changer changerait
+    # toutes les gammes deja validees et le temps d'usinage
+    assert _tranche(pocket, tool).balayage == BALAYAGE_ALTERNE
+
+
+def test_an_unknown_sweep_is_refused(pocket, tool):
+    """Un mode inconnu doit lever, et non retomber sur un defaut : « balayge »
+    mal orthographie donnerait alors du zigzag en croyant l'autre."""
+    with pytest.raises(ValueError, match="balayage"):
+        _tranche(pocket, tool, balayage="avalant")
+
+
+def test_the_plan_records_the_sweep_it_used(pocket, tool):
+    """Une gamme dont on ne peut pas relire le sens de coupe n'est pas
+    auditable — et le sens de coupe se relit sur la piece."""
+    shape, _, _, stock, _ = pocket
+    setup = Setup(setup_id="s", machine=default_xyzac_kit(),
+                  part_step_path="x.step", stock=stock, tools=[tool])
+    plan, _ = plan_roughing(shape, setup, _material(pocket), tool,
+                            max_setups=1, layer_thickness=3.0,
+                            point_spacing=2.0,
+                            balayage="unidirectionnel")
+    assert plan.operations
+    assert "balayage unidirectionnel" in plan.operations[0].notes
+
+
+def test_a_tool_that_cannot_plunge_never_plunges(pocket):
+    """Second defaut du sens d'attaque, et le plus instructif.
+
+    ``ToolAssembly`` porte depuis le debut ``can_plunge`` et
+    ``max_ramp_angle_deg``. Une recherche sur tout le code source ne trouvait
+    AUCUNE lecture de ces deux champs hors du module qui les definit : le
+    slicer produisait des plongees avec une fraise a trois dents, qui declare
+    elle-meme ne pas pouvoir plonger. Une donnee juste, presente et ignoree
+    est pire qu'une donnee absente — on croit l'avoir prise en compte.
+    """
+    from xyzac.tool_model import build_endmill
+
+    droit = build_endmill("EM3", 6.0, 20.0, stickout=45.0, flute_count=3)
+    assert not droit.can_plunge, "le presuppose du test"
+    assert droit.max_ramp_angle_deg > 0
+
+    sl = _tranche(pocket, droit)
+    P, R = continuous_path(sl, point_spacing=2.0, tool=droit)
+    d = np.array([0.0, 0.0, 1.0])
+    h = P @ d
+    coupe = ~(R[1:] | R[:-1])
+    dh = h[1:] - h[:-1]
+    lat = np.linalg.norm((P[1:] - P[:-1]) - np.outer(dh, d), axis=1)
+
+    # aucune descente VERTICALE en coupe : ce serait une plongee
+    plongees = coupe & (dh < -1e-9) & (lat < 1e-9)
+    assert not plongees.any(), int(plongees.sum())
+
+    # et toute descente en coupe reste sous l'angle que l'outil declare
+    rampes = coupe & (dh < -1e-9) & (lat > 1e-9)
+    assert rampes.sum() > 20, "il doit y avoir des rampes"
+    angles = np.degrees(np.arctan2(-dh[rampes], lat[rampes]))
+    assert angles.max() <= droit.max_ramp_angle_deg + 1e-6, angles.max()
+
+
+def test_a_tool_that_can_plunge_is_allowed_to(pocket):
+    """La rampe n'est pas imposee a tout le monde : une hemispherique coupe au
+    centre et le declare. Lui imposer une rampe doublerait le programme pour
+    rien — mesure : 5 595 points contre 10 044."""
+    from xyzac.tool_model import build_ballnose
+
+    bille = build_ballnose("BN6", 6.0, 20.0, stickout=45.0)
+    assert bille.can_plunge
+
+    sl = _tranche(pocket, bille)
+    court, _ = continuous_path(sl, point_spacing=2.0, tool=bille)
+    from xyzac.tool_model import build_endmill
+    droit = build_endmill("EM3", 6.0, 20.0, stickout=45.0, flute_count=3)
+    long_, _ = continuous_path(sl, point_spacing=2.0, tool=droit)
+    assert len(court) < len(long_)
+
+
+def test_a_tool_that_can_neither_plunge_nor_ramp_is_refused(pocket, tool):
+    """Un outil qui declare ne pas pouvoir plonger ET un angle de rampe nul ne
+    peut pas entrer en matiere. Le dire, plutot que de plonger quand meme."""
+    impossible = tool.model_copy(update={"can_plunge": False,
+                                         "max_ramp_angle_deg": 0.0})
+    sl = _tranche(pocket, impossible)
+    with pytest.raises(ValueError, match="ni plonger ni ramper"):
+        continuous_path(sl, point_spacing=2.0, tool=impossible)
+
+
+def test_ramps_that_could_not_be_built_are_counted_not_hidden(pocket, tool):
+    """Des passes trop courtes pour une rampe existent reellement — mesure sur
+    le corpus. Refuser toute la gamme pour l'une d'elles serait
+    disproportionne ; les resoudre en silence serait pire. Elles sont donc
+    entrees en plongee ET comptees, et le planner ecrit le compte dans les
+    notes : une exception qu'on ne compte pas cesse d'etre une exception.
+    """
+    from xyzac.subtractive_slicer.slicer import _entree_en_matiere
+
+    # une passe reduite a un seul point : aucune direction ou ramper
+    un_point = np.array([[0.0, 0.0, 5.0]])
+    journal: list = []
+    pts = _entree_en_matiere(un_point, 1.0, tool, journal)
+    assert len(pts) == 1, "faute de rampe, on entre au point de coupe"
+    assert journal, "et cela doit etre consigne"
+    assert "plongee" in journal[0]
+
+    # sans journal fourni, le comportement ne change pas
+    assert len(_entree_en_matiere(un_point, 1.0, tool)) == 1
