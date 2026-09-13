@@ -1,0 +1,65 @@
+:root{
+  --fond:#14171c; --carte:#1c2028; --trait:#2c323d; --texte:#e6e9ef;
+  --doux:#99a2b3; --primaire:#4f8cff; --ok:#3ec47a; --attention:#f0a63c;
+  --non:#e45c5c;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fond);color:var(--texte);
+  font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:28px 20px 8px;max-width:860px;margin:0 auto}
+h1{margin:0 0 6px;font-size:28px;letter-spacing:-.01em}
+.securite{margin:0;padding:10px 14px;border-radius:8px;font-size:14px;
+  background:#3a2a12;color:#f7d9a8;border:1px solid #6b4a18}
+main{max-width:860px;margin:0 auto;padding:12px 20px 60px}
+.etape{background:var(--carte);border:1px solid var(--trait);border-radius:12px;
+  padding:20px;margin:18px 0}
+.tete{display:flex;align-items:center;gap:12px}
+.num{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;
+  background:var(--primaire);color:#fff;font-weight:700;font-size:15px;flex:0 0 auto}
+h2{margin:0;font-size:19px;font-weight:650}
+.consigne{color:var(--doux);margin:10px 0 16px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+select,input[type=number]{background:#11151b;color:var(--texte);
+  border:1px solid var(--trait);border-radius:8px;padding:10px 12px;font-size:15px}
+select{min-width:230px}
+button{font:inherit;cursor:pointer;border-radius:8px;padding:11px 18px;
+  border:1px solid var(--trait);background:#252b35;color:var(--texte)}
+button:hover{background:#2e3542}
+button:disabled{opacity:.45;cursor:not-allowed}
+.primaire{background:var(--primaire);border-color:var(--primaire);color:#fff;
+  font-weight:600}
+.primaire:hover{background:#3f7ae8}
+.grand{font-size:18px;padding:15px 30px;width:100%}
+.lien{background:none;border:none;color:var(--doux);padding:8px 0;
+  text-decoration:underline}
+.info{margin-top:14px;padding:12px 14px;border-radius:8px;background:#11151b;
+  border:1px solid var(--trait);font-size:15px}
+.vue{margin-top:6px}
+.vue img{width:100%;border-radius:10px;background:#0d1015;display:block;
+  border:1px solid var(--trait);min-height:200px}
+.vue-boutons{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center}
+.vue-boutons input[type=range]{flex:1;min-width:140px}
+.grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:12px}
+.champ{display:flex;flex-direction:column;gap:5px}
+.champ label{font-size:13px;color:var(--doux)}
+.progres{margin-top:16px}
+.barre{height:9px;border-radius:5px;background:#11151b;overflow:hidden}
+.barre>div{height:100%;width:0;background:var(--primaire);transition:width .3s}
+#etape-texte{margin:8px 0 0;color:var(--doux);font-size:14px}
+.resume{font-size:17px;font-weight:600;margin:18px 0 12px}
+.surfaces{list-style:none;padding:0;margin:0}
+.surfaces li{border-left:4px solid var(--trait);background:#11151b;
+  padding:13px 15px;margin-bottom:9px;border-radius:0 8px 8px 0}
+.surfaces li.faisable{border-left-color:var(--ok)}
+.surfaces li.a-changer{border-left-color:var(--attention)}
+.surfaces li.impossible{border-left-color:var(--non)}
+.surfaces .titre{font-weight:600;font-size:14px;color:var(--doux)}
+.surfaces .consigne-s{margin:5px 0 0}
+.surfaces .detail{margin:7px 0 0;font-size:13px;color:var(--doux)}
+.avert{list-style:none;padding:0;margin:18px 0 0}
+.avert li{font-size:13.5px;color:#f7d9a8;background:#2a2010;border-radius:8px;
+  padding:10px 13px;margin-bottom:7px;border:1px solid #4d3a13}
+.pied{color:var(--doux);font-size:13.5px;margin:26px 0 0;text-align:center}
+.erreur{background:#3a1717;border:1px solid #6b2020;color:#ffc9c9;
+  padding:12px 14px;border-radius:8px;margin-top:14px}

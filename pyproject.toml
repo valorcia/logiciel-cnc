@@ -32,6 +32,12 @@ ocl = ["opencamlib"]        # LGPL-2.1
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# La page de l'atelier (HTML, CSS, JS) n'est pas du code Python : sans cette
+# declaration elle est absente d'une installation non editable, et le defaut
+# ne se voit qu'au moment ou l'on installe sur la machine cible.
+[tool.setuptools.package-data]
+"xyzac.ui.atelier" = ["static/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

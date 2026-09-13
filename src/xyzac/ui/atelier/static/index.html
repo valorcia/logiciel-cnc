@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atelier XYZAC</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%234f8cff'/><circle cx='16' cy='19' r='7' fill='%23e6e9ef'/><rect x='14' y='4' width='4' height='9' fill='%23e6e9ef'/></svg>">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header>
+  <h1>Atelier XYZAC</h1>
+  <p class="securite">SIMULATION UNIQUEMENT — aucune machine n'est reliée à cette
+  fenêtre. Rien de ce que vous cliquez ici ne peut faire bouger un axe.</p>
+</header>
+
+<main>
+
+<section class="etape" id="etape-piece">
+  <div class="tete"><span class="num">1</span><h2>Choisissez une pièce</h2></div>
+  <p class="consigne">Prenez un exemple pour essayer l'outil, ou partez de votre
+  propre pièce si vous en avez une au format STEP.</p>
+  <div class="actions">
+    <select id="exemples" aria-label="Exemples de pièces"></select>
+    <button id="charger" class="primaire">CHARGER CETTE PIÈCE</button>
+  </div>
+  <div id="piece-info" class="info" hidden></div>
+</section>
+
+<section class="etape" id="etape-vue">
+  <div class="tete"><span class="num">2</span><h2>Regardez</h2></div>
+  <p class="consigne">La pièce est posée sur le plateau, dans la machine. Faites
+  tourner la vue pour vérifier que tout est à sa place.</p>
+  <div class="vue">
+    <img id="image" alt="Vue de la machine et de la pièce">
+    <div class="vue-boutons">
+      <button data-tourne="-45">◀ tourner</button>
+      <button data-haut="-12">▼ baisser</button>
+      <button data-haut="12">▲ monter</button>
+      <button data-tourne="45">tourner ▶</button>
+    </div>
+  </div>
+</section>
+
+<section class="etape" id="etape-machine">
+  <div class="tete"><span class="num">3</span><h2>Réglez votre machine</h2></div>
+  <p class="consigne">Ce sont les cotes que vous n'avez pas encore coulées dans
+  le métal. Changez-en une, relancez la vérification, et regardez ce que cela
+  change — c'est à cela que sert cet outil.</p>
+  <div id="reglages" class="grille"></div>
+  <button id="defaut" class="lien">revenir aux valeurs du kit</button>
+</section>
+
+<section class="etape" id="etape-verif">
+  <div class="tete"><span class="num">4</span><h2>Cette machine peut-elle faire cette pièce&nbsp;?</h2></div>
+  <p class="consigne">Le moteur essaie les six façons de poser la pièce sur le
+  plateau et vous dit, surface par surface, ce qu'il faut faire.</p>
+  <button id="verifier" class="primaire grand">VÉRIFIER</button>
+  <div id="progres" class="progres" hidden>
+    <div class="barre"><div id="barre-in"></div></div>
+    <p id="etape-texte"></p>
+  </div>
+  <div id="resultat" hidden>
+    <p id="resume" class="resume"></p>
+    <ul id="surfaces" class="surfaces"></ul>
+    <ul id="avertissements" class="avert"></ul>
+  </div>
+</section>
+
+<section class="etape" id="etape-simu">
+  <div class="tete"><span class="num">5</span><h2>Simulez</h2></div>
+  <p class="consigne">Un tour complet autour de la scène, pour voir la pièce
+  dans la machine sous tous les angles.</p>
+  <button id="simuler" class="primaire">LANCER LA SIMULATION</button>
+  <div class="vue" id="bloc-simu" hidden>
+    <img id="film" alt="Simulation">
+    <div class="vue-boutons">
+      <button id="jouer">▶ jouer</button>
+      <input id="curseur" type="range" min="0" max="0" value="0"
+             aria-label="Position dans la simulation">
+    </div>
+  </div>
+</section>
+
+<p class="pied">Ce que vous voyez est calculé, pas dessiné : chaque verdict
+vient du moteur et peut être rejoué en ligne de commande. Ce que le moteur ne
+sait pas, il le dit.</p>
+
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,163 @@
+"""Serveur de l'atelier. Bibliotheque STANDARD uniquement.
+
+Pourquoi pas Flask ni FastAPI, alors que ce serait plus confortable a ecrire :
+cet outil doit demarrer sur le Raspberry Pi d'un acheteur de kit, en une
+commande, sans qu'il installe quoi que ce soit de plus. Une dependance de
+serveur web se paie a chaque mise a jour et a chaque probleme de version, pour
+un service que ``http.server`` rend ici tres bien — quelques routes JSON et des
+images.
+
+**Securite.** Ce serveur n'expose AUCUNE route qui atteigne une machine, et ce
+module n'importe pas ``linuxcnc_gateway``. Un test le verifie sur l'AST. Il
+n'ecoute que sur la boucle locale : ouvrir l'atelier sur le reseau
+demanderait une decision que personne n'a prise.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import tempfile
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+from .session import CORPUS, Session
+
+STATIQUE = Path(__file__).resolve().parent / "static"
+TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript",
+         ".css": "text/css; charset=utf-8", ".png": "image/png"}
+
+
+class Atelier(BaseHTTPRequestHandler):
+    session: Session
+    travail: Path
+
+    # le journal par defaut ecrit une ligne par image : illisible
+    def log_message(self, fmt, *args):            # noqa: A003
+        pass
+
+    # ------------------------------------------------------------ utilitaires
+
+    def _json(self, obj, code: int = 200) -> None:
+        data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _fichier(self, chemin: Path, *, cache: bool = False) -> None:
+        if not chemin.is_file():
+            self._json({"erreur": "introuvable"}, 404)
+            return
+        data = chemin.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type",
+                         TYPES.get(chemin.suffix, "application/octet-stream"))
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control",
+                         "max-age=60" if cache else "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _corps(self) -> dict:
+        n = int(self.headers.get("Content-Length", "0"))
+        if not n:
+            return {}
+        return json.loads(self.rfile.read(n).decode("utf-8"))
+
+    # ------------------------------------------------------------------ GET
+
+    def do_GET(self) -> None:                      # noqa: N802
+        u = urlparse(self.path)
+        q = parse_qs(u.query)
+        s = type(self).session
+
+        if u.path in ("/", "/index.html"):
+            return self._fichier(STATIQUE / "index.html")
+        if u.path in ("/app.js", "/style.css"):
+            return self._fichier(STATIQUE / u.path.lstrip("/"), cache=True)
+        if u.path == "/api/etat":
+            return self._json(s.etat())
+        if u.path == "/api/exemples":
+            return self._json({"exemples": Session.exemples()})
+        if u.path == "/api/vue":
+            if not s.piece_chargee:
+                return self._json({"erreur": "aucune piece"}, 409)
+            az = float(q.get("a", ["35"])[0])
+            el = float(q.get("e", ["18"])[0])
+            cadrage = q.get("c", ["machine"])[0]
+            out = type(self).travail / f"vue_{az:.0f}_{el:.0f}_{cadrage}.png"
+            if not out.exists():
+                s.vue(out, azimut=az, elevation=el, cadrage=cadrage)
+            return self._fichier(out)
+        if u.path == "/api/image":
+            i = int(q.get("i", ["0"])[0])
+            return self._fichier(type(self).travail / "sim" / f"f{i:03d}.png")
+        self._json({"erreur": "route inconnue"}, 404)
+
+    # ----------------------------------------------------------------- POST
+
+    def do_POST(self) -> None:                     # noqa: N802
+        u = urlparse(self.path)
+        s = type(self).session
+        try:
+            corps = self._corps()
+        except (ValueError, json.JSONDecodeError):
+            return self._json({"erreur": "corps illisible"}, 400)
+
+        if u.path == "/api/piece":
+            nom = str(corps.get("fichier", ""))
+            # Pas de chemin arbitraire : seul un nom du corpus est accepte.
+            # Un serveur local reste un serveur, et « local » n'est pas une
+            # politique de securite.
+            n = Path(nom).name
+            chemin = CORPUS / n
+            if not chemin.is_file():
+                chemin = CORPUS.parent / "step_degraded" / n
+            if not chemin.is_file():
+                return self._json({"erreur": f"exemple inconnu : {nom}"}, 400)
+            for f in type(self).travail.glob("vue_*.png"):
+                f.unlink()
+            try:
+                s.charger(chemin)
+            except Exception as e:                 # noqa: BLE001
+                # Le moteur peut refuser une geometrie pour une raison qu'il
+                # sait expliquer. Rendre 500 perdrait l'explication.
+                s.erreur = f"{type(e).__name__} : {e}"
+            return self._json(s.etat())
+
+        if u.path == "/api/reglages":
+            for k, v in corps.items():
+                if hasattr(s.reglages, k):
+                    setattr(s.reglages, k, float(v))
+            for f in type(self).travail.glob("vue_*.png"):
+                f.unlink()
+            if s.piece_chargee:
+                # les reglages changent la scene : le verdict precedent ne
+                # s'y applique plus, et le garder affiche serait un mensonge
+                s.surfaces, s.resume, s.montages = [], "", []
+            return self._json(s.etat())
+
+        if u.path == "/api/verifier":
+            s.verifier()
+            return self._json(s.etat())
+
+        if u.path == "/api/simuler":
+            dossier = type(self).travail / "sim"
+            shutil.rmtree(dossier, ignore_errors=True)
+            s.simuler(dossier, n=int(corps.get("images", 24)))
+            return self._json(s.etat())
+
+        self._json({"erreur": "route inconnue"}, 404)
+
+
+def servir(port: int = 8765, *, travail: Path | None = None,
+           session: Session | None = None) -> ThreadingHTTPServer:
+    """Cree le serveur, sans le lancer. Rendu tel quel pour les tests."""
+    Atelier.session = session or Session()
+    Atelier.travail = travail or Path(tempfile.mkdtemp(prefix="atelier-"))
+    Atelier.travail.mkdir(parents=True, exist_ok=True)
+    return ThreadingHTTPServer(("127.0.0.1", port), Atelier)

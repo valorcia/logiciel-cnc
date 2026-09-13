@@ -87,12 +87,30 @@ remède (« le porte-outil touche → allonge la jauge »).
 
 ## Démarrage
 
+**Pour essayer, sans rien connaître du moteur :**
+
+```bash
+pip install -e ".[viz]"
+python tools/make_corpus.py       # 20 géométries d'exemple
+python -m xyzac.ui.atelier        # ouvre l'Atelier dans le navigateur
+```
+
+L'Atelier répond à une question : **cette machine peut-elle faire cette
+pièce ?** Vous chargez une pièce, vous réglez les cotes que vous n'avez pas
+encore coulées dans le métal — courses, bascule A, plateau, outil — et il
+répond surface par surface, avec ce qu'il faut faire. Voir
+[docs/atelier.md](docs/atelier.md).
+
+---
+
+## Démarrage détaillé
+
 ```bash
 pip install -e ".[viz,dev]"
 
 python tools/make_corpus.py                  # 20 géométries STEP synthétiques
 python tools/make_degraded_corpus.py         # 3 STEP volontairement abîmés
-python -m pytest tests/ -q                   # 401 tests
+python -m pytest tests/ -q                   # 421 tests
 
 # M1 — accessibilité + orientation + visualisation
 python tools/demo_vertical_slice.py C08
@@ -151,12 +169,13 @@ Le prototype produit quatre images dans `out/` :
 | [ADR-009](docs/adr/ADR-009-jalon-M9.md) | jalon M9 : configuration LinuxCNC dérivée, dépôt de programme, pas de lancement de cycle |
 | [ADR-010](docs/adr/ADR-010-jalon-M10.md) | jalon M10 : décider une passe de finition complète — explorer coûte 65 ms, vérifier 1,6 ms |
 | [ADR-011](docs/adr/ADR-011-jalon-M11.md) | jalon M11 : ordonnancer les montages, et séparer ce qui tient au montage de ce qui tient à l'outil |
+| [Atelier](docs/atelier.md) | l'interface de l'utilisateur : charger, régler, vérifier, simuler |
 | [Banc de debug](docs/banc-de-debug.md) | interface de contrôle visuel : ce qu'elle montre, comment la lancer |
 | [Performance et Pi 5](docs/bench/README.md) | où passe le temps, la référence x86_64, et la procédure sur Raspberry Pi 5 |
 | [Validation LinuxCNC](docs/validation-linuxcnc.md) | compiler LinuxCNC, lui donner la configuration, les sept défauts trouvés, et le recoupement chiffré des deux cinématiques jusqu'à l'exécution |
 | [Accessibility Solver](docs/algorithms/accessibility-solver.md) | algorithme, garantie conservative, performance mesurée |
 | [Orientation Solver](docs/algorithms/orientation-solver.md) | Viterbi, segmentation 3+2, raffinement |
-| [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 401 tests, ce qui n'est pas testé |
+| [Plan de tests](docs/testplan/plan-de-tests.md) | 20 géométries, 421 tests, ce qui n'est pas testé |
 
 ---
 
