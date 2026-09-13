@@ -50,15 +50,26 @@
    permanence. Pose ici une fois pour toutes, et non sur le seul coupable. */
 [hidden]{display:none!important}
 
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--fond);color:var(--texte);
-  font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+html{-webkit-text-size-adjust:100%;height:100%}
+/* Coquille FIXE, et une seule zone qui defile.
+ *
+ * L'atelier tourne sur un ecran de 10 pouces (1280 x 800 typiquement) : une
+ * page qui defile sur 5 000 pixels y est inutilisable, et surtout la barre de
+ * navigation se retrouve hors de portee. L'en-tete, le fil d'etapes et la
+ * barre du bas sont donc a hauteur fixe ; seul le contenu de l'etape courante
+ * defile, et uniquement quand il ne tient pas. Le bouton pour avancer est
+ * ainsi TOUJOURS a l'ecran.
+ */
+body{margin:0;background:var(--fond);color:var(--texte);height:100%;
+  display:flex;flex-direction:column;overflow:hidden;
+  font:15.5px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
-.largeur{max-width:940px;margin:0 auto;padding:0 22px}
+.largeur{max-width:980px;margin:0 auto;padding:0 20px;width:100%}
 
 /* ------------------------------------------------------------- en-tete */
-.tete-site{padding:34px 0 26px;background:
-  radial-gradient(1200px 260px at 50% -120px, #e3ecf9 0%, var(--fond) 70%)}
+.tete-site{flex:0 0 auto;background:var(--carte);
+  border-bottom:1px solid var(--trait)}
+.tete-in{display:flex;align-items:center;gap:10px;padding:9px 20px}
 .marque{display:flex;align-items:center;gap:9px;margin-bottom:20px}
 .marque-signe{width:22px;height:22px;border-radius:6px;flex:0 0 auto;
   background:linear-gradient(150deg,var(--accent),#3f8fe0);
@@ -69,51 +80,54 @@ body{margin:0;background:var(--fond);color:var(--texte);
 h1{margin:0 0 10px;font-size:clamp(26px,4.4vw,36px);line-height:1.15;
   letter-spacing:-.022em;font-weight:700}
 .chapeau{margin:0 0 20px;font-size:17px;color:var(--doux);max-width:62ch}
-.securite{margin:0;padding:12px 16px;border-radius:var(--r-petit);
-  background:var(--attention-pale);border:1px solid #f0d9ae;color:#6b4310;
-  font-size:14px;line-height:1.5}
-.securite-etiquette{display:inline-block;margin-right:8px;padding:2px 8px;
-  border-radius:20px;background:#8a5200;color:#fff;font-size:11px;
-  font-weight:700;letter-spacing:.06em;vertical-align:1px}
+.securite{margin:0 0 0 auto;padding:5px 12px 5px 5px;
+  border-radius:20px;background:var(--attention-pale);border:1px solid #f0d9ae;
+  color:#6b4310;font-size:12.5px;line-height:1.35;display:flex;
+  align-items:center;gap:8px;min-width:0}
+.securite-texte{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.securite-etiquette{flex:0 0 auto;padding:3px 9px;border-radius:20px;
+  background:#8a5200;color:#fff;font-size:10.5px;font-weight:700;
+  letter-spacing:.05em}
 
 /* --------------------------------------------------------- fil d'etapes */
-.fil{position:sticky;top:0;z-index:30;background:rgba(243,245,248,.88);
-  backdrop-filter:blur(10px);border-bottom:1px solid var(--trait)}
-.fil-in{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.fil{flex:0 0 auto;background:var(--carte);border-bottom:1px solid var(--trait);
+  box-shadow:var(--ombre)}
+.fil-in{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
 .fil-in::-webkit-scrollbar{display:none}
-.fil a{display:flex;align-items:center;gap:8px;padding:13px 12px;
-  text-decoration:none;color:var(--tres-doux);font-size:14px;font-weight:550;
-  white-space:nowrap;border-bottom:2px solid transparent}
-.fil a i{display:grid;place-items:center;width:20px;height:20px;flex:0 0 auto;
-  border-radius:50%;background:var(--trait);color:var(--doux);
+.fil button{display:flex;align-items:center;gap:7px;padding:10px 13px;
+  background:none;border:none;border-bottom:2px solid transparent;
+  font:inherit;color:var(--tres-doux);font-size:13.5px;font-weight:550;
+  white-space:nowrap;cursor:pointer;border-radius:0}
+.fil button:hover{color:var(--doux);background:var(--creux)}
+.fil button i{display:grid;place-items:center;width:20px;height:20px;
+  flex:0 0 auto;border-radius:50%;background:var(--trait);color:var(--doux);
   font-size:11px;font-style:normal;font-weight:700}
-.fil a.ouverte{color:var(--texte)}
-.fil a.ouverte i{background:var(--accent);color:#fff}
-.fil a.faite i{background:var(--ok);color:#fff}
-.fil a.faite i::after{content:"✓";font-size:11px}
-.fil a.faite i{font-size:0}
+.fil button.ouverte{color:var(--texte);border-bottom-color:var(--accent)}
+.fil button.ouverte i{background:var(--accent);color:#fff}
+.fil button.faite i{background:var(--ok);color:#fff;font-size:0}
+.fil button.faite i::after{content:"✓";font-size:12px}
+.fil button:disabled{opacity:.4;cursor:not-allowed}
+.fil button:disabled:hover{background:none;color:var(--tres-doux)}
 
 /* --------------------------------------------------------------- etapes */
-main{padding-bottom:70px}
-.etape{background:var(--carte);border-radius:var(--r);padding:26px;
-  margin:22px 0;box-shadow:var(--ombre)}
-.tete{display:flex;gap:15px;align-items:flex-start;margin-bottom:20px}
+main{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;padding:16px 0 18px;
+  scroll-behavior:smooth}
+/* Une seule etape a l'ecran : les autres ne sont pas grisees, elles sont
+   ABSENTES. Griser cinq etapes dont quatre inaccessibles remplissait l'ecran
+   de choses a ignorer — sur 10 pouces, c'est tout l'ecran. */
+.etape{display:none;background:var(--carte);border-radius:var(--r);padding:22px;
+  box-shadow:var(--ombre)}
+.etape.affichee{display:block}
+.etape.verrouille{display:none!important}
+.tete{display:flex;gap:14px;align-items:flex-start;margin-bottom:16px}
 .num{display:grid;place-items:center;width:32px;height:32px;flex:0 0 auto;
   border-radius:50%;background:var(--accent-pale);color:var(--accent);
   font-weight:700;font-size:15px;margin-top:1px}
-h2{margin:0;font-size:21px;font-weight:650;letter-spacing:-.012em}
-.consigne{color:var(--doux);margin:7px 0 0;font-size:15px;max-width:66ch}
+h2{margin:0;font-size:19.5px;font-weight:650;letter-spacing:-.012em}
+.consigne{color:var(--doux);margin:6px 0 0;font-size:14.5px;max-width:74ch}
 .consigne b{color:var(--texte);font-weight:600}
 
-.etape.verrouille{opacity:.5;box-shadow:none;border:1px dashed var(--trait-fort);
-  background:transparent}
-.etape.verrouille::after{content:"Chargez d'abord une pièce à l'étape 1.";
-  display:block;margin-top:6px;font-size:14px;color:var(--tres-doux)}
-.etape.verrouille>*:not(.tete):not(::after){display:none}
-.etape.verrouille .depot,.etape.verrouille figure,.etape.verrouille .volet,
-.etape.verrouille .progres,.etape.verrouille .rangee{display:none}
-.etape.verrouille button,.etape.verrouille input,.etape.verrouille select{
-  pointer-events:none;filter:grayscale(1)}
+
 
 /* -------------------------------------------------------------- boutons */
 .btn{font:inherit;font-weight:550;cursor:pointer;border-radius:var(--r-petit);
@@ -127,7 +141,7 @@ h2{margin:0;font-size:21px;font-weight:650;letter-spacing:-.012em}
   font-weight:600;box-shadow:0 1px 2px rgba(21,77,146,.3)}
 .btn--primaire:hover{background:var(--accent-sombre);border-color:var(--accent-sombre)}
 .btn--grand{font-size:16px;padding:13px 26px}
-.btn--bloc{width:100%;font-size:17px;padding:15px}
+.btn--bloc{width:100%;font-size:16.5px;padding:13px}
 .btn--icone{width:42px;height:42px;padding:0;display:grid;place-items:center;
   font-size:18px;line-height:1}
 .btn--jouer{width:46px;height:46px;background:var(--accent);color:#fff;
@@ -139,7 +153,7 @@ h2{margin:0;font-size:21px;font-weight:650;letter-spacing:-.012em}
 
 /* --------------------------------------------------- depot de fichier */
 .depot{border:2px dashed var(--trait-fort);border-radius:var(--r);
-  padding:34px 22px;text-align:center;background:var(--creux);cursor:pointer;
+  padding:24px 20px;text-align:center;background:var(--creux);cursor:pointer;
   transition:.16s}
 .depot:hover,.depot:focus-visible{border-color:var(--accent);
   background:var(--accent-pale);outline:none}
@@ -168,9 +182,18 @@ h2{margin:0;font-size:21px;font-weight:650;letter-spacing:-.012em}
 .volet-in{padding:2px 0 6px}
 
 /* ---------------------------------------------------- fiche de la piece */
-.fiche{margin-top:20px;padding:15px 17px;border-radius:var(--r-petit);
-  background:var(--creux);border:1px solid var(--trait);font-size:15px}
-.fiche strong{font-size:16px}
+/* Bandeau de CONTEXTE, hors des pages et non dans l'etape 1.
+ *
+ * Defaut trouve en paginant : la fiche de la piece vivait dans la premiere
+ * page, donc elle disparaissait des qu'on avancait. Sur un assistant, savoir
+ * quelle piece est chargee est utile a CHAQUE etape — c'est meme la seule
+ * information qui vaut sur les cinq. */
+.fiche{flex:0 0 auto;padding:8px 20px;background:var(--accent-pale);
+  border-bottom:1px solid #cfe0f6;font-size:13.5px;color:var(--accent-sombre);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  max-width:none;margin:0}
+.fiche strong{font-size:14px;color:var(--texte)}
+.fiche br{display:none}
 .jeton{display:inline-block;margin-left:8px;padding:2px 9px;border-radius:20px;
   background:var(--accent-pale);color:var(--accent-sombre);font-size:12px;
   font-weight:600;vertical-align:1px}
@@ -179,8 +202,17 @@ h2{margin:0;font-size:21px;font-weight:650;letter-spacing:-.012em}
 /* ------------------------------------------------------- la scene 3D */
 .scene{margin:0;background:#eef1f6;border:1px solid var(--trait);
   border-radius:var(--r);overflow:hidden;box-shadow:inset 0 0 0 1px #fff}
-.scene img{display:block;width:100%;background:#eef1f6;min-height:220px}
-.legende{display:flex;flex-wrap:wrap;gap:7px 16px;padding:12px 15px;
+/* La scene est bornee en HAUTEUR et non en largeur : sur un ecran de 10
+   pouces, c'est la hauteur qui manque. ``contain`` garde l'image entiere —
+   ``cover`` recadrerait, et recadrer une vue d'usinage peut couper
+   exactement l'outil qu'on venait regarder. */
+.scene img{display:block;width:100%;max-height:44vh;object-fit:contain;
+  background:#eef1f6;min-height:180px}
+/* L'etape « usinage » porte plus de choses que les autres — lecteur, puces
+   d'axes, reserves — donc sa scene doit ceder de la hauteur. Mesure : a
+   44 vh, la vue etait coupee en haut sur un ecran de 740 px. */
+#bloc-simu .scene img{max-height:38vh}
+.legende{display:flex;flex-wrap:wrap;gap:5px 14px;padding:9px 13px;
   border-top:1px solid var(--trait);background:var(--carte)}
 .legende span{display:flex;align-items:center;gap:7px;font-size:12.5px;
   color:var(--doux)}
@@ -195,7 +227,7 @@ h2{margin:0;font-size:21px;font-weight:650;letter-spacing:-.012em}
 .barre>div{height:100%;width:0;border-radius:6px;
   background:linear-gradient(90deg,var(--accent),#4a94e8);transition:width .3s}
 #etape-texte{margin:9px 0 0;color:var(--doux);font-size:14px}
-.resume{font-size:17.5px;font-weight:600;margin:22px 0 14px;line-height:1.45}
+.resume{font-size:16.5px;font-weight:600;margin:16px 0 12px;line-height:1.4}
 .surfaces{list-style:none;padding:0;margin:0;display:grid;gap:10px}
 .surfaces li{background:var(--creux);border:1px solid var(--trait);
   border-radius:var(--r-petit);padding:14px 16px}
@@ -216,13 +248,28 @@ h2{margin:0;font-size:21px;font-weight:650;letter-spacing:-.012em}
   border:1px solid #f0d9ae;border-radius:var(--r-petit);padding:11px 14px}
 
 /* ------------------------------------------------------- le lecteur */
-.lecteur{margin-top:18px}
+/* Sur un ecran de 10 pouces en PAYSAGE, la hauteur manque mais la largeur
+   abonde. Les commandes passent donc a cote de la vue et non dessous : tout
+   tient alors sur un ecran, ce qui etait la demande. En dessous de 1080 px de
+   large (une tablette tenue debout), la colonne repasse sous la vue. */
+.lecteur{margin-top:16px}
+@media (min-width:1080px){
+  .lecteur{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px;
+    align-items:start}
+  #bloc-simu .scene img{max-height:46vh}
+}
+.cote{display:flex;flex-direction:column;gap:10px}
+.cote .axes{margin-top:0}
+.cote .film-titre{margin:0;font-size:14.5px;line-height:1.4}
+.cote .barre-lecture{margin-top:0}
+.cote .resume-court{margin:0}
+.cote .btn--lien{align-self:flex-start;padding:0;font-size:13px}
 .barre-lecture{display:flex;align-items:center;gap:14px;margin-top:14px}
 .barre-lecture input[type=range]{flex:1;min-width:120px;accent-color:var(--accent)}
 .compteur{font-variant-numeric:tabular-nums;font-size:13px;color:var(--doux);
   min-width:62px;text-align:right}
 .film-titre{margin:14px 0 0;font-weight:600;font-size:15.5px}
-.axes{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.axes{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
 .axe{display:flex;align-items:baseline;gap:6px;font-size:13px;padding:6px 11px;
   border-radius:var(--r-petit);background:var(--creux);
   border:1px solid var(--trait);color:var(--doux);
@@ -236,6 +283,15 @@ h2{margin:0;font-size:21px;font-weight:650;letter-spacing:-.012em}
   color:var(--attention)}
 .axe--hors{background:var(--non-pale);border-color:#f3c7c7;color:var(--non);
   font-weight:700}
+.resume-court{margin:12px 0 0;font-size:14px;font-weight:600;
+  color:var(--attention);background:var(--attention-pale);
+  border:1px solid #f0d9ae;border-radius:var(--r-petit);padding:9px 13px}
+.volet--serre{margin-top:8px;border-top:none;padding-top:0}
+.volet--serre summary{padding:6px 0;font-size:13.5px}
+.rangee--fin{margin-top:8px;justify-content:flex-end}
+.rangee--titre{align-items:baseline;gap:14px;flex-wrap:nowrap}
+.rangee--titre .resume{flex:1;min-width:0}
+.rangee--titre .btn--lien{flex:0 0 auto;padding:0;font-size:13px}
 .note{margin-top:16px;font-size:13.5px;color:var(--doux);background:var(--creux);
   border:1px solid var(--trait);border-radius:var(--r-petit);padding:13px 15px;
   line-height:1.6}
@@ -266,8 +322,12 @@ select{min-width:230px}
 .champ label{font-size:12.5px;color:var(--doux);font-weight:550}
 code{background:var(--creux);border:1px solid var(--trait);padding:1px 6px;
   border-radius:5px;font-size:13px}
-.pied{color:var(--tres-doux);font-size:13.5px;margin:34px auto 0;
-  text-align:center;max-width:60ch}
+.nav-bas{flex:0 0 auto;background:var(--carte);
+  border-top:1px solid var(--trait);box-shadow:0 -2px 8px rgba(16,24,40,.05)}
+.nav-in{display:flex;align-items:center;gap:16px;padding:11px 20px}
+.nav-in .btn{min-width:132px;justify-content:center}
+.pied{flex:1;color:var(--tres-doux);font-size:12.5px;margin:0;
+  text-align:center}
 
 /* ------------------------------------------------------------ bandeaux */
 .bandeau{position:sticky;top:0;z-index:60}

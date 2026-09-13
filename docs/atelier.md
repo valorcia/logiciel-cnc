@@ -64,6 +64,40 @@ Le navigateur s'ouvre sur `http://127.0.0.1:8765/`. `Ctrl+C` pour arrêter.
 Pas de navigateur (Pi en SSH) : `--sans-navigateur`, puis ouvrez l'adresse
 depuis votre poste avec un tunnel `ssh -L 8765:127.0.0.1:8765 pi@…`.
 
+## 2bis. Un écran de 10 pouces, donc cinq pages
+
+La cible est un écran de **10 pouces** (1280 × 800 typiquement), posé près de
+la machine. Cinq cartes empilées y donnaient une page de 5 000 pixels de haut
+dont quatre cinquièmes étaient inaccessibles — et la barre pour avancer se
+retrouvait hors de portée.
+
+L'atelier est donc un **assistant paginé** : une étape par écran, les autres
+absentes (et non grisées : griser quatre étapes remplit l'écran de choses à
+ignorer). La coquille est fixe — en-tête, fil d'étapes, bandeau de la pièce,
+barre de navigation — et **seul le contenu de l'étape défile**, ce qui garantit
+que le bouton pour avancer est toujours à l'écran.
+
+Ce n'est pas une intention, c'est une exigence **mesurée** : l'épreuve
+navigateur tourne en 1280 × 740 et demande au navigateur où se trouvent la
+barre de navigation, le fil, la vue 3D, le lecteur, les puces d'axes et les
+réserves. Chacun doit être dans la fenêtre. Vérifier que « la page ne déborde
+pas » ne dirait rien — une coquille en `overflow:hidden` ne déborde jamais,
+même quand elle coupe son contenu.
+
+Deux conséquences de forme :
+
+- **Le bandeau de la pièce est hors des pages.** Il vivait dans l'étape 1, donc
+  il disparaissait dès qu'on avançait. Savoir quelle pièce est chargée vaut à
+  chaque étape.
+- **Les gros boutons s'effacent quand leur résultat est là**, remplacés par un
+  lien (`revérifier`, `recalculer la simulation`) : ils ont servi, et sur les
+  étapes chargées ils prenaient la place de ce qu'on vient lire.
+- **En paysage, les commandes passent à côté de la vue** (au-delà de 1080 px de
+  large) : la hauteur manque, la largeur abonde. La réserve longue est repliée
+  derrière « ce qui n'est pas montré », mais ce qui **change une décision**
+  reste à l'écran en une ligne — deux champs calculés, et non une phrase
+  tronquée : une réserve coupée en deux ne se lit plus.
+
 ## 3. Les cinq étapes
 
 1. **Votre pièce** — glissez votre fichier `.step` ou `.stp` sur la page, ou

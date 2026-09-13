@@ -10,6 +10,36 @@ let etat = null;
 let azimut = 35, elevation = 18;
 let film = { n: 0, i: 0, timer: null, images: [] };
 
+// --------------------------------------------------------- la pagination
+//
+// Une etape par ecran, et non une longue page qui defile : l'atelier tourne
+// sur un ecran de 10 pouces. Sur cinq cartes empilees, quatre etaient
+// inaccessibles et remplissaient pourtant tout l'ecran de choses a ignorer.
+const PAGES = ["etape-piece", "etape-vue", "etape-verif", "etape-simu",
+               "etape-lancer"];
+let page = 0;
+
+// Une page est ATTEIGNABLE quand ce qu'elle demande existe. On ne bloque pas
+// sur « avoir clique » : un bouton presse dont le calcul a echoue n'a rien
+// fait, et l'operateur se retrouverait coince sans savoir pourquoi.
+function atteignable(i) {
+  if (i === 0) return true;
+  return !!(etat && etat.chargee);
+}
+
+function allerA(i) {
+  const cible = Math.max(0, Math.min(PAGES.length - 1, i));
+  if (!atteignable(cible)) return;
+  page = cible;
+  PAGES.forEach((id, k) => {
+    const n = document.getElementById(id);
+    if (n) n.classList.toggle("affichee", k === page);
+  });
+  const m = document.querySelector("main");
+  if (m) m.scrollTop = 0;
+  if (etat) appliquer();
+}
+
 const ETIQUETTES = {
   course_x: "Course X (± mm)", course_y: "Course Y (± mm)",
   course_z_bas: "Z le plus bas (mm)", course_z_haut: "Z le plus haut (mm)",
@@ -60,7 +90,10 @@ function apresChargement() {
   appliquer();
   rafraichirVue();
   reinitialiserFilm();
-  if (etat.chargee) $("#etape-vue").scrollIntoView({ behavior: "smooth", block: "start" });
+  // On avance de soi-meme : la piece est chargee, la seule chose a faire
+  // ensuite est de la regarder. Laisser l'operateur chercher le bouton sur un
+  // ecran de 10 pouces serait lui donner du travail pour rien.
+  if (etat.chargee) allerA(1);
 }
 
 // --------------------------------------------------------------- reglages
@@ -115,24 +148,31 @@ function dessinerResultat() {
 
 function appliquer() {
   const chargee = etat.chargee;
+  // Le gros bouton s'efface quand son resultat est la : il a servi, et sur
+  // l'etape la plus chargee de l'assistant il prenait la place de la liste
+  // qu'on vient lire. Un lien discret le remplace.
+  $("#verifier").hidden = etat.surfaces.length > 0;
   $("#verifier").disabled = !chargee || etat.occupe;
   $("#simuler").disabled = !chargee || etat.occupe;
   $("#charger").disabled = etat.occupe;
   $("#parcourir").disabled = etat.occupe;
 
-  // Divulgation progressive : une etape qui ne peut rien faire est grisee et
-  // dit pourquoi, plutot que d'offrir un bouton qui ne repond pas.
+  // Divulgation progressive : une etape qui ne peut rien faire n'est pas
+  // grisee, elle est ABSENTE — et son onglet est desactive. Sur 10 pouces,
+  // griser quatre etapes remplissait l'ecran de choses a ignorer.
   document.querySelectorAll("[data-requiert='piece']").forEach((s) =>
     s.classList.toggle("verrouille", !chargee));
+  if (!chargee && page !== 0) allerA(0);
 
   const info = $("#piece-info");
   info.hidden = !chargee;
   if (chargee) {
     const source = etat.origine === "votre fichier"
       ? "votre fichier" : "exemple fourni";
-    info.innerHTML = `<strong>${etat.piece}</strong> — ${etat.dimensions}` +
-      ` <span class="jeton">${source}</span>` +
-      (etat.import_detail ? `<br><span class="doux">${etat.import_detail}</span>` : "");
+    info.innerHTML = `<strong>${etat.piece}</strong>` +
+      `<span>${etat.dimensions}</span>` +
+      `<span class="jeton">${source}</span>` +
+      (etat.import_detail ? `<span class="doux">${etat.import_detail}</span>` : "");
   }
 
   const p = $("#progres");
@@ -169,9 +209,15 @@ function appliquer() {
     $("#image").removeAttribute("src");
   }
 
-  const note = $("#simu-note");
-  note.hidden = !etat.simulation_note;
-  note.textContent = etat.simulation_note || "";
+  // Le gros bouton disparait une fois la simulation faite : il a servi, et
+  // sur un ecran de 10 pouces il prenait la place de la vue. Un lien discret
+  // le remplace pour recalculer.
+  const fait = etat.n_images > 0;
+  $("#simuler").hidden = fait;
+  $("#simu-resume").hidden = !etat.simulation_resume;
+  $("#simu-resume").textContent = etat.simulation_resume || "";
+  $("#bloc-note").hidden = !etat.simulation_note;
+  $("#simu-note").textContent = etat.simulation_note || "";
 
   dessinerLegende();
   dessinerFil();
@@ -203,17 +249,21 @@ function dessinerFil() {
     "etape-simu": etat.n_images > 0,
     "etape-lancer": false,
   };
-  document.querySelectorAll("[data-fil]").forEach((a) => {
-    a.classList.toggle("faite", !!faites[a.dataset.fil]);
-    a.classList.toggle("ouverte", a.dataset.fil === etapeCourante());
+  document.querySelectorAll("[data-fil]").forEach((b) => {
+    const i = PAGES.indexOf(b.dataset.fil);
+    b.classList.toggle("faite", !!faites[b.dataset.fil] && i !== page);
+    b.classList.toggle("ouverte", i === page);
+    b.disabled = !atteignable(i) || etat.occupe;
   });
-}
-
-function etapeCourante() {
-  if (!etat.chargee) return "etape-piece";
-  if (!etat.surfaces.length) return "etape-verif";
-  if (!etat.n_images) return "etape-simu";
-  return "etape-lancer";
+  const prec = $("#precedent"), suiv = $("#suivant");
+  prec.disabled = page === 0;
+  suiv.disabled = page === PAGES.length - 1 || !atteignable(page + 1)
+    || etat.occupe;
+  // Le libelle dit OU l'on va : « Suivant » ne dit rien, et sur un ecran
+  // etroit c'est la seule place disponible pour le dire.
+  const titres = ["", "Regarder", "Vérifier", "Usinage", "Lancer"];
+  suiv.textContent = page + 1 < PAGES.length
+    ? `${titres[page + 1]} →` : "Terminé";
 }
 
 // --------------------------------------------------------- le battement
@@ -412,11 +462,19 @@ async function init() {
     appliquer(); rafraichirVue(); reinitialiserFilm();
   });
 
-  $("#verifier").addEventListener("click", async () => {
+  const lancerVerification = async () => {
     etat = await post("/api/verifier", {});
     appliquer(); sonder();
-  });
+  };
+  $("#verifier").addEventListener("click", lancerVerification);
+  $("#reverifier").addEventListener("click", lancerVerification);
 
+  const lancerSimulation = async () => {
+    reinitialiserFilm();
+    etat = await post("/api/simuler", { images: 36 });
+    appliquer(); sonder();
+  };
+  $("#resimuler").addEventListener("click", lancerSimulation);
   $("#simuler").addEventListener("click", async () => {
     reinitialiserFilm();
     etat = await post("/api/simuler", { images: 36 });
@@ -427,10 +485,23 @@ async function init() {
     dessinerLancement(await get("/api/lancement"));
   });
 
+  $("#precedent").addEventListener("click", () => allerA(page - 1));
+  $("#suivant").addEventListener("click", () => allerA(page + 1));
+  document.querySelectorAll("[data-fil]").forEach((b) =>
+    b.addEventListener("click", () => allerA(PAGES.indexOf(b.dataset.fil))));
+  // Fleches du clavier : sur une tablette posee sur un etau, un clavier
+  // externe est souvent le seul moyen confortable.
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+    if (e.key === "ArrowRight") allerA(page + 1);
+    if (e.key === "ArrowLeft") allerA(page - 1);
+  });
+
   $("#jouer").addEventListener("click", jouerPause);
   $("#curseur").addEventListener("input", (e) => montrer(Number(e.target.value)));
 
   etat = await get("/api/etat");
+  allerA(0);
   appliquer();
   demarrerBattement();
 }

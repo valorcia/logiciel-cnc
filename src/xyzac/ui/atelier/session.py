@@ -325,6 +325,14 @@ class Session:
     film: list[dict] = field(default_factory=list)
     #: Ce que la simulation a montre, et ce qu'elle n'a PAS montre.
     simulation_note: str = ""
+    #: Le meme, en une ligne — pour un ecran de 10 pouces.
+    #:
+    #: Deux champs et non un seul tronque : ce qui doit rester VISIBLE, ce sont
+    #: les faits qui changent une decision (combien de matiere, combien
+    #: d'images hors courses). Le reste — ce que la simulation ne montre pas —
+    #: reste accessible mais replie. Tronquer la phrase longue aurait coupe au
+    #: hasard, et une reserve coupee en deux ne se lit plus.
+    simulation_resume: str = ""
     #: Numero d'etat de la scene. Il change des que la piece ou les reglages
     #: changent, et il entre dans le NOM des images rendues.
     #:
@@ -423,6 +431,7 @@ class Session:
         self.n_images = 0
         self.film = []
         self.simulation_note = ""
+        self.simulation_resume = ""
         self.erreur = ""
 
     def _refuser(self, nom: str, pourquoi: str) -> None:
@@ -438,7 +447,7 @@ class Session:
         self.dimensions = ""
         self.import_detail = ""
         self.surfaces, self.resume, self.montages = [], "", []
-        self.film, self.simulation_note = [], ""
+        self.film, self.simulation_note, self.simulation_resume = [], "", ""
         self.n_images = 0
         self.erreur = pourquoi
 
@@ -688,7 +697,7 @@ class Session:
         """
         self.revision += 1
         self.surfaces, self.resume, self.montages = [], "", []
-        self.film, self.simulation_note = [], ""
+        self.film, self.simulation_note, self.simulation_resume = [], "", ""
         self.n_images = 0
 
     def vue(self, chemin: Path, *, azimut: float = 35.0,
@@ -727,6 +736,7 @@ class Session:
         self.n_images = 0
         self.film = []
         self.simulation_note = ""
+        self.simulation_resume = ""
         self.erreur = ""
         threading.Thread(target=self._simuler, args=(dossier, max(4, int(n))),
                          daemon=True).start()
@@ -897,6 +907,15 @@ class Session:
             "les brides, qui ne sont pas modélisées du tout.")
         self.simulation_note = " ".join(bouts)
 
+        # La ligne courte : seulement ce qui change une decision.
+        courts = [f"{len(plans)} opération(s) d'ébauche",
+                  f"{rapport.removed_fraction * 100:.0f} % de matière enlevée"]
+        if rapport.gouged_voxels:
+            courts.append(f"{rapport.gouged_voxels} points de la pièce touchés")
+        if hors:
+            courts.append(f"{hors} image(s) sur {self.n_images} HORS courses")
+        self.simulation_resume = " · ".join(courts)
+
     # ------------------------------------------------------------ le lancement
 
     def lancement(self) -> dict:
@@ -948,6 +967,7 @@ class Session:
             "origine": self.origine,
             "film": self.film,
             "simulation_note": self.simulation_note,
+            "simulation_resume": self.simulation_resume,
             "reglages": {k: getattr(self.reglages, k)
                          for k in vars(Reglages()) if not k.startswith("_")},
             "surfaces": [dict(vars(s), etiquette=s.etiquette)

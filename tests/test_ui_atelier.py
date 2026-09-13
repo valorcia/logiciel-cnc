@@ -1075,3 +1075,74 @@ def test_the_atelier_frames_every_corpus_part_without_cutting_it():
     assert 1.0 <= ZOOM_3D <= 1.6, (
         "au-dela de 1,6 la piece sort du cadre aux poses basculees ; "
         "mesure sur les deux poses extremes d'une gamme")
+
+
+# --------------------------------------------- l'ecran de 10 pouces (M12d)
+
+def test_the_page_shows_one_step_at_a_time():
+    """L'atelier tourne sur un ecran de 10 pouces.
+
+    Cinq cartes empilees y donnaient une page de 5 000 pixels de haut dont
+    quatre cinquiemes etaient inaccessibles — et la barre pour avancer se
+    retrouvait hors de portee. Les etapes sont donc des PAGES : une seule
+    affichee, les autres absentes.
+    """
+    html = (ATELIER / "static" / "index.html").read_text(encoding="utf-8")
+    js = (ATELIER / "static" / "app.js").read_text(encoding="utf-8")
+    css = (ATELIER / "static" / "style.css").read_text(encoding="utf-8")
+
+    # La coquille est fixe et UNE SEULE zone defile. Verifie sur les
+    # declarations, espaces retires — une assertion qui se rattrape par des
+    # remplacements de chaine n'est plus une assertion.
+    compact = "".join(css.split())
+    assert "overflow:hidden" in compact, "le corps ne doit pas defiler"
+    i = compact.index("main{")
+    bloc_main = compact[i:compact.index("}", i)]
+    assert "overflow-y:auto" in bloc_main, bloc_main
+
+    # une etape n'est visible que si elle porte la classe
+    assert ".etape{display:none" in css
+    assert ".etape.affichee{display:block}" in css
+
+    # la navigation existe dans les deux sens, et le fil est cliquable
+    for sel in ('id="precedent"', 'id="suivant"', 'class="nav-bas"'):
+        assert sel in html, sel
+    assert "allerA" in js
+    # les onglets sont des boutons et non des ancres : une ancre ferait
+    # defiler une page qui ne defile pas
+    assert 'href="#etape-' not in html
+
+
+def test_the_part_summary_survives_moving_between_pages():
+    """Defaut trouve en paginant : la fiche de la piece vivait dans la premiere
+    page, donc elle disparaissait des qu'on avancait. Savoir quelle piece est
+    chargee vaut a CHAQUE etape — c'est meme la seule information qui vaut sur
+    les cinq."""
+    html = (ATELIER / "static" / "index.html").read_text(encoding="utf-8")
+    i_fiche = html.index('id="piece-info"')
+    i_main = html.index("<main")
+    assert i_fiche < i_main, "la fiche doit etre hors des pages"
+
+
+def test_the_long_caveat_keeps_a_visible_short_form():
+    """La reserve longue est repliee sur un petit ecran — mais ce qui CHANGE
+    une decision reste a l'ecran. Deux champs et non une phrase tronquee : une
+    reserve coupee en deux ne se lit plus."""
+    class FauxRapport:
+        removed_fraction = 0.6
+        unreachable_mm3 = 0.0
+        final_removable_mm3 = 0.0
+        gouged_voxels = 0
+
+    s = Session()
+    s.n_images = 36
+    s.film = [{"dans_courses": False}] * 16 + [{"dans_courses": True}] * 20
+    s._noter_simulation([(np.zeros((5, 3)), None, None, [0])], FauxRapport())
+
+    assert s.simulation_resume, "il faut une forme courte"
+    assert len(s.simulation_resume) < len(s.simulation_note) / 2
+    assert "60 %" in s.simulation_resume
+    assert "16 image(s) sur 36" in s.simulation_resume
+    # et la forme longue garde ce que la courte laisse tomber
+    assert "finition" in s.simulation_note
+    assert "finition" not in s.simulation_resume

@@ -25,6 +25,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from playwright.sync_api import sync_playwright
 from xyzac.ui.atelier.server import servir
 
+#: Piece d'essai. Les ailettes rapprochees sont le cas difficile du corpus :
+#: beaucoup de faces, des passages etroits, et une ebauche qui produit
+#: enormement de liaisons.
+PIECE = os.environ.get("PIECE", "C05_ailettes_rapprochees.step")
+
 SORTIE = Path(__file__).resolve().parents[1] / "out" / "atelier"
 SORTIE.mkdir(parents=True, exist_ok=True)
 import tempfile
@@ -48,7 +53,12 @@ with sync_playwright() as pw:
     chemin_nav = os.environ.get("NAVIGATEUR", "")
     nav = (pw.chromium.launch(executable_path=chemin_nav) if chemin_nav
            else pw.chromium.launch())
-    page = nav.new_page(viewport={"width": 900, "height": 1100})
+    # ECRAN DE 10 POUCES, la cible reelle : 1280 x 800, moins la barre du
+    # navigateur. Eprouver sur une fenetre haute laissait passer exactement ce
+    # qu'on veut interdire — une page ou le bouton pour avancer est hors
+    # d'atteinte.
+    page = nav.new_page(viewport={"width": int(os.environ.get("LARGEUR", 1280)),
+                                  "height": int(os.environ.get("HAUTEUR", 740))})
     page.on("console", _console)
     page.on("pageerror", lambda e: erreurs.append(f"pageerror: {e}"))
     page.goto("http://127.0.0.1:8792/", wait_until="networkidle")
@@ -65,12 +75,33 @@ with sync_playwright() as pw:
     # permanence sur un atelier qui marche — une regle de classe en
     # ``display:flex`` battait ``[hidden]{display:none}`` a specificite egale.
     # Un test qui mesure l'attribut ne mesure pas ce que l'oeil voit.
+    def tient_dans_l_ecran(quoi):
+        """Le bouton pour avancer doit etre A L'ECRAN, sans defiler.
+
+        C'est l'exigence du 10 pouces, et elle se mesure : on demande au
+        navigateur ou se trouve le bouton, et on verifie qu'il est dans la
+        fenetre. Verifier que la page « ne defile pas » ne dirait rien — une
+        coquille a ``overflow:hidden`` ne defile jamais, meme quand elle coupe
+        son contenu.
+        """
+        h = page.viewport_size["height"]
+        for sel in ("#suivant", ".nav-in", ".fil-in"):
+            b = page.locator(sel).bounding_box()
+            assert b, (quoi, sel, "introuvable")
+            assert b["y"] >= 0 and b["y"] + b["height"] <= h + 1, (
+                quoi, sel, b, f"hors de l'ecran (hauteur {h})")
+        return True
+
     fantomes = page.evaluate("""() => [...document.querySelectorAll('[hidden]')]
         .filter(e => e.offsetParent !== null || e.getClientRects().length)
         .map(e => e.id || e.className)""")
     assert not fantomes, f"caches mais visibles : {fantomes}"
     print("   aucun element cache n'est visible :", len(
         page.query_selector_all("[hidden]")), "verifies")
+    print("   ecran :", page.viewport_size, "— navigation atteignable :",
+          tient_dans_l_ecran("accueil"))
+    print("   etapes affichees a la fois :",
+          page.eval_on_selector_all(".etape.affichee", "l => l.length"))
 
     # --- 2. le fichier de l'operateur, par le selecteur de fichier ---------
     # Le chemin que quelqu'un empruntera reellement : il a un STEP sur une cle
@@ -92,14 +123,18 @@ with sync_playwright() as pw:
     print("   refus d'un non-STEP :",
           page.inner_text("#etape-piece .erreur")[:90])
 
+    page.click("[data-fil='etape-piece']")
     page.get_by_text("Je n'ai pas encore de fichier").click()
-    page.select_option("#exemples", "C10_dome_convexe.step")
+    page.select_option("#exemples", PIECE)
     page.click("#charger")
     page.wait_for_selector("#piece-info:not([hidden])", timeout=60000)
     page.wait_for_function(
         "document.querySelector('#image').complete && "
         "document.querySelector('#image').naturalWidth > 0", timeout=90000)
     print("3. exemple charge :", page.inner_text("#piece-info").split("\n")[0])
+    print("   page ouverte apres chargement :",
+          page.eval_on_selector(".etape.affichee", "e => e.id"))
+    tient_dans_l_ecran("vue")
     print("   image affichee :",
           page.eval_on_selector("#image", "e => e.naturalWidth + 'x' + e.naturalHeight"))
     page.screenshot(path=SORTIE / "2-chargee.png", full_page=True)
@@ -109,6 +144,8 @@ with sync_playwright() as pw:
     page.wait_for_timeout(3000)
     print("4. rotation :", "l'image a change" if page.get_attribute("#image","src") != av else "IMAGE INCHANGEE")
 
+    page.click("#suivant")                    # vers l'etape 3
+    tient_dans_l_ecran("verification")
     page.get_by_text("Ma machine n'a pas ces cotes").click()
     page.fill("#r-diametre_outil", "6")
     page.dispatch_event("#r-diametre_outil", "change")
@@ -130,6 +167,9 @@ with sync_playwright() as pw:
         if c: print(f"     {cl}: {c}")
     page.screenshot(path=SORTIE / "3-verdict.png", full_page=True)
 
+    page.get_by_text("Ma machine n'a pas ces cotes").click()   # refermer
+    page.click("#suivant")                    # vers l'etape 4
+    tient_dans_l_ecran("usinage")
     page.click("#simuler")
     page.wait_for_selector("#bloc-simu:not([hidden])", timeout=600000)
     page.wait_for_function(
@@ -137,6 +177,22 @@ with sync_playwright() as pw:
         "document.querySelector('#film').naturalWidth > 0", timeout=60000)
     n_images = int(page.get_attribute("#curseur", "max")) + 1
     print("7. simulation :", n_images, "images")
+    # EXIGENCE du 10 pouces : la vue 3D doit etre ENTIEREMENT visible sans
+    # defiler. Le premier jet tenait dans l'ecran mais coupait le haut de la
+    # scene — « la page ne debord pas » n'est pas « on voit ce qu'on vient
+    # regarder ».
+    b = page.locator("#bloc-simu .scene img").bounding_box()
+    h = page.viewport_size["height"]
+    assert b and b["y"] >= 0 and b["y"] + b["height"] <= h + 1, (
+        "la vue 3D est coupee", b, h)
+    print(f"   vue 3D entierement visible : {b['width']:.0f}x{b['height']:.0f} "
+          f"a y={b['y']:.0f} (ecran {h})")
+    # et les commandes doivent etre a l'ecran elles aussi : une vue entiere
+    # dont le curseur est sous la ligne de flottaison ne se regarde pas.
+    for sel in ("#jouer", "#curseur", "#axes", "#simu-resume"):
+        bb = page.locator(sel).bounding_box()
+        assert bb and bb["y"] + bb["height"] <= h + 1, (sel, bb, h)
+    print("   lecteur, axes et reserves a l'ecran : oui")
     print("   pose affichee :", page.inner_text("#film-titre"))
     print("   axes           :", page.inner_text("#axes").replace("\n", " | "))
     page.click("#jouer")
@@ -179,6 +235,8 @@ with sync_playwright() as pw:
     page.locator("#bloc-simu").screenshot(path=SORTIE / "4b-trajectoire.png")
 
     # --- 8. le bouton LANCER -----------------------------------------------
+    page.click("#suivant")                    # vers l'etape 5
+    tient_dans_l_ecran("lancement")
     page.click("#lancer")
     page.wait_for_selector("#lancement:not([hidden])", timeout=30000)
     print("8. LANCER :", page.inner_text("#lancement-resume"))

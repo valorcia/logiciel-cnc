@@ -21,32 +21,28 @@
 </div>
 
 <header class="tete-site">
-  <div class="largeur">
-    <div class="marque">
-      <span class="marque-signe" aria-hidden="true"></span>
-      <span class="marque-nom">Atelier <b>XYZAC</b></span>
-    </div>
-    <h1>Votre machine peut-elle faire cette pièce&nbsp;?</h1>
-    <p class="chapeau">Chargez votre fichier, regardez-la s'usiner, et voyez
-    surface par surface ce qu'il faut faire. Aucune connaissance d'usinage
-    n'est nécessaire pour lire cette page.</p>
+  <div class="largeur tete-in">
+    <span class="marque-signe" aria-hidden="true"></span>
+    <span class="marque-nom">Atelier <b>XYZAC</b></span>
     <p class="securite">
       <span class="securite-etiquette">SIMULATION UNIQUEMENT</span>
-      Aucune machine n'est reliée à cette fenêtre. Rien de ce que vous cliquez
-      ici ne peut faire bouger un axe.
+      <span class="securite-texte">aucune machine n'est reliée à cette
+      fenêtre&nbsp;: rien ici ne peut faire bouger un axe.</span>
     </p>
   </div>
 </header>
 
 <nav class="fil" aria-label="Progression">
   <div class="largeur fil-in">
-    <a href="#etape-piece" data-fil="etape-piece"><i>1</i>Votre pièce</a>
-    <a href="#etape-vue" data-fil="etape-vue"><i>2</i>Regardez</a>
-    <a href="#etape-verif" data-fil="etape-verif"><i>3</i>Vérifiez</a>
-    <a href="#etape-simu" data-fil="etape-simu"><i>4</i>Usinage</a>
-    <a href="#etape-lancer" data-fil="etape-lancer"><i>5</i>Lancer</a>
+    <button type="button" data-fil="etape-piece"><i>1</i>Votre pièce</button>
+    <button type="button" data-fil="etape-vue"><i>2</i>Regardez</button>
+    <button type="button" data-fil="etape-verif"><i>3</i>Vérifiez</button>
+    <button type="button" data-fil="etape-simu"><i>4</i>Usinage</button>
+    <button type="button" data-fil="etape-lancer"><i>5</i>Lancer</button>
   </div>
 </nav>
+
+<div id="piece-info" class="fiche" hidden></div>
 
 <main class="largeur">
 
@@ -88,7 +84,6 @@
     </div>
   </details>
 
-  <div id="piece-info" class="fiche" hidden></div>
 </section>
 
 <section class="etape verrouille" id="etape-vue" data-requiert="piece">
@@ -123,7 +118,10 @@
     <p id="etape-texte"></p>
   </div>
   <div id="resultat" hidden>
-    <p id="resume" class="resume"></p>
+    <div class="rangee rangee--titre">
+      <p id="resume" class="resume"></p>
+      <button id="reverifier" class="btn btn--lien">revérifier</button>
+    </div>
     <ul id="surfaces" class="surfaces"></ul>
     <ul id="avertissements" class="reserves"></ul>
   </div>
@@ -145,8 +143,8 @@
   <div class="tete"><span class="num">4</span>
     <div><h2>Regardez-la s'usiner</h2>
       <p class="consigne">L'outil parcourt la trajectoire d'ébauche réellement
-      calculée, avec les basculements A et C que cette gamme a choisis. La
-      caméra ne bouge pas&nbsp;: ce qui bouge à l'écran, c'est la machine.</p></div>
+      calculée. La caméra ne bouge pas&nbsp;: ce qui bouge, c'est la
+      machine.</p></div>
   </div>
   <button id="simuler" class="btn btn--primaire btn--bloc">Simuler l'usinage</button>
 
@@ -155,16 +153,23 @@
       <img id="film" alt="Simulation de l'usinage">
       <figcaption class="legende" id="legende-film"></figcaption>
     </figure>
-    <div class="barre-lecture">
-      <button id="jouer" class="btn btn--icone btn--jouer" title="Jouer">▶</button>
-      <input id="curseur" type="range" min="0" max="0" value="0"
-             aria-label="Position dans la simulation">
-      <span id="compteur" class="compteur"></span>
+    <div class="cote">
+      <div class="barre-lecture">
+        <button id="jouer" class="btn btn--icone btn--jouer" title="Jouer">▶</button>
+        <input id="curseur" type="range" min="0" max="0" value="0"
+               aria-label="Position dans la simulation">
+        <span id="compteur" class="compteur"></span>
+      </div>
+      <p id="film-titre" class="film-titre"></p>
+      <div id="axes" class="axes"></div>
+      <p id="simu-resume" class="resume-court" hidden></p>
+      <details id="bloc-note" class="volet volet--serre" hidden>
+        <summary>Ce qui n'est pas montré</summary>
+        <div class="volet-in"><p id="simu-note" class="note"></p></div>
+      </details>
+      <button id="resimuler" class="btn btn--lien">recalculer la simulation</button>
     </div>
-    <p id="film-titre" class="film-titre"></p>
-    <div id="axes" class="axes"></div>
   </div>
-  <p id="simu-note" class="note" hidden></p>
 </section>
 
 <section class="etape verrouille" id="etape-lancer" data-requiert="piece">
@@ -179,11 +184,16 @@
   </div>
 </section>
 
-<p class="pied">Ce que vous voyez est calculé, pas dessiné&nbsp;: chaque verdict
-vient du moteur et peut être rejoué en ligne de commande. Ce que le moteur ne
-sait pas, il le dit.</p>
-
 </main>
+
+<nav class="nav-bas" aria-label="Navigation entre les étapes">
+  <div class="largeur nav-in">
+    <button id="precedent" class="btn">← Précédent</button>
+    <p class="pied">Ce que vous voyez est calculé, pas dessiné. Ce que le
+    moteur ne sait pas, il le dit.</p>
+    <button id="suivant" class="btn btn--primaire">Suivant →</button>
+  </div>
+</nav>
 <script src="/app.js"></script>
 </body>
 </html>
