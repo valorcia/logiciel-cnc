@@ -256,6 +256,12 @@ h2{margin:0;font-size:19.5px;font-weight:650;letter-spacing:-.012em}
 .faisable .pastille{background:var(--ok-pale);color:var(--ok)}
 .a-changer .pastille{background:var(--attention-pale);color:var(--attention)}
 .impossible .pastille{background:var(--non-pale);color:var(--non)}
+/* Une surface encore en analyse : presente, nommee, sans verdict. Elle ne
+   clignote pas — une liste qui pulse pendant qu'on la lit empeche de la lire.
+   Le gris et l'italique suffisent a dire « pas encore ». */
+.en-cours{border-left:3px solid var(--trait-fort);opacity:.72}
+.en-cours .pastille{background:var(--trait);color:var(--doux);
+  font-style:italic;font-weight:600}
 .faisable{border-left:3px solid var(--ok)}
 .a-changer{border-left:3px solid var(--attention)}
 .impossible{border-left:3px solid var(--non)}

@@ -80,7 +80,12 @@ def couleur_verdict(verdict: str) -> str:
 
     return {"faisable": palette.VALID,
             "a-changer": palette.WARNING,
-            "impossible": palette.COLLISION}.get(verdict, palette.NEUTRAL)
+            "impossible": palette.COLLISION,
+            # « En analyse » n'est pas un verdict, donc ni vert ni rouge — mais
+            # le gris neutre se confondait avec la piece, elle-meme grise sur
+            # la vue de designation : les marques etaient invisibles. Le bleu
+            # designe sans juger.
+            "en-cours": palette.PATH}.get(verdict, palette.NEUTRAL)
 
 
 def legende() -> list[dict]:
@@ -314,7 +319,8 @@ class Surface:
         """
         return {"faisable": "usinable",
                 "a-changer": "à retourner",
-                "impossible": "à changer"}.get(self.verdict, self.verdict)
+                "impossible": "à changer",
+                "en-cours": "analyse…"}.get(self.verdict, self.verdict)
 
 
 @dataclass
@@ -597,13 +603,42 @@ class Session:
         bb = banc.part.bbox
         listes = [(f.points, f.normals) for f in passes]
 
-        couvertures = []
-        for i, o in enumerate(CANONICAL_MOUNTS):
-            self.etape = f"essai du montage « {o.name} »"
-            self.progres = 0.1 + 0.8 * i / len(CANONICAL_MOUNTS)
-            couvertures.append(screen_orientation(
+        # Les points et les normales sont gardes AVANT le depistage : la vue
+        # qui designe une surface doit marcher pendant l'analyse, pas
+        # seulement apres.
+        self._points_surfaces = [np.asarray(f.points, dtype=float)
+                                 for f in passes]
+        self._normales_surfaces = [np.asarray(f.normals, dtype=float).mean(axis=0)
+                                   for f in passes]
+
+        # La liste s'affiche ENTIERE des maintenant, verdicts vides : les noms
+        # ne dependent que des normales, donc ils sont deja connus. L'attente
+        # devant une barre de progression pendant que le moteur decide les
+        # surfaces une par une etait du temps perdu pour rien.
+        couvertures: list = []
+        self.publier(passes, couvertures, complet=False)
+
+        n_total = len(CANONICAL_MOUNTS) * max(len(passes), 1)
+        faits = 0
+
+        for o in CANONICAL_MOUNTS:
+            def au_fil(k, _ecran, cov, _o=o):
+                nonlocal faits
+                # La couverture en cours est accrochee des le premier rappel :
+                # ``screen_orientation`` remplit l'objet qu'il rendra, donc
+                # l'attendre ferait perdre tout le montage courant.
+                if cov not in couvertures:
+                    couvertures.append(cov)
+                faits += 1
+                self.progres = 0.1 + 0.85 * faits / n_total
+                self.etape = (f"montage « {_o.name} » — "
+                              f"surface {k + 1}/{len(passes)}")
+                self.publier(passes, couvertures, complet=False)
+
+            screen_orientation(
                 o, listes, champ, fabrique, machine, banc.tool,
-                probe_tool=sonde, bbox_lo=bb.lo, bbox_hi=bb.hi, n_probe=6))
+                probe_tool=sonde, bbox_lo=bb.lo, bbox_hi=bb.hi, n_probe=6,
+                on_pass=au_fil)
 
         self.etape = "rédaction"
         self.progres = 0.95
@@ -615,53 +650,73 @@ class Session:
                                    for f in passes]
         self._rediger(passes, couvertures)
 
-    def _rediger(self, passes, couvertures) -> None:
-        """Traduit les verdicts du moteur en consignes. N'en invente aucun."""
-        from ...strategy_planner.setups import CANONICAL_MOUNTS
+    @staticmethod
+    def _noms(passes) -> list[str]:
+        """Les noms des surfaces, connus AVANT tout depistage.
 
-        tel_quel = couvertures[0]
-        surfaces: list[Surface] = []
-        montages_utiles: set[str] = set()
-
-        vus: dict[str, int] = {}
-        for i, fp in enumerate(passes):
+        Ils ne dependent que de la normale moyenne, donc la liste peut
+        s'afficher entierement des la premiere seconde et se remplir ensuite.
+        Une liste dont les lignes apparaissent une par une bouge sous le
+        curseur ; une liste complete dont les verdicts arrivent ne bouge pas.
+        """
+        noms, vus = [], {}
+        for fp in passes:
             base = nommer(fp.normals.mean(axis=0))
             vus[base] = vus.get(base, 0) + 1
-            nom = base if vus[base] == 1 else f"{base} ({vus[base]})"
-            sc0 = tel_quel.screens[i]
-            if sc0.reachable:
-                surfaces.append(Surface(
-                    numero=i + 1, n_points=fp.n_points, verdict="faisable",
-                    titre=nom.capitalize(),
-                    consigne="Rien à faire : la machine l'atteint dans la pose "
-                             "de départ.",
-                    montage="tel quel"))
-                continue
+            noms.append((base if vus[base] == 1
+                         else f"{base} ({vus[base]})").capitalize())
+        return noms
 
-            # Un autre montage la rend-il atteignable ?
-            mieux = None
-            for cov in couvertures[1:]:
-                if cov.screens[i].reachable:
-                    mieux = cov
-                    break
-            if mieux is not None:
-                montages_utiles.add(mieux.orientation.name)
-                surfaces.append(Surface(
+    def _verdict_surface(self, i: int, nom: str, fp, couvertures,
+                         *, complet: bool) -> Surface | None:
+        """Le verdict d'UNE surface, ou ``None`` s'il n'est pas encore acquis.
+
+        Une seule fonction pour les deux chemins — l'affichage en direct et la
+        redaction finale. Ecrites separement, la version affichee et la version
+        finale auraient divergé, et c'est la version affichee que l'operateur
+        aurait lue.
+
+        ``complet`` dit si TOUS les montages ont ete depistes pour cette
+        surface. Tant qu'il est faux, « aucun montage ne la couvre » n'est pas
+        une conclusion : c'est une absence de conclusion, et les deux ne se
+        ressemblent que si l'on ne compte pas.
+        """
+        def ecran(cov):
+            return cov.screens[i] if i < len(cov.screens) else None
+
+        e0 = ecran(couvertures[0]) if couvertures else None
+        if e0 is None:
+            return None
+        if e0.reachable:
+            return Surface(
+                numero=i + 1, n_points=fp.n_points, verdict="faisable",
+                titre=nom,
+                consigne="Rien à faire : la machine l'atteint dans la pose "
+                         "de départ.",
+                montage="tel quel")
+
+        for cov in couvertures[1:]:
+            e = ecran(cov)
+            if e is not None and e.reachable:
+                return Surface(
                     numero=i + 1, n_points=fp.n_points, verdict="a-changer",
-                    titre=nom.capitalize(),
+                    titre=nom,
                     consigne=f"Retournez la pièce : posez "
-                             f"{mieux.orientation.face_down} sur le plateau.",
-                    montage=mieux.orientation.name,
+                             f"{cov.orientation.face_down} sur le plateau.",
+                    montage=cov.orientation.name,
                     detail="Cette surface regarde le plateau dans la pose de "
                            "départ : la machine ne peut pas l'atteindre sans "
-                           "remonter la pièce."))
-                continue
+                           "remonter la pièce.")
+        if not complet:
+            return None
 
-            # Personne ne la couvre : dire ce qui bloque le moins mal.
-            best = min(couvertures,
-                       key=lambda c: (c.screens[i].n_unreachable,
-                                      c.screens[i].n_probe_tool_fails))
-            sc = best.screens[i]
+        # Personne ne la couvre : dire ce qui bloque le moins mal.
+        candidats = [c for c in couvertures if ecran(c) is not None]
+        best = min(candidats,
+                   key=lambda c: (ecran(c).n_unreachable,
+                                  ecran(c).n_probe_tool_fails))
+        sc = ecran(best)
+        if True:
             part = sc.reachable_fraction * 100.0
             if sc.radius_fixable:
                 consigne = (f"Essayez un outil plus fin : un diamètre "
@@ -691,21 +746,48 @@ class Session:
                            "fin suffirait : à ce niveau de détail, il ne sait "
                            "pas distinguer un coin trop serré de sa propre "
                            "marge de sécurité.")
-            surfaces.append(Surface(
+            return Surface(
                 numero=i + 1, n_points=fp.n_points, verdict="impossible",
-                titre=nom.capitalize(), consigne=consigne,
-                montage=best.orientation.name, detail=detail))
+                titre=nom, consigne=consigne,
+                montage=best.orientation.name, detail=detail)
 
+    def publier(self, passes, couvertures, *, complet: bool) -> None:
+        """Met a l'ecran ce qui est DEJA decide, en gardant la liste stable.
+
+        Les surfaces non encore decidees restent presentes avec leur nom et le
+        verdict « en-cours ». Faire apparaitre les lignes une par une ferait
+        bouger la liste sous le curseur au moment ou l'operateur la lit.
+        """
+        noms = self._noms(passes)
+        surfaces: list[Surface] = []
+        montages_utiles: set[str] = set()
+        for i, fp in enumerate(passes):
+            v = self._verdict_surface(i, noms[i], fp, couvertures,
+                                      complet=complet)
+            if v is None:
+                v = Surface(numero=i + 1, n_points=fp.n_points,
+                            verdict="en-cours", titre=noms[i], consigne="")
+            elif v.verdict == "a-changer":
+                montages_utiles.add(v.montage)
+            surfaces.append(v)
         self.surfaces = surfaces
         self.montages = ["tel quel"] + sorted(montages_utiles)
-        n_ok = sum(1 for s in surfaces if s.verdict == "faisable")
-        n_chg = sum(1 for s in surfaces if s.verdict == "a-changer")
-        n_non = sum(1 for s in surfaces if s.verdict == "impossible")
-        bouts = [f"{n_ok} surface(s) usinables telles quelles"]
-        if n_chg:
-            bouts.append(f"{n_chg} après avoir retourné la pièce")
-        if n_non:
-            bouts.append(f"{n_non} qui demandent un changement")
+
+        n = {c: sum(1 for s in surfaces if s.verdict == c)
+             for c in ("faisable", "a-changer", "impossible", "en-cours")}
+        if n["en-cours"]:
+            # Un resume PARTIEL le dit : « 3 surfaces usinables » pendant que
+            # trois sont encore en analyse se lirait comme un total.
+            self.resume = (f"{len(surfaces) - n['en-cours']} surface(s) "
+                           f"décidées sur {len(surfaces)} — analyse en cours.")
+            self.avertissements = []
+            return
+
+        bouts = [f"{n['faisable']} surface(s) usinables telles quelles"]
+        if n["a-changer"]:
+            bouts.append(f"{n['a-changer']} après avoir retourné la pièce")
+        if n["impossible"]:
+            bouts.append(f"{n['impossible']} qui demandent un changement")
         self.resume = ", ".join(bouts) + "."
         self.avertissements = [
             "Verdict établi sur un échantillon de 6 points par surface : il "
@@ -718,6 +800,10 @@ class Session:
                 "Plusieurs montages : chaque remontage repositionne la pièce, "
                 "et les erreurs s'additionnent. Aucune tolérance ne peut être "
                 "annoncée d'un montage à l'autre.")
+
+    def _rediger(self, passes, couvertures) -> None:
+        """Redaction FINALE : tous les montages ont ete depistes."""
+        self.publier(passes, couvertures, complet=True)
 
     # ------------------------------------------------------------- les vues
 

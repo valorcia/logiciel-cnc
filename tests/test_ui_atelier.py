@@ -1264,3 +1264,100 @@ def test_a_client_that_walks_away_is_not_an_error():
     assert "BrokenPipeError" in src and "ConnectionResetError" in src, src
     # et il ne doit rien avaler d'autre : une vraie panne doit remonter
     assert "except Exception" not in src, src
+
+
+# --------------------------------- les resultats arrivent en direct (M12f)
+
+def _couverture(nom, atteignables, n_passes):
+    """Une couverture synthetique, avec les vraies classes du moteur."""
+    from xyzac.strategy_planner.setups import (CANONICAL_MOUNTS, PassScreen,
+                                               SetupCoverage)
+
+    o = next(x for x in CANONICAL_MOUNTS if x.name == nom)
+    cov = SetupCoverage(orientation=o, mount_offset_mm=(0.0, 0.0, 25.0))
+    for i in range(n_passes):
+        ok = i in atteignables
+        cov.screens.append(PassScreen(
+            pass_index=i, reachable=ok, n_probe=6,
+            n_unreachable=0 if ok else 3,
+            reasons={} if ok else {"AXIS_LIMITS": 3},
+            field_inflation_mm=1.0, probe_nose_mm=1.5))
+    return cov
+
+
+class _Passe:
+    def __init__(self, n):
+        self.n_points = 1000
+        self.normals = np.tile(n, (4, 1)).astype(float)
+    points = np.zeros((4, 3))
+
+
+def test_an_undecided_surface_is_never_called_impossible():
+    """LE point de correction de l'affichage en direct.
+
+    Tant que les six montages n'ont pas ete depistes, « aucun montage ne la
+    couvre » n'est pas une conclusion : c'est une ABSENCE de conclusion. Les
+    deux ne se ressemblent que si l'on ne compte pas — et afficher
+    « impossible » a la premiere seconde pour le corriger a la cinquantieme
+    serait pire que de faire attendre.
+    """
+    s = Session()
+    passes = [_Passe([0, 0, 1]), _Passe([0, 0, -1])]
+
+    # aucun depistage : aucune conclusion, mais les noms sont la
+    s.publier(passes, [], complet=False)
+    assert [x.verdict for x in s.surfaces] == ["en-cours", "en-cours"]
+    assert [x.titre for x in s.surfaces] == ["Le dessus", "Le dessous"]
+    assert "0 surface(s) décidées sur 2" in s.resume
+
+    # « tel quel » depiste : la 0 est atteignable, la 1 ne l'est pas encore
+    tel_quel = _couverture("tel quel", {0}, 2)
+    s.publier(passes, [tel_quel], complet=False)
+    assert s.surfaces[0].verdict == "faisable"
+    assert s.surfaces[1].verdict == "en-cours", "conclusion prematuree"
+    assert "1 surface(s) décidées sur 2" in s.resume
+    assert s.avertissements == [], "pas de reserves sur un resultat partiel"
+
+    # tous depistes, personne ne couvre la 1 : MAINTENANT c'est un verdict
+    s.publier(passes, [tel_quel, _couverture("retourne", set(), 2)],
+              complet=True)
+    assert s.surfaces[1].verdict == "impossible"
+    assert "échantillon" in " ".join(s.avertissements).lower()
+
+
+def test_the_list_is_complete_from_the_first_second():
+    """Les noms ne dependent que des normales : la liste peut s'afficher
+    entiere tout de suite. Une liste dont les lignes apparaissent une par une
+    bouge sous le curseur pendant qu'on la lit."""
+    s = Session()
+    passes = [_Passe([0, 0, 1]), _Passe([1, 0, 0]), _Passe([0, 0, 1])]
+    s.publier(passes, [], complet=False)
+    assert len(s.surfaces) == 3
+    # et les noms qui se repetent sont numerotes, sinon on ne les distingue pas
+    assert [x.titre for x in s.surfaces] == ["Le dessus", "Le flanc droit",
+                                             "Le dessus (2)"]
+
+
+def test_the_live_path_and_the_final_one_are_the_same_code():
+    """Ecrites separement, la version affichee en direct et la version finale
+    auraient divergé — et c'est la version affichee que l'operateur aurait
+    lue. ``_rediger`` n'est donc qu'un appel a ``publier``."""
+    import inspect
+
+    src = inspect.getsource(Session._rediger)
+    assert "publier(passes, couvertures, complet=True)" in src
+    assert src.count("Surface(") == 0, "aucun verdict redige a part"
+
+
+def test_the_screening_reports_each_pass_as_it_is_decided():
+    """Le rappel recoit la COUVERTURE en cours, et pas seulement l'ecran :
+    sans elle, l'appelant ne pourrait rattacher l'ecran ni a son montage ni
+    aux precedents, et ne saurait rien conclure avant la fin."""
+    import inspect
+
+    from xyzac.strategy_planner.setups import screen_orientation
+
+    sig = inspect.signature(screen_orientation)
+    assert "on_pass" in sig.parameters
+    src = inspect.getsource(screen_orientation)
+    assert "on_pass(i, ecran, cov)" in src, src

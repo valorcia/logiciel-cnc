@@ -122,6 +122,43 @@ Deux conséquences de forme :
 Les étapes 2 à 5 restent grisées tant qu'aucune pièce n'est chargée, et disent
 pourquoi. Un bouton qui ne répond pas est pire qu'un bouton absent.
 
+### 3bis-0. Les résultats arrivent en direct
+
+Avant : **51 secondes devant une barre de progression**, puis tout d'un coup.
+Or le moteur décide les surfaces **une par une** — garder le résultat de la
+première pendant qu'on calcule la sixième fait attendre pour rien.
+
+Mesuré sur la pièce d'essai (C05, six surfaces) :
+
+| | avant | après |
+|---|---|---|
+| la liste des surfaces apparaît | 51 s | **2,8 s** |
+| premier verdict | 51 s | **5,2 s** |
+| trois verdicts sur six | 51 s | **14,3 s** |
+| résultat complet | 51 s | 51 s |
+
+Le total ne change pas — ce qui change, c'est que l'attente n'est plus aveugle.
+
+Trois décisions :
+
+- **La liste est complète dès la première seconde**, verdicts vides. Les noms
+  ne dépendent que des normales moyennes, donc ils sont déjà connus. Faire
+  apparaître les lignes une par une ferait bouger la liste sous le curseur au
+  moment où l'opérateur la lit.
+- **Une surface non décidée n'est jamais dite « impossible ».** Tant que les
+  six montages ne sont pas dépistés, « aucun montage ne la couvre » est une
+  *absence* de conclusion, pas une conclusion. Afficher « impossible » à la
+  première seconde pour le corriger à la cinquantième serait pire que de faire
+  attendre. Un test l'exige.
+- **Un seul code pour les deux chemins.** `_rediger` (final) n'est qu'un appel
+  à `publier(..., complet=True)`. Écrites séparément, la version affichée en
+  direct et la version finale auraient divergé — et c'est la version affichée
+  que l'opérateur aurait lue.
+
+Le résumé partiel le dit lui aussi : *« 3 surfaces décidées sur 6 — analyse en
+cours »*, et **aucune réserve n'est affichée sur un résultat partiel** : les
+réserves bornent un résultat, pas un chantier.
+
 ### 3bis-a. Le verdict est relié à la géométrie
 
 Manque le plus coûteux de l'interface jusqu'ici : le verdict disait *« le

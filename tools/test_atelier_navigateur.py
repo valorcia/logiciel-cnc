@@ -157,8 +157,30 @@ with sync_playwright() as pw:
     print("6. verification lancee...")
     page.wait_for_selector("#progres:not([hidden])", timeout=15000)
     t0 = time.time()
-    page.wait_for_selector("#resultat:not([hidden])", timeout=600000)
-    print(f"   verdict rendu en {time.time()-t0:.0f} s")
+
+    # LES RESULTATS ARRIVENT EN DIRECT. Mesure avant : rien pendant 51 s.
+    # La liste, elle, ne depend que des normales et peut s'afficher tout de
+    # suite ; les verdicts la remplissent ensuite.
+    page.wait_for_selector("#resultat:not([hidden])", timeout=120000)
+    t_liste = time.time() - t0
+    n_lignes = page.eval_on_selector_all("#surfaces li", "l => l.length")
+    print(f"   liste de {n_lignes} surfaces affichee en {t_liste:.1f} s")
+    page.wait_for_function(
+        "document.querySelectorAll('#surfaces li:not(.en-cours)').length >= 1",
+        timeout=180000)
+    t_premier = time.time() - t0
+    print(f"   premier verdict en {t_premier:.1f} s")
+    page.wait_for_function(
+        "document.querySelectorAll('#surfaces li:not(.en-cours)').length >= 3",
+        timeout=300000)
+    print(f"   trois verdicts en {time.time()-t0:.1f} s")
+    page.screenshot(path=SORTIE / "3a-en-cours.png", full_page=True)
+    assert t_liste < 20, f"la liste doit apparaitre tot, pas en {t_liste:.0f} s"
+
+    page.wait_for_function(
+        "document.querySelectorAll('#surfaces li.en-cours').length === 0",
+        timeout=600000)
+    print(f"   verdict complet en {time.time()-t0:.0f} s")
     print("   resume :", page.inner_text("#resume"))
     n = page.eval_on_selector_all("#surfaces li", "l => l.length")
     print("   surfaces listees :", n)

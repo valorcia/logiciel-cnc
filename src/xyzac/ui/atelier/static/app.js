@@ -13,6 +13,11 @@ let azimut = 35, elevation = 18;
 // reciproquement. Deux vues, deux points de vue.
 let azimutS = 35, elevationS = 18;
 let surfaceChoisie = null;
+// Vrai des que l'operateur a clique lui-meme. Tant qu'il ne l'a pas fait, le
+// choix par defaut se REEVALUE : la premiere evaluation tombe a un moment ou
+// aucune surface n'est encore decidee, et s'y tenir figeait la selection sur
+// une ligne qui ne disait rien.
+let choixManuel = false;
 let film = { n: 0, i: 0, timer: null, images: [] };
 
 // --------------------------------------------------------- la pagination
@@ -133,13 +138,21 @@ function dessinerReglages() {
 
 // --------------------------------------------------------------- resultats
 
+let derniereVueSurface = "";
+
 function montrerSurface(i) {
   if (i === null || i === undefined || !etat.surfaces[i]) return;
   surfaceChoisie = i;
   document.querySelectorAll("#surfaces li").forEach((li, k) =>
     li.classList.toggle("choisie", k === i));
-  $("#image-surface").src =
-    `/api/surface?i=${i}&a=${azimutS}&e=${elevationS}&t=${Date.now()}`;
+  // On ne redemande l'image que si la demande a CHANGE. La liste se redessine
+  // toutes les 600 ms pendant l'analyse ; horodater chaque appel rechargerait
+  // la meme image deux fois par seconde, et elle clignoterait.
+  const demande = `i=${i}&a=${azimutS}&e=${elevationS}&r=${etat.revision}`;
+  if (demande !== derniereVueSurface) {
+    derniereVueSurface = demande;
+    $("#image-surface").src = `/api/surface?${demande}`;
+  }
   const s = etat.surfaces[i];
   const n = $("#surface-nom");
   n.textContent = `${s.titre} — ${s.etiquette}`;
@@ -157,20 +170,32 @@ function dessinerResultat() {
         <span class="titre">${s.titre}</span>
         <span class="pastille">${s.etiquette}</span>
       </div>
-      <p class="consigne-s">${s.consigne}</p>
+      ${s.consigne ? `<p class="consigne-s">${s.consigne}</p>` : ""}
       ${s.detail ? `<p class="detail">${s.detail}</p>` : ""}
     </li>`).join("");
   $("#avertissements").innerHTML =
     etat.avertissements.map((a) => `<li>${a}</li>`).join("");
 
   document.querySelectorAll("#surfaces li").forEach((li, k) =>
-    li.addEventListener("click", () => montrerSurface(k)));
+    li.addEventListener("click", () => { choixManuel = true; montrerSurface(k); }));
   // On en designe une d'office : la premiere qui demande une action, sinon la
   // premiere de la liste. Une vue vide a cote d'une liste ne dit pas qu'elle
   // attend un clic — elle a l'air cassee.
-  if (surfaceChoisie === null || !etat.surfaces[surfaceChoisie]) {
-    const ennuyeuse = etat.surfaces.findIndex((s) => s.verdict !== "faisable");
-    montrerSurface(ennuyeuse >= 0 ? ennuyeuse : 0);
+  // Le choix par defaut se REEVALUE tant que l'analyse tourne, puis se fige.
+  // Pendant l'analyse, personne ne lit encore : la selection peut se deplacer
+  // vers la surface la plus utile a mesure que les verdicts arrivent. Une fois
+  // le resultat complet, elle ne bouge plus — deplacer la selection sous les
+  // yeux de quelqu'un qui lit est pire que de la laisser sur un choix
+  // imparfait.
+  if (surfaceChoisie === null || !etat.surfaces[surfaceChoisie]
+      || (etat.occupe && !choixManuel)) {
+    // La premiere qui demande une action, parmi celles DEJA decidees : en
+    // designer une « en analyse » d'office reviendrait a mettre en avant la
+    // seule ligne qui ne dit encore rien.
+    const ennuyeuse = etat.surfaces.findIndex(
+      (s) => s.verdict !== "faisable" && s.verdict !== "en-cours");
+    const decidee = etat.surfaces.findIndex((s) => s.verdict !== "en-cours");
+    montrerSurface(ennuyeuse >= 0 ? ennuyeuse : (decidee >= 0 ? decidee : 0));
   } else {
     montrerSurface(surfaceChoisie);
   }
@@ -504,6 +529,7 @@ async function init() {
   });
 
   const lancerVerification = async () => {
+    choixManuel = false; surfaceChoisie = null;
     etat = await post("/api/verifier", {});
     appliquer(); sonder();
   };

@@ -406,8 +406,21 @@ def screen_orientation(
     bbox_lo, bbox_hi,
     n_probe: int = 8,
     riser_mm: float = RISER_MM,
+    on_pass=None,
 ) -> SetupCoverage:
     """Depiste quelles passes deviennent atteignables dans ce montage.
+
+    ``on_pass(i, screen, coverage)``, s'il est fourni, est appele des qu'une
+    passe est depistee — avant que les suivantes le soient. Le depistage dure
+    des dizaines de secondes et decide les passes UNE PAR UNE : garder le
+    resultat de la premiere pendant qu'on calcule la sixieme fait attendre pour
+    rien.
+
+    La couverture EN COURS DE REMPLISSAGE est passee au rappel, et non
+    seulement l'ecran : sans elle, l'appelant ne pourrait rattacher l'ecran ni
+    a son montage ni aux precedents, et ne saurait donc rien conclure avant le
+    retour de la fonction. Le rappel ne rend rien et ne modifie rien : il
+    OBSERVE.
 
     ``make_solver(field, mount_offset, machine, tool)`` est fourni par
     l'appelant : ce module ne construit ni solveur ni outil. La machine ET
@@ -469,12 +482,15 @@ def screen_orientation(
                     mp = sonde.solve_point(p[k], n[k])
                     if not mp.accessible:
                         rayon += 1
-        cov.screens.append(PassScreen(
+        ecran = PassScreen(
             pass_index=i, reachable=(bad == 0), n_probe=len(idx),
             n_unreachable=bad, reasons=why,
             n_tool_limited=outil, tool_reasons=why_outil,
             n_probe_tool_fails=rayon, field_inflation_mm=inflation,
-            probe_nose_mm=bec_sonde))
+            probe_nose_mm=bec_sonde)
+        cov.screens.append(ecran)
+        if on_pass is not None:
+            on_pass(i, ecran, cov)
     return cov
 
 
