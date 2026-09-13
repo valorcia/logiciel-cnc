@@ -228,7 +228,25 @@ h2{margin:0;font-size:19.5px;font-weight:650;letter-spacing:-.012em}
   background:linear-gradient(90deg,var(--accent),#4a94e8);transition:width .3s}
 #etape-texte{margin:9px 0 0;color:var(--doux);font-size:14px}
 .resume{font-size:16.5px;font-weight:600;margin:16px 0 12px;line-height:1.4}
+/* Liste a GAUCHE, piece a DROITE : la question qu'on se pose devant un
+   verdict est « laquelle est-ce ? », et y repondre demande de voir les deux
+   en meme temps. Sous 1080 px, la vue repasse au-dessus de la liste. */
+.astuce{margin:0 0 12px;font-size:13.5px;color:var(--accent-sombre);
+  background:var(--accent-pale);border:1px solid #cfe0f6;
+  border-radius:var(--r-petit);padding:8px 12px}
+.duo{display:grid;gap:16px}
+@media (min-width:1080px){
+  .duo{grid-template-columns:minmax(0,1fr) 360px;align-items:start}
+  .duo-vue{position:sticky;top:0}
+}
+.scene--surface img{max-height:34vh;min-height:150px}
+.surface-nom{margin:8px 0 0;font-size:14px;font-weight:600;text-align:center;
+  min-height:1.4em}
 .surfaces{list-style:none;padding:0;margin:0;display:grid;gap:10px}
+.surfaces li{cursor:pointer;transition:.12s box-shadow,.12s border-color}
+.surfaces li:hover{border-color:var(--trait-fort);box-shadow:var(--ombre)}
+.surfaces li.choisie{box-shadow:0 0 0 2px var(--accent);
+  border-color:var(--accent)}
 .surfaces li{background:var(--creux);border:1px solid var(--trait);
   border-radius:var(--r-petit);padding:14px 16px}
 .surfaces .haut{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}

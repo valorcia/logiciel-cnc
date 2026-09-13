@@ -122,7 +122,23 @@
       <p id="resume" class="resume"></p>
       <button id="reverifier" class="btn btn--lien">revérifier</button>
     </div>
-    <ul id="surfaces" class="surfaces"></ul>
+    <p class="astuce">Cliquez une ligne&nbsp;: la surface s'allume sur la
+    pièce, dans la couleur de son verdict.</p>
+    <div class="duo">
+      <ul id="surfaces" class="surfaces"></ul>
+      <div class="duo-vue">
+        <figure class="scene scene--surface">
+          <img id="image-surface" alt="Surface désignée sur la pièce">
+        </figure>
+        <p id="surface-nom" class="surface-nom"></p>
+        <div class="rangee rangee--outils">
+          <button class="btn btn--icone" data-tourne-s="-45" title="Tourner à gauche">↺</button>
+          <button class="btn btn--icone" data-haut-s="12" title="Monter">↑</button>
+          <button class="btn btn--icone" data-haut-s="-12" title="Baisser">↓</button>
+          <button class="btn btn--icone" data-tourne-s="45" title="Tourner à droite">↻</button>
+        </div>
+      </div>
+    </div>
     <ul id="avertissements" class="reserves"></ul>
   </div>
 

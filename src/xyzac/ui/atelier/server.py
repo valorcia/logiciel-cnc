@@ -37,6 +37,21 @@ class Atelier(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):            # noqa: A003
         pass
 
+    def handle_one_request(self):
+        """Un client qui s'en va n'est pas une erreur.
+
+        La page remplace la source d'une image des qu'on clique une autre
+        surface ; le navigateur annule alors la requete en cours, et
+        ``http.server`` imprime dix lignes de ``BrokenPipeError`` dans le
+        terminal. Rien n'est casse — mais quelqu'un qui monte un kit et qui
+        lit une trace Python croit que si, et une trace qui apparait en
+        fonctionnement normal apprend a ignorer les traces.
+        """
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+
     # ------------------------------------------------------------ utilitaires
 
     def _json(self, obj, code: int = 200) -> None:
@@ -102,6 +117,22 @@ class Atelier(BaseHTTPRequestHandler):
                     # affichait une image vide et ne disait rien, la trace
                     # n'existant que dans le terminal. Une panne doit se dire
                     # la ou on la subit.
+                    return self._json(
+                        {"erreur": rendu_3d() or f"{type(e).__name__} : {e}"},
+                        500)
+            return self._fichier(out)
+        if u.path == "/api/surface":
+            i = int(q.get("i", ["0"])[0])
+            if not s.piece_chargee or i >= len(s.surfaces):
+                return self._json({"erreur": "surface inconnue"}, 404)
+            az = float(q.get("a", ["35"])[0])
+            el = float(q.get("e", ["18"])[0])
+            out = (type(self).travail /
+                   f"surf_{s.revision}_{i}_{az:.0f}_{el:.0f}.png")
+            if not out.exists():
+                try:
+                    s.vue_surface(i, out, azimut=az, elevation=el)
+                except Exception as e:             # noqa: BLE001
                     return self._json(
                         {"erreur": rendu_3d() or f"{type(e).__name__} : {e}"},
                         500)

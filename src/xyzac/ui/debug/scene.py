@@ -56,6 +56,7 @@ LAYERS: list[tuple[str, str, bool]] = [
     ("orient_sing", "Rejets — singularite", True),
     ("orient_geom", "Rejets — geometrie", True),
     ("contact", "Point de contact analyse", True),
+    ("surface", "Surface designee", True),
     ("collisions", "Volumes de collision", False),
 ]
 
@@ -281,6 +282,52 @@ class DebugScene:
                       opacity=palette.OPACITY["tool"], smooth_shading=True,
                       name=f"tool_{i}_{seg.role.value}",
                       **palette.MATIERE["tool"])
+
+    def add_surface_points(self, points, machine: MachineKinematics,
+                           mount_offset, a_deg: float, c_deg: float, *,
+                           color: str, radius: float = 0.6,
+                           max_points: int = 4000) -> None:
+        """Marque UNE surface de la piece, celle que l'operateur designe.
+
+        Manque le plus coûteux de l'interface avant cette methode : le verdict
+        disait « le flanc arriere — a changer » et rien ne montrait DE QUELLE
+        surface il parlait. Sur une piece a dix-huit faces, les noms se
+        repetent (« le dessus (2) ») et une liste ne se rattache a aucune
+        geometrie. Lire un verdict qu'on ne peut pas situer ne sert a rien.
+
+        Les points viennent de l'echantillonnage du moteur — les memes que le
+        solveur a interroges — donc ce qui s'allume est exactement ce qui a ete
+        juge, et non un contour redessine qui pourrait en differer.
+
+        ``max_points`` borne le nombre de spheres : une passe en compte des
+        dizaines de milliers, et au-dela de quelques milliers le rendu coûte
+        plus que ce qu'il montre. L'echantillon est REGULIER et non aleatoire,
+        de sorte que la surface reste reconnaissable.
+        """
+        pv = _pv()
+        from ...kinematics_solver.solver import KinematicsSolver
+
+        P = np.asarray(points, dtype=float).reshape(-1, 3)
+        if len(P) == 0:
+            return
+        if len(P) > max_points:
+            pas = int(np.ceil(len(P) / max_points))
+            P = P[::pas]
+        ks = KinematicsSolver(machine)
+        mo = np.asarray(mount_offset, dtype=float)
+        M = np.array([ks.part_to_machine_point(q + mo, a_deg, c_deg) for q in P])
+
+        nuage = pv.PolyData(M)
+        # ``orient=False`` explicitement : sans lui PyVista cherche des
+        # vecteurs a suivre, n'en trouve pas, et avertit a chaque appel. Un
+        # avertissement qui apparait a chaque image finit par etre ignore,
+        # y compris quand il dit quelque chose.
+        glyphe = nuage.glyph(scale=False, orient=False,
+                             factor=float(radius) * 2.0,
+                             geom=pv.Sphere(radius=0.5, theta_resolution=8,
+                                            phi_resolution=8))
+        self._add("surface", glyphe, color=color, name="surface_points",
+                  **palette.MATIERE["part"])
 
     def add_machine_volumes(self, machine: MachineKinematics,
                             a_deg: float = 0.0, c_deg: float = 0.0) -> None:
@@ -640,6 +687,18 @@ def build_scene(state, *, plotter=None, off_screen: bool = True,
     return scene
 
 
+def _rayon_marque(state) -> float:
+    """Rayon des marques de surface, proportionne a la piece.
+
+    Un rayon fixe donne des billes invisibles sur une piece de 200 mm et des
+    billes qui la recouvrent sur une piece de 10 mm.
+    """
+    if state.part is None:
+        return 0.6
+    diag = float(np.linalg.norm(state.part.bbox.hi - state.part.bbox.lo))
+    return max(diag * 0.006, 0.15)
+
+
 def _arrow_length(state) -> float:
     """Longueur de fleche proportionnee a la piece.
 
@@ -654,7 +713,7 @@ def _arrow_length(state) -> float:
 
 def camera_serie(state, *, azimuth_deg: float = 0.0, elevation_deg: float = 0.0,
                  window_size=(1280, 860), deflection: float = 0.05,
-                 zoom: float = 1.0):
+                 zoom: float = 1.0, direction=None):
     """Camera FIXE a passer a ``capture`` pour une suite d'images.
 
     Le cadrage automatique de ``capture`` porte sur « piece + brut + outil ».
@@ -683,6 +742,23 @@ def camera_serie(state, *, azimuth_deg: float = 0.0, elevation_deg: float = 0.0,
             box_mesh(state.stock.lo, state.stock.hi), state.machine, mo, a, c))
     scene.add_machine_volumes(state.machine, a, c)
     scene.fit_layers("part", "stock", "machine")
+    if direction is not None:
+        # Regarder DEPUIS une direction donnee, au lieu de l'isometrie par
+        # defaut. Sert a tourner la vue vers la surface qu'on designe : une
+        # vue qui nomme « le dessous » en montrant le dessus ne designe rien.
+        # La distance et le point vise, eux, sont ceux du cadrage — donc le
+        # resserrage et la stabilite restent acquis.
+        n = normalize(np.asarray(direction, dtype=float))
+        cible = np.asarray(scene.plotter.camera.focal_point, dtype=float)
+        d = float(np.linalg.norm(
+            np.asarray(scene.plotter.camera.position, dtype=float) - cible))
+        # Un tiers de biais : une face vue exactement de face n'a plus de
+        # relief, et on ne distingue plus une surface plane d'un creux.
+        biais = np.array([0.0, 0.0, 0.45]) if abs(n[2]) < 0.8 else \
+            np.array([0.45, 0.45, 0.0])
+        vue = normalize(n + biais)
+        scene.plotter.camera.position = tuple(cible + vue * d)
+        scene.plotter.camera.up = (0.0, 0.0, 1.0)
     if azimuth_deg:
         plotter.camera.azimuth += float(azimuth_deg)
     if elevation_deg:
@@ -710,7 +786,8 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
             elevation_deg: float = 0.0, zoom: float = 1.0, fit: str = "part",
             window_size=(1280, 860), deflection: float = 0.05,
             accessibility=None, arrow_length: float | None = None,
-            toolpath=None, camera=None, background=None) -> Path:
+            toolpath=None, camera=None, background=None,
+            surface=None, part_color=None) -> Path:
     """Capture PNG d'un etat, par un plotter NEUF a chaque appel.
 
     **Pourquoi un plotter neuf et non une capture du plotter vivant.** Mesure
@@ -757,7 +834,19 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
     if state.part_shape is not None and "part" not in hide:
         part_mesh = transport_to_machine(
             occt_to_mesh(state.part_shape, deflection), state.machine, mo, a, c)
-        scene.add_part(part_mesh)
+        if part_color is None:
+            scene.add_part(part_mesh)
+        else:
+            # Couleur de piece IMPOSEE. Employe par la vue qui designe une
+            # surface : les marques y portent la couleur du verdict, et
+            # l'orange d'un « a retourner » se confond avec l'ambre de la
+            # piece — mesure faite en regardant la capture, les deux etaient
+            # indistinguables. Sur cette vue le sujet est la surface, pas la
+            # matiere, donc la piece passe au neutre et le code couleur des
+            # verdicts redevient lisible.
+            scene._add("part", part_mesh, color=part_color,
+                       opacity=palette.OPACITY["part"], smooth_shading=True,
+                       name="part", **palette.MATIERE["part"])
     if state.stock is not None and state.stock.lo is not None and "stock" not in hide:
         stock_mesh = transport_to_machine(
             box_mesh(state.stock.lo, state.stock.hi), state.machine, mo, a, c)
@@ -785,6 +874,12 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
     if toolpath is not None:
         pts_tp, rap_tp = toolpath
         scene.add_toolpath(pts_tp, rap_tp, state.machine, mo, a, c)
+
+    if surface is not None and "surface" not in hide:
+        pts_s, couleur_s = surface
+        scene.add_surface_points(pts_s, state.machine, mo, a, c,
+                                 color=couleur_s,
+                                 radius=_rayon_marque(state))
 
     if accessibility is not None:
         L = arrow_length if arrow_length is not None else _arrow_length(state)

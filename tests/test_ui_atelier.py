@@ -1146,3 +1146,121 @@ def test_the_long_caveat_keeps_a_visible_short_form():
     # et la forme longue garde ce que la courte laisse tomber
     assert "finition" in s.simulation_note
     assert "finition" not in s.simulation_resume
+
+
+# ------------------------------- le verdict relie a la geometrie (M12e)
+
+def test_the_verdict_colours_come_from_the_engine_palette():
+    """Quatrieme liste de couleurs evitee : les teintes de verdict sont celles
+    du moteur, pas des valeurs choisies pour la page."""
+    from xyzac.ui.atelier.session import couleur_verdict
+    from xyzac.ui.debug import palette
+
+    assert couleur_verdict("faisable") == palette.VALID
+    assert couleur_verdict("a-changer") == palette.WARNING
+    assert couleur_verdict("impossible") == palette.COLLISION
+    assert couleur_verdict("n'importe quoi") == palette.NEUTRAL
+
+
+@rendu
+def test_the_view_turns_towards_the_surface_it_names(corpus_dir):
+    """Defaut vu sur une capture : la selection par defaut nommait « le
+    dessous » et la vue montrait le dessus — les marques etaient cachees
+    derriere la piece. Une vue qui nomme une surface sans la montrer ne
+    designe rien.
+
+    La propriete verifiee est exacte : la camera doit se trouver du COTE vers
+    lequel la normale pointe.
+    """
+    import numpy as np
+
+    from xyzac.ui.debug import scene as sc
+    from xyzac.ui.debug.state import BenchState
+
+    b = BenchState()
+    b.load_step(corpus_dir / "C01_bloc_simple.step")
+    b.set_default_tool("ballnose", diameter=6.0, stickout=45.0)
+
+    for n in ([0, 0, 1], [0, 0, -1], [1, 0, 0], [0, -1, 0]):
+        cam = sc.camera_serie(b, window_size=(200, 160), direction=n)
+        pos = np.asarray(cam[0], float)
+        cible = np.asarray(cam[1], float)
+        assert float((pos - cible) @ np.asarray(n, float)) > 0, (n, cam)
+
+
+@rendu
+def test_each_surface_gets_a_view_of_its_own(corpus_dir, tmp_path):
+    """Deux surfaces differentes ne doivent pas rendre la meme image : sinon
+    cliquer une ligne ne designe rien."""
+    import numpy as np
+    from PIL import Image
+
+    from xyzac.ui.atelier.session import Session
+
+    s = Session()
+    s.charger(corpus_dir / "C01_bloc_simple.step")
+    bb = s._banc.part.bbox
+    centre = 0.5 * (np.asarray(bb.lo) + np.asarray(bb.hi))
+    # Deux surfaces synthetiques : le dessus et le dessous du bloc. On evite
+    # une vraie verification, qui coûte une minute pour ce que ce test mesure.
+    dessus = np.array([[centre[0], centre[1], bb.hi[2]]]) + np.random.default_rng(
+        0).normal(0, 3, (300, 3)) * [1, 1, 0]
+    dessous = dessus.copy(); dessous[:, 2] = bb.lo[2]
+    s._points_surfaces = [dessus, dessous]
+    s._normales_surfaces = [np.array([0.0, 0.0, 1.0]),
+                            np.array([0.0, 0.0, -1.0])]
+    from xyzac.ui.atelier.session import Surface
+    s.surfaces = [Surface(1, 300, "faisable", "Le dessus", "rien"),
+                  Surface(2, 300, "impossible", "Le dessous", "changer")]
+
+    a = s.vue_surface(0, tmp_path / "a.png")
+    b = s.vue_surface(1, tmp_path / "b.png")
+
+    def somme(p):
+        return int(np.asarray(Image.open(p).convert("RGB"),
+                              dtype=np.int64).sum())
+
+    assert somme(a) != somme(b), "les deux surfaces rendent la meme image"
+
+    with pytest.raises(IndexError):
+        s.vue_surface(9, tmp_path / "c.png")
+
+
+def test_the_sampled_points_are_kept_not_redrawn(corpus_dir):
+    """Ce qui s'allume a l'ecran doit etre EXACTEMENT ce que le solveur a
+    interroge. Un contour redessine pour l'affichage pourrait differer de ce
+    qui a ete juge, et l'operateur verrait une surface verte a l'endroit d'un
+    refus. Le champ garde donc les points du moteur, un par surface."""
+    s = Session()
+    assert s._points_surfaces == []
+    assert s._normales_surfaces == []
+    # et ils sont vides tant qu'aucune verification n'a eu lieu, jamais
+    # remplis d'une valeur d'attente
+    s.charger(corpus_dir / "C01_bloc_simple.step")
+    assert s._points_surfaces == []
+
+
+def test_a_client_that_walks_away_is_not_an_error():
+    """La page remplace la source d'une image des qu'on clique une autre
+    surface ; le navigateur annule alors la requete en cours.
+
+    Mesure dans l'epreuve navigateur : 1 ``BrokenPipeError`` avant
+    correction, 0 apres. Rien n'etait casse — mais quelqu'un qui monte un kit
+    et qui lit une trace Python croit que si, et une trace qui apparait en
+    fonctionnement normal apprend a ignorer les traces.
+
+    Verifie sur le CODE et non par une reproduction : une premiere tentative
+    de reproduction coupait la connexion sur une image de 60 ko, qui tient
+    dans le tampon de socket — le controle, avec et sans le correctif, donnait
+    zero trace dans les deux cas. Elle ne mesurait donc rien.
+    """
+    import inspect
+
+    from xyzac.ui.atelier.server import Atelier
+
+    assert "handle_one_request" in Atelier.__dict__, (
+        "le traitement des deconnexions client doit etre explicite")
+    src = inspect.getsource(Atelier.handle_one_request)
+    assert "BrokenPipeError" in src and "ConnectionResetError" in src, src
+    # et il ne doit rien avaler d'autre : une vraie panne doit remonter
+    assert "except Exception" not in src, src

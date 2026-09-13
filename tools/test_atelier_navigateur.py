@@ -165,7 +165,38 @@ with sync_playwright() as pw:
     for cl in ("faisable", "a-changer", "impossible"):
         c = page.eval_on_selector_all(f"#surfaces li.{cl}", "l => l.length")
         if c: print(f"     {cl}: {c}")
+    # --- 6bis. le verdict est RELIE a la geometrie -------------------------
+    # Manque le plus coûteux avant cette etape : le verdict disait « le flanc
+    # arriere — a changer » et rien ne montrait de quelle surface il parlait.
+    page.wait_for_function(
+        "document.querySelector('#image-surface').complete && "
+        "document.querySelector('#image-surface').naturalWidth > 0",
+        timeout=90000)
+    tient_dans_l_ecran("verdict")
+    nom0 = page.inner_text("#surface-nom")
+    src0 = page.get_attribute("#image-surface", "src")
+    choisies = page.eval_on_selector_all("#surfaces li.choisie", "l => l.length")
+    print("6bis. surface designee d'office :", nom0, f"({choisies} ligne surlignee)")
+    assert choisies == 1, choisies
     page.screenshot(path=SORTIE / "3-verdict.png", full_page=True)
+
+    # on en clique une autre : la vue et le nom doivent suivre
+    lignes = page.query_selector_all("#surfaces li")
+    autre = next(k for k in range(len(lignes) - 1, -1, -1)
+                 if lignes[k].inner_text() != nom0)
+    lignes[autre].click()
+    page.wait_for_function(
+        "document.querySelector('#image-surface').complete && "
+        "document.querySelector('#image-surface').naturalWidth > 0",
+        timeout=90000)
+    nom1 = page.inner_text("#surface-nom")
+    assert page.get_attribute("#image-surface", "src") != src0, "la vue n'a pas suivi"
+    assert nom1 != nom0, (nom0, nom1)
+    assert page.eval_on_selector_all("#surfaces li.choisie", "l => l.length") == 1
+    print("      apres un clic sur une autre ligne :", nom1)
+    page.locator("#surfaces li.choisie").scroll_into_view_if_needed()
+    page.wait_for_timeout(300)
+    page.screenshot(path=SORTIE / "3b-surface.png", full_page=True)
 
     page.get_by_text("Ma machine n'a pas ces cotes").click()   # refermer
     page.click("#suivant")                    # vers l'etape 4

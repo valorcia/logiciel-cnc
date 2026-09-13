@@ -122,6 +122,32 @@ Deux conséquences de forme :
 Les étapes 2 à 5 restent grisées tant qu'aucune pièce n'est chargée, et disent
 pourquoi. Un bouton qui ne répond pas est pire qu'un bouton absent.
 
+### 3bis-a. Le verdict est relié à la géométrie
+
+Manque le plus coûteux de l'interface jusqu'ici : le verdict disait *« le
+flanc arrière — à changer »* et **rien ne montrait de quelle surface il
+parlait**. Sur une pièce à dix-huit faces, les noms se répètent (« le
+dessus (2) ») et une liste ne se rattache à aucune géométrie. Lire un verdict
+qu'on ne peut pas situer ne sert à rien.
+
+Cliquer une ligne **allume la surface sur la pièce**, dans la couleur de son
+verdict — les trois mêmes teintes que les pastilles, prises du code couleur du
+moteur. La liste est à gauche, la pièce à droite et collante : la question est
+« laquelle est-ce ? », et y répondre demande de voir les deux en même temps.
+
+Trois décisions, chacune prise en regardant une capture :
+
+- **Les points affichés sont ceux que le solveur a interrogés**, gardés et non
+  recalculés. Un contour redessiné pour l'affichage pourrait différer de ce qui
+  a été jugé, et l'opérateur verrait une surface verte à l'endroit d'un refus.
+- **La caméra se tourne vers la surface**, depuis sa normale moyenne. La
+  première version nommait « le dessous » en montrant le dessus : les marques
+  étaient cachées derrière la pièce. Une vue qui nomme une surface sans la
+  montrer ne désigne rien.
+- **La pièce passe au gris sur cette vue.** L'orange d'un « à retourner » se
+  confondait avec l'ambre de la pièce — indistinguables sur la capture. Sur
+  cette vue le sujet est la surface, pas la matière.
+
 ### 3bis. La simulation d'usinage
 
 Ce n'est **pas** un tour de manège autour de la pièce. La caméra ne bouge pas ;

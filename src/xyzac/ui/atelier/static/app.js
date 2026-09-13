@@ -8,6 +8,11 @@
 const $ = (s) => document.querySelector(s);
 let etat = null;
 let azimut = 35, elevation = 18;
+// Angles PROPRES a la vue de surface : tourner la piece pour trouver une
+// surface cachee ne doit pas faire tourner la vue de l'etape 2, et
+// reciproquement. Deux vues, deux points de vue.
+let azimutS = 35, elevationS = 18;
+let surfaceChoisie = null;
 let film = { n: 0, i: 0, timer: null, images: [] };
 
 // --------------------------------------------------------- la pagination
@@ -128,9 +133,22 @@ function dessinerReglages() {
 
 // --------------------------------------------------------------- resultats
 
+function montrerSurface(i) {
+  if (i === null || i === undefined || !etat.surfaces[i]) return;
+  surfaceChoisie = i;
+  document.querySelectorAll("#surfaces li").forEach((li, k) =>
+    li.classList.toggle("choisie", k === i));
+  $("#image-surface").src =
+    `/api/surface?i=${i}&a=${azimutS}&e=${elevationS}&t=${Date.now()}`;
+  const s = etat.surfaces[i];
+  const n = $("#surface-nom");
+  n.textContent = `${s.titre} — ${s.etiquette}`;
+  n.style.color = s.couleur;
+}
+
 function dessinerResultat() {
   const bloc = $("#resultat");
-  if (!etat.surfaces.length) { bloc.hidden = true; return; }
+  if (!etat.surfaces.length) { bloc.hidden = true; surfaceChoisie = null; return; }
   bloc.hidden = false;
   $("#resume").textContent = etat.resume;
   $("#surfaces").innerHTML = etat.surfaces.map((s) => `
@@ -144,6 +162,18 @@ function dessinerResultat() {
     </li>`).join("");
   $("#avertissements").innerHTML =
     etat.avertissements.map((a) => `<li>${a}</li>`).join("");
+
+  document.querySelectorAll("#surfaces li").forEach((li, k) =>
+    li.addEventListener("click", () => montrerSurface(k)));
+  // On en designe une d'office : la premiere qui demande une action, sinon la
+  // premiere de la liste. Une vue vide a cote d'une liste ne dit pas qu'elle
+  // attend un clic — elle a l'air cassee.
+  if (surfaceChoisie === null || !etat.surfaces[surfaceChoisie]) {
+    const ennuyeuse = etat.surfaces.findIndex((s) => s.verdict !== "faisable");
+    montrerSurface(ennuyeuse >= 0 ? ennuyeuse : 0);
+  } else {
+    montrerSurface(surfaceChoisie);
+  }
 }
 
 function appliquer() {
@@ -442,6 +472,17 @@ async function init() {
     envoyerFichier(e.target.files[0]);
     e.target.value = "";            // pour pouvoir recharger le meme fichier
   });
+
+  document.querySelectorAll("[data-tourne-s]").forEach((b) =>
+    b.addEventListener("click", () => {
+      azimutS = (azimutS + Number(b.dataset.tourneS) + 360) % 360;
+      montrerSurface(surfaceChoisie);
+    }));
+  document.querySelectorAll("[data-haut-s]").forEach((b) =>
+    b.addEventListener("click", () => {
+      elevationS = Math.max(-80, Math.min(80, elevationS + Number(b.dataset.hautS)));
+      montrerSurface(surfaceChoisie);
+    }));
 
   document.querySelectorAll("[data-tourne]").forEach((b) =>
     b.addEventListener("click", () => {

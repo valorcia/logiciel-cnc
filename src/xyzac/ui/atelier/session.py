@@ -69,6 +69,20 @@ FOND_3D = "#eef1f6"
 ZOOM_3D = 1.6
 
 
+def couleur_verdict(verdict: str) -> str:
+    """Teinte d'un verdict de surface, tiree du code couleur du moteur.
+
+    Les memes trois teintes que partout ailleurs dans le projet : vert
+    admissible, orange a corriger, rouge refuse. Les recopier ici aurait donne
+    une quatrieme liste de couleurs a maintenir.
+    """
+    from ..debug import palette
+
+    return {"faisable": palette.VALID,
+            "a-changer": palette.WARNING,
+            "impossible": palette.COLLISION}.get(verdict, palette.NEUTRAL)
+
+
 def legende() -> list[dict]:
     """Ce que chaque couleur de la vue 3D veut dire.
 
@@ -345,6 +359,17 @@ class Session:
     #: pas : elle ressemble a une image.
     revision: int = 0
 
+    #: Points echantillonnes de chaque surface, dans l'ordre des ``surfaces``.
+    #:
+    #: Gardes et non recalcules : ce qui s'allume a l'ecran doit etre
+    #: EXACTEMENT ce que le solveur a interroge. Un contour redessine pour
+    #: l'affichage pourrait differer de ce qui a ete juge, et l'operateur
+    #: verrait alors une surface verte a l'endroit d'un refus.
+    _points_surfaces: list = field(default_factory=list, repr=False)
+    #: Normale MOYENNE de chaque surface : la direction depuis laquelle la
+    #: regarder. Calculee par le moteur, pas par l'interface.
+    _normales_surfaces: list = field(default_factory=list, repr=False)
+
     _banc: object = field(default=None, repr=False)
     _verrou: object = field(default_factory=threading.Lock, repr=False)
 
@@ -447,6 +472,8 @@ class Session:
         self.dimensions = ""
         self.import_detail = ""
         self.surfaces, self.resume, self.montages = [], "", []
+        self._points_surfaces = []
+        self._normales_surfaces = []
         self.film, self.simulation_note, self.simulation_resume = [], "", ""
         self.n_images = 0
         self.erreur = pourquoi
@@ -580,6 +607,12 @@ class Session:
 
         self.etape = "rédaction"
         self.progres = 0.95
+        # Les points echantillonnes sont GARDES : ce qui s'allume a l'ecran
+        # doit etre exactement ce que le solveur a interroge.
+        self._points_surfaces = [np.asarray(f.points, dtype=float)
+                                 for f in passes]
+        self._normales_surfaces = [np.asarray(f.normals, dtype=float).mean(axis=0)
+                                   for f in passes]
         self._rediger(passes, couvertures)
 
     def _rediger(self, passes, couvertures) -> None:
@@ -697,6 +730,8 @@ class Session:
         """
         self.revision += 1
         self.surfaces, self.resume, self.montages = [], "", []
+        self._points_surfaces = []
+        self._normales_surfaces = []
         self.film, self.simulation_note, self.simulation_resume = [], "", ""
         self.n_images = 0
 
@@ -725,6 +760,50 @@ class Session:
             return sc.capture(self._banc, chemin, camera=camera,
                               window_size=(1100, 740), background=FOND_3D,
                               hidden=("limits", "machine_axes"))
+
+    def vue_surface(self, i: int, chemin: Path, *, azimut: float = 0.0,
+                    elevation: float = 0.0) -> Path:
+        """La piece, dans la pose de depart, avec UNE surface allumee.
+
+        Pose de DEPART et non la pose ou la surface serait atteignable : la
+        question que se pose l'operateur devant la liste est « laquelle
+        est-ce ? », pas « a quoi ressemblerait un autre montage ». Montrer la
+        piece autrement l'obligerait a reconcilier deux images de la meme
+        piece, ce qui est le travail qu'on lui enleve. La consigne, elle, dit
+        deja qu'il faut la retourner.
+
+        **La camera se tourne VERS la surface.** Defaut vu sur une capture : la
+        selection par defaut nommait « le dessous » et la vue montrait le
+        dessus — les marques etaient cachees derriere la piece. Une vue qui
+        nomme une surface sans la montrer ne designe rien, et oblige
+        l'operateur a chercher l'angle a la main avant meme de savoir ce qu'il
+        cherche. La direction de vue vient de la normale MOYENNE de la
+        surface, celle que le moteur a calculee ; ``azimut`` et ``elevation``
+        s'y ajoutent, de sorte que les boutons de rotation partent d'une vue
+        qui montre deja quelque chose.
+        """
+        from ..debug import scene as sc
+
+        if not (0 <= i < len(self._points_surfaces)):
+            raise IndexError(f"surface {i} inconnue")
+        pts = self._points_surfaces[i]
+        teinte = couleur_verdict(self.surfaces[i].verdict
+                                 if i < len(self.surfaces) else "")
+        normale = (self._normales_surfaces[i]
+                   if i < len(self._normales_surfaces) else None)
+        with self._verrou:
+            camera = sc.camera_serie(self._banc, azimuth_deg=azimut,
+                                     elevation_deg=elevation,
+                                     window_size=(900, 620), zoom=ZOOM_3D,
+                                     direction=normale)
+            from ..debug import palette
+            return sc.capture(self._banc, chemin, camera=camera,
+                              window_size=(900, 620), background=FOND_3D,
+                              hidden=("limits", "machine_axes", "stock",
+                                      "tool_cutting", "tool_shank",
+                                      "tool_holder", "tool_spindle"),
+                              surface=(pts, teinte),
+                              part_color=palette.NEUTRAL)
 
     def simuler(self, dossier: Path, *, n: int = 40) -> None:
         """Rend les images de la simulation d'usinage, en tache de fond."""
@@ -970,6 +1049,7 @@ class Session:
             "simulation_resume": self.simulation_resume,
             "reglages": {k: getattr(self.reglages, k)
                          for k in vars(Reglages()) if not k.startswith("_")},
-            "surfaces": [dict(vars(s), etiquette=s.etiquette)
+            "surfaces": [dict(vars(s), etiquette=s.etiquette,
+                              couleur=couleur_verdict(s.verdict))
                          for s in self.surfaces],
         }
