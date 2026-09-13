@@ -4,6 +4,19 @@
   --non:#e45c5c;
 }
 *{box-sizing:border-box}
+/*
+   L'attribut ``hidden`` doit gagner contre TOUTE regle de ce fichier.
+   Defaut trouve sur une capture, et invisible a l'epreuve automatique : la
+   regle du navigateur est ``[hidden]{display:none}``, specificite 0-1-0. Une
+   regle de classe qui fixe ``display`` a la meme specificite, et comme elle
+   arrive plus loin dans la feuille, elle l'emporte. Le bandeau « l'atelier est
+   arrete », en ``display:flex``, restait donc affiche EN PERMANENCE — un
+   avertissement faux en haut d'une page qui fonctionne.
+   Pose ici une fois pour toutes, plutot que corrige sur le seul coupable :
+   le prochain element cache par ``hidden`` et stylé avec ``display`` tombera
+   dans le meme piege.
+*/
+[hidden]{display:none!important}
 body{margin:0;background:var(--fond);color:var(--texte);
   font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 header{padding:28px 20px 8px;max-width:860px;margin:0 auto}

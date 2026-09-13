@@ -57,6 +57,21 @@ with sync_playwright() as pw:
     print("   bouton VERIFIER desactive au depart :",
           page.is_disabled("#verifier"))
 
+    # RIEN de ce qui porte l'attribut ``hidden`` ne doit etre VISIBLE.
+    #
+    # Structurel, et c'est le pas le plus utile de cette epreuve : le premier
+    # jet verifiait « #coupe:not([hidden]) », c'est-a-dire l'ATTRIBUT. Il
+    # passait donc alors que le bandeau « l'atelier est arrete » s'affichait en
+    # permanence sur un atelier qui marche — une regle de classe en
+    # ``display:flex`` battait ``[hidden]{display:none}`` a specificite egale.
+    # Un test qui mesure l'attribut ne mesure pas ce que l'oeil voit.
+    fantomes = page.evaluate("""() => [...document.querySelectorAll('[hidden]')]
+        .filter(e => e.offsetParent !== null || e.getClientRects().length)
+        .map(e => e.id || e.className)""")
+    assert not fantomes, f"caches mais visibles : {fantomes}"
+    print("   aucun element cache n'est visible :", len(
+        page.query_selector_all("[hidden]")), "verifies")
+
     # --- 2. le fichier de l'operateur, par le selecteur de fichier ---------
     # Le chemin que quelqu'un empruntera reellement : il a un STEP sur une cle
     # et il le depose. Le corpus sert de fichier « a lui » — ce qui compte est
@@ -120,7 +135,8 @@ with sync_playwright() as pw:
     page.wait_for_function(
         "document.querySelector('#film').complete && "
         "document.querySelector('#film').naturalWidth > 0", timeout=60000)
-    print("7. simulation :", page.get_attribute("#curseur", "max"), "images")
+    n_images = int(page.get_attribute("#curseur", "max")) + 1
+    print("7. simulation :", n_images, "images")
     print("   pose affichee :", page.inner_text("#film-titre"))
     print("   axes           :", page.inner_text("#axes").replace("\n", " | "))
     page.click("#jouer")
@@ -132,7 +148,29 @@ with sync_playwright() as pw:
     print("   la pose suit le film :", apres)
     print("   ce que la simulation NE montre PAS :")
     print("     ", page.inner_text("#simu-note"))
+
+    # On s'arrete EN PLEINE COUPE, et non sur la premiere image : une capture
+    # prise a l'image 0 montre l'outil au point de depart, c'est-a-dire la
+    # seule image ou il ne se passe rien. La page connait, pour chaque image,
+    # si l'outil coupe ou se deplace en rapide — on lui demande.
+    milieu = page.evaluate("""() => {
+        const coupe = film.images.map((f, i) => [i, f]).filter(([, f]) => f.coupe);
+        if (!coupe.length) return Math.floor(film.n / 2);
+        return coupe[Math.floor(coupe.length * 0.6)][0];
+    }""")
+    page.fill("#curseur", str(milieu))
+    page.dispatch_event("#curseur", "input")
+    page.wait_for_function(
+        "document.querySelector('#film').complete && "
+        "document.querySelector('#film').naturalWidth > 0", timeout=60000)
+    page.wait_for_timeout(400)
+    print(f"   capture en pleine coupe : image {milieu} sur {n_images}")
+    print("     ", page.inner_text("#film-titre"))
+    print("     ", page.inner_text("#axes").replace("\n", " | "))
     page.screenshot(path=SORTIE / "4-simulation.png", full_page=True)
+    # ET un gros plan du seul bloc de simulation : sur une page longue, la
+    # vignette de la trajectoire est illisible.
+    page.locator("#bloc-simu").screenshot(path=SORTIE / "4b-trajectoire.png")
 
     # --- 8. le bouton LANCER -----------------------------------------------
     page.click("#lancer")
@@ -150,7 +188,7 @@ with sync_playwright() as pw:
     coupure_voulue[0] = True
     srv.shutdown()
     srv.server_close()
-    page.wait_for_selector("#coupe:not([hidden])", timeout=30000)
+    page.locator("#coupe").wait_for(state="visible", timeout=30000)
     print("9. atelier arrete — la page reagit en",
           "moins de 30 s :", page.inner_text("#coupe").split("\n")[0])
     assert page.evaluate("document.body.classList.contains('coupee')"), \
@@ -158,7 +196,14 @@ with sync_playwright() as pw:
     texte = page.inner_text("#coupe")
     assert "demarrer-atelier" in texte, "il faut dire COMMENT repartir"
     print("   consigne donnee :", texte.replace("\n", " ")[-110:])
+    # Le bandeau est ``sticky`` : dans une capture pleine page il se dessine a
+    # la position de defilement courante, pas en haut de l'image. On remonte
+    # d'abord, sinon la capture montre une bande vide la ou l'utilisateur, lui,
+    # voit le message.
+    page.evaluate("window.scrollTo(0, 0)")
+    page.wait_for_timeout(400)
     page.screenshot(path=SORTIE / "6-arrete.png", full_page=True)
+    page.locator("#coupe").screenshot(path=SORTIE / "6b-bandeau.png")
     nav.close()
 
 print("\nerreurs console :", erreurs if erreurs else "aucune")
