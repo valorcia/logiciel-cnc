@@ -286,7 +286,9 @@ class DebugScene:
     def add_surface_points(self, points, machine: MachineKinematics,
                            mount_offset, a_deg: float, c_deg: float, *,
                            color: str, radius: float = 0.6,
-                           max_points: int = 4000) -> None:
+                           max_points: int = 4000,
+                           nom: str = "surface_points",
+                           opacity: float = 1.0) -> None:
         """Marque UNE surface de la piece, celle que l'operateur designe.
 
         Manque le plus coûteux de l'interface avant cette methode : le verdict
@@ -326,8 +328,8 @@ class DebugScene:
                              factor=float(radius) * 2.0,
                              geom=pv.Sphere(radius=0.5, theta_resolution=8,
                                             phi_resolution=8))
-        self._add("surface", glyphe, color=color, name="surface_points",
-                  **palette.MATIERE["part"])
+        self._add("surface", glyphe, color=color, name=nom,
+                  opacity=float(opacity), **palette.MATIERE["part"])
 
     def add_machine_volumes(self, machine: MachineKinematics,
                             a_deg: float = 0.0, c_deg: float = 0.0) -> None:
@@ -787,7 +789,7 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
             window_size=(1280, 860), deflection: float = 0.05,
             accessibility=None, arrow_length: float | None = None,
             toolpath=None, camera=None, background=None,
-            surface=None, part_color=None) -> Path:
+            surface=None, part_color=None, blocking=None) -> Path:
     """Capture PNG d'un etat, par un plotter NEUF a chaque appel.
 
     **Pourquoi un plotter neuf et non une capture du plotter vivant.** Mesure
@@ -877,9 +879,25 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
 
     if surface is not None and "surface" not in hide:
         pts_s, couleur_s = surface
+        # La surface est marquee EN TRANSPARENCE, les points refuses en plein.
+        # Defaut vu sur une capture : sur une surface refusee, les deux etaient
+        # du meme rouge, et le « ou exactement » disparaissait dans le
+        # « laquelle ». Une difference d'opacite plutot qu'une couleur de plus :
+        # le code couleur porte des significations, en ajouter une pour un
+        # besoin d'affichage l'aurait dilue.
         scene.add_surface_points(pts_s, state.machine, mo, a, c,
-                                 color=couleur_s,
+                                 color=couleur_s, opacity=0.42,
                                  radius=_rayon_marque(state))
+    if blocking is not None and "surface" not in hide:
+        # Les points que le solveur a REFUSES, plus gros et par-dessus. « Cette
+        # surface demande un changement » sans montrer l'endroit renvoie
+        # l'operateur chercher dans sa CAO, c'est-a-dire tout le travail qu'on
+        # pretend lui enlever.
+        pts_b, couleur_b = blocking
+        scene.add_surface_points(pts_b, state.machine, mo, a, c,
+                                 color=couleur_b,
+                                 radius=_rayon_marque(state) * 3.5,
+                                 nom="points_bloquants")
 
     if accessibility is not None:
         L = arrow_length if arrow_length is not None else _arrow_length(state)

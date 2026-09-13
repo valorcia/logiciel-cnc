@@ -182,6 +182,20 @@ class Atelier(BaseHTTPRequestHandler):
             s.invalider()
             return self._json(s.etat())
 
+        if u.path == "/api/diagnostic":
+            i = int(corps.get("surface", 0))
+            if not s.surfaces or i >= len(s.surfaces):
+                return self._json({"erreur": "surface inconnue"}, 404)
+            try:
+                # Synchrone : une dichotomie coûte de 0,3 a 3 s mesurees, donc
+                # moins qu'un rendu d'image, et l'operateur vient de cliquer.
+                # Une tache de fond pour trois secondes ajouterait un etat a
+                # suivre pour rien.
+                s.diagnostiquer(i)
+            except Exception as e:                 # noqa: BLE001
+                s.erreur = f"{type(e).__name__} : {e}"
+            return self._json(s.etat())
+
         if u.path == "/api/verifier":
             s.verifier()
             return self._json(s.etat())

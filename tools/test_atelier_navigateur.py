@@ -216,6 +216,25 @@ with sync_playwright() as pw:
     assert nom1 != nom0, (nom0, nom1)
     assert page.eval_on_selector_all("#surfaces li.choisie", "l => l.length") == 1
     print("      apres un clic sur une autre ligne :", nom1)
+
+    # --- 6ter. « et avec quel outil, alors ? » -----------------------------
+    # Un refus qui ne dit pas quoi commander renvoie l'operateur dans sa CAO.
+    bloquantes = [k for k in range(len(lignes))
+                  if "usinable" not in lignes[k].inner_text()
+                  and "analyse" not in lignes[k].inner_text()]
+    assert bloquantes, "la piece d'essai doit avoir des surfaces qui bloquent"
+    for k in bloquantes:
+        page.query_selector_all("#surfaces li")[k].click()
+        page.wait_for_function(
+            "!document.querySelector('#surface-diag').classList"
+            ".contains('cherche')", timeout=180000)
+        nom = page.inner_text("#surface-nom")
+        print(f"6ter. {nom}")
+        print("      ", page.inner_text("#surface-diag"))
+    tient_dans_l_ecran("diagnostic")
+    page.locator("#surfaces li.choisie").scroll_into_view_if_needed()
+    page.wait_for_timeout(400)
+    page.screenshot(path=SORTIE / "3c-diagnostic.png", full_page=True)
     page.locator("#surfaces li.choisie").scroll_into_view_if_needed()
     page.wait_for_timeout(300)
     page.screenshot(path=SORTIE / "3b-surface.png", full_page=True)

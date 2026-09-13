@@ -224,6 +224,20 @@ class PassScreen:
     #: verifiable plutot que crue.
     field_inflation_mm: float = 0.0
     probe_nose_mm: float = 0.0
+    #: Indices, DANS LE TABLEAU DE POINTS DE LA PASSE, des points refuses.
+    #:
+    #: Le depistage comptait les echecs et retenait leurs motifs, mais pas
+    #: OU ils se produisent. Un verdict « cette surface demande un changement »
+    #: qui ne montre pas l'endroit renvoie l'operateur chercher lui-meme dans
+    #: sa CAO — c'est-a-dire tout le travail qu'on pretend lui enlever.
+    #:
+    #: Des INDICES et non des coordonnees : le depistage travaille sur les
+    #: points tournes dans le montage, et ce qu'on veut afficher est le point
+    #: dans la piece. L'indice est la seule chose qui traverse les deux reperes
+    #: sans conversion — donc sans occasion de se tromper de repere.
+    blocking_indices: tuple[int, ...] = ()
+    #: Indices refuses MEME sur machine ideale : ceux qu'aucun montage ne leve.
+    tool_blocking_indices: tuple[int, ...] = ()
 
     @property
     def reachable_fraction(self) -> float:
@@ -464,17 +478,21 @@ def screen_orientation(
         outil = 0
         rayon = 0
         why_outil: dict[str, int] = {}
+        bloquants: list[int] = []
+        bloquants_outil: list[int] = []
         for k in idx:
             m = solver.solve_point(p[k], n[k])
             if m.accessible:
                 continue
             bad += 1
+            bloquants.append(int(k))
             r = m.dominant_reason()
             nom = r.name if r is not None else "INCONNU"
             why[nom] = why.get(nom, 0) + 1
             mi = ideal.solve_point(p[k], n[k])
             if not mi.accessible:
                 outil += 1
+                bloquants_outil.append(int(k))
                 ri = mi.dominant_reason()
                 nomi = ri.name if ri is not None else "INCONNU"
                 why_outil[nomi] = why_outil.get(nomi, 0) + 1
@@ -487,11 +505,150 @@ def screen_orientation(
             n_unreachable=bad, reasons=why,
             n_tool_limited=outil, tool_reasons=why_outil,
             n_probe_tool_fails=rayon, field_inflation_mm=inflation,
-            probe_nose_mm=bec_sonde)
+            probe_nose_mm=bec_sonde,
+            blocking_indices=tuple(bloquants),
+            tool_blocking_indices=tuple(bloquants_outil))
         cov.screens.append(ecran)
         if on_pass is not None:
             on_pass(i, ecran, cov)
     return cov
+
+
+@dataclass
+class OutilPassant:
+    """Le plus gros outil qui passe en des points donnes, et ce que ca vaut.
+
+    Pas un simple nombre, et l'asymetrie compte.
+
+    Le test de collision est DISCRET : les obstacles sont echantillonnes puis
+    gonfles de delta, et il est une BORNE SUPERIEURE sur la collision
+    (ADR-001 / D2). Les deux sens ne valent donc pas la meme chose :
+
+      - « ce diametre PASSE » est fiable, et meme prudent. Le test voit un
+        outil de rayon r comme un outil de rayon r + delta ; s'il passe quand
+        meme, il passe reellement. Le vrai diametre admissible peut etre plus
+        GROS que celui rendu, jamais plus petit ;
+      - « aucun diametre ne passe » est indecidable des que le rayon essaye est
+        comparable a delta : c'est peut-etre le gonflement seul qui bloque, pas
+        la piece.
+
+    ``concluant`` porte exactement cette distinction. La premiere version de ce
+    champ l'avait a l'envers — elle declarait non concluant un diametre de
+    2,4 mm sous un gonflement de 1,26 mm, alors qu'un passage mesure est
+    precisement ce dont on peut etre sûr. C'est la meme famille de faute que
+    partout ailleurs dans ce projet : lire une grandeur voisine de celle qu'on
+    veut, ici le sens d'une inegalite.
+    """
+
+    diametre: float | None
+    diametre_min_essaye: float
+    diametre_max_essaye: float
+    inflation_mm: float
+    n_points: int
+    n_essais: int
+
+    @property
+    def concluant(self) -> bool:
+        """Peut-on agir sur ce resultat ?
+
+        Un diametre trouve : oui, toujours — un passage mesure par un test
+        conservatif est un passage reel. Une absence de diametre : seulement si
+        le plus petit rayon essaye depassait le gonflement, faute de quoi c'est
+        le gonflement qu'on a mesure.
+        """
+        if self.diametre is None:
+            return (self.diametre_min_essaye / 2.0) > self.inflation_mm
+        return True
+
+    @property
+    def prudent(self) -> bool:
+        """Le diametre rendu est-il sous-estime par le test ?
+
+        Vrai des que le rayon est comparable au gonflement : le diametre reel
+        admissible est alors plus gros, et le dire evite de faire acheter un
+        outil plus fin que necessaire.
+        """
+        return (self.diametre is not None
+                and (self.diametre / 2.0) < 2.0 * self.inflation_mm)
+
+    def describe(self) -> str:
+        if self.diametre is None:
+            fin = (f"aucun diametre entre {self.diametre_min_essaye:.1f} et "
+                   f"{self.diametre_max_essaye:.1f} mm ne passe")
+            reserve = ("" if self.concluant else
+                       f" — NON CONCLUANT : au rayon essaye "
+                       f"({self.diametre_min_essaye / 2:.2f} mm) le gonflement "
+                       f"du champ ({self.inflation_mm:.2f} mm) bloque a lui "
+                       f"seul, donc le test ne decide pas")
+        else:
+            fin = f"le plus gros qui passe est {self.diametre:.1f} mm"
+            reserve = ("" if not self.prudent else
+                       f" — valeur PRUDENTE : a ce rayon le gonflement du champ "
+                       f"({self.inflation_mm:.2f} mm) pese, le diametre reel "
+                       f"admissible est plus gros")
+        return (f"{self.n_points} point(s) bloquants, {self.n_essais} essais : "
+                f"{fin}{reserve}")
+
+
+def plus_gros_outil_passant(
+    make_solver,
+    field_mount,
+    mount_offset,
+    machine,
+    points: np.ndarray,
+    normals: np.ndarray,
+    *,
+    fabrique_outil,
+    diametre_max: float,
+    diametre_min: float = 0.4,
+    tolerance: float = 0.2,
+) -> OutilPassant:
+    """Cherche par dichotomie le plus gros outil qui passe en TOUS ces points.
+
+    Repond a la question que l'operateur pose vraiment devant un refus : « et
+    avec quel outil, alors ? ». Jusqu'ici l'atelier savait dire « un outil deux
+    fois plus fin ne suffirait pas non plus » — vrai, et pas une cote a
+    commander.
+
+    ``fabrique_outil(diametre)`` est fourni par l'appelant : ce module ne
+    construit ni solveur ni outil, et c'est ce qui permet de lui passer la
+    vraie geometrie de porte-outil de l'atelier plutot qu'un outil suppose.
+
+    La dichotomie porte sur le DIAMETRE et non sur le rayon de bec : c'est le
+    diametre qu'on lit sur un outil et qu'on commande.
+    """
+    P = np.asarray(points, dtype=float).reshape(-1, 3)
+    N = np.asarray(normals, dtype=float).reshape(-1, 3)
+    if len(P) == 0:
+        raise ValueError("aucun point a tester")
+    inflation = float(field_mount.inflation.min()) if len(field_mount) else 0.0
+    essais = 0
+
+    def passe(d: float) -> bool:
+        nonlocal essais
+        essais += 1
+        solveur = make_solver(field_mount, np.asarray(mount_offset), machine,
+                              fabrique_outil(d))
+        return all(solveur.solve_point(P[k], N[k]).accessible
+                   for k in range(len(P)))
+
+    lo, hi = float(diametre_min), float(diametre_max)
+    if passe(hi):
+        # L'appelant a donne des points que l'outil courant franchit : ce n'est
+        # pas une erreur, mais la reponse est « celui que vous avez ».
+        return OutilPassant(hi, lo, hi, inflation, len(P), essais)
+    if not passe(lo):
+        return OutilPassant(None, lo, hi, inflation, len(P), essais)
+
+    # ``lo`` passe, ``hi`` ne passe pas : on resserre.
+    while hi - lo > tolerance:
+        mid = 0.5 * (lo + hi)
+        if passe(mid):
+            lo = mid
+        else:
+            hi = mid
+    return OutilPassant(lo, float(diametre_min), float(diametre_max),
+                        inflation, len(P), essais)
 
 
 def _rotated_bbox(lo, hi, R: np.ndarray):

@@ -240,6 +240,12 @@ h2{margin:0;font-size:19.5px;font-weight:650;letter-spacing:-.012em}
   .duo-vue{position:sticky;top:0}
 }
 .scene--surface img{max-height:34vh;min-height:150px}
+.diag{margin:8px 0 0;font-size:13px;line-height:1.5;padding:10px 12px;
+  border-radius:var(--r-petit);background:var(--creux);
+  border:1px solid var(--trait);color:var(--doux)}
+.diag.cherche{font-style:italic;color:var(--tres-doux)}
+.diag.outil{background:var(--accent-pale);border-color:#cfe0f6;
+  color:var(--accent-sombre);font-weight:550}
 .surface-nom{margin:8px 0 0;font-size:14px;font-weight:600;text-align:center;
   min-height:1.4em}
 .surfaces{list-style:none;padding:0;margin:0;display:grid;gap:10px}

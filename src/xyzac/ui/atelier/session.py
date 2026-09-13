@@ -375,6 +375,18 @@ class Session:
     #: Normale MOYENNE de chaque surface : la direction depuis laquelle la
     #: regarder. Calculee par le moteur, pas par l'interface.
     _normales_surfaces: list = field(default_factory=list, repr=False)
+    #: Indices des points que la machine refuse dans la POSE DE DEPART, par
+    #: surface : c'est la pose que la vue montre, donc la seule ou marquer un
+    #: point veut dire quelque chose.
+    _blocages: list = field(default_factory=list, repr=False)
+    #: Ceux que MEME une machine ideale refuse : aucun montage ne les leve, et
+    #: ce sont donc eux que la recherche d'outil doit franchir.
+    _blocages_outil: list = field(default_factory=list, repr=False)
+    #: De quoi relancer un solveur apres la verification, pour repondre a
+    #: « et avec quel outil, alors ? » sans tout recalculer.
+    _contexte_diag: dict = field(default_factory=dict, repr=False)
+    #: Reponse a cette question, par surface. Calculee a la demande.
+    diagnostics: dict = field(default_factory=dict)
 
     _banc: object = field(default=None, repr=False)
     _verrou: object = field(default_factory=threading.Lock, repr=False)
@@ -480,6 +492,9 @@ class Session:
         self.surfaces, self.resume, self.montages = [], "", []
         self._points_surfaces = []
         self._normales_surfaces = []
+        self._blocages = []
+        self._blocages_outil = []
+        self.diagnostics = {}
         self.film, self.simulation_note, self.simulation_resume = [], "", ""
         self.n_images = 0
         self.erreur = pourquoi
@@ -622,6 +637,19 @@ class Session:
         faits = 0
 
         for o in CANONICAL_MOUNTS:
+            if o is CANONICAL_MOUNTS[0]:
+                # La pose de DEPART : celle que la vue montre. On garde de quoi
+                # relancer un solveur dessus, pour repondre plus tard a « et
+                # avec quel outil, alors ? » sans refaire les six montages.
+                from ...strategy_planner.setups import derive_mount
+                bb_r = (bb.lo, bb.hi)
+                self._contexte_diag = {
+                    "champ": o.field(champ),
+                    "mount": derive_mount(*bb_r),
+                    "machine": machine,
+                    "fabrique": fabrique,
+                }
+
             def au_fil(k, _ecran, cov, _o=o):
                 nonlocal faits
                 # La couverture en cours est accrochee des le premier rappel :
@@ -633,6 +661,12 @@ class Session:
                 self.progres = 0.1 + 0.85 * faits / n_total
                 self.etape = (f"montage « {_o.name} » — "
                               f"surface {k + 1}/{len(passes)}")
+                if _o is CANONICAL_MOUNTS[0]:
+                    while len(self._blocages) <= k:
+                        self._blocages.append(())
+                        self._blocages_outil.append(())
+                    self._blocages[k] = _ecran.blocking_indices
+                    self._blocages_outil[k] = _ecran.tool_blocking_indices
                 self.publier(passes, couvertures, complet=False)
 
             screen_orientation(
@@ -723,10 +757,17 @@ class Session:
                             f"{self.reglages.diametre_outil / 2:.0f} mm "
                             f"passerait là où celui-ci ne passe pas.")
             elif sc.n_probe_tool_fails and sc.probe_conclusive:
-                consigne = ("Un outil deux fois plus fin ne suffirait pas non "
-                            "plus : le raccordement est trop serré. Ajoutez un "
-                            "congé au dessin, ou acceptez le rayon de l'outil "
-                            "dans ce coin.")
+                # Le sondage dit seulement qu'un outil de MOITIE de diametre
+                # ne suffit pas. Il ne dit pas qu'aucun outil ne passe — et
+                # conclure « ajoutez un conge » depuis ce seul essai
+                # contredisait le diagnostic, qui trouve parfois un diametre
+                # qui passe (0,9 mm mesure sur la piece d'essai). Deux phrases
+                # vraies qui se contredisent valent moins qu'une seule qui
+                # renvoie a la mesure.
+                consigne = ("Un outil de moitié de diamètre ne suffirait pas "
+                            "non plus : il faut descendre plus bas, ou ajouter "
+                            "un congé au dessin. Sélectionnez cette ligne pour "
+                            "savoir quel diamètre passe.")
             else:
                 # Toujours une action, meme quand le discriminant fin n'a pas
                 # conclu : le motif rendu par le solveur, lui, est toujours la.
@@ -818,6 +859,9 @@ class Session:
         self.surfaces, self.resume, self.montages = [], "", []
         self._points_surfaces = []
         self._normales_surfaces = []
+        self._blocages = []
+        self._blocages_outil = []
+        self.diagnostics = {}
         self.film, self.simulation_note, self.simulation_resume = [], "", ""
         self.n_images = 0
 
@@ -877,6 +921,12 @@ class Session:
                                  if i < len(self.surfaces) else "")
         normale = (self._normales_surfaces[i]
                    if i < len(self._normales_surfaces) else None)
+        # Les points refuses, marques plus gros et en rouge PAR-DESSUS la
+        # surface : c'est la reponse a « ou, exactement ? ».
+        from ..debug import palette as pal
+        k = self._blocages[i] if i < len(self._blocages) else ()
+        bloquants = ((pts[np.asarray(k, dtype=int)], pal.COLLISION)
+                     if len(k) else None)
         with self._verrou:
             camera = sc.camera_serie(self._banc, azimuth_deg=azimut,
                                      elevation_deg=elevation,
@@ -889,7 +939,106 @@ class Session:
                                       "tool_cutting", "tool_shank",
                                       "tool_holder", "tool_spindle"),
                               surface=(pts, teinte),
+                              blocking=bloquants,
                               part_color=palette.NEUTRAL)
+
+    def diagnostiquer(self, i: int) -> dict:
+        """« Et avec quel outil, alors ? » — la question que le refus posait.
+
+        Jusqu'ici l'atelier savait dire « un outil deux fois plus fin ne
+        suffirait pas non plus ». C'est vrai, et ce n'est pas une cote a
+        commander. Ici on cherche par dichotomie le plus gros diametre qui
+        franchit les points bloquants, avec la geometrie de porte-outil reelle.
+
+        Sur les points que MEME une machine ideale refuse, quand il y en a :
+        ce sont les seuls qu'un autre montage ne leverait pas, donc les seuls
+        dont l'outil soit responsable. Les autres relevent du montage, et
+        proposer un outil plus fin pour eux serait faire changer d'outil pour
+        un probleme de pose.
+
+        Calcule A LA DEMANDE. Une dichotomie coûte cinq a sept resolutions par
+        point ; l'ajouter a la verification allongerait une attente qu'on vient
+        de raccourcir, pour une question qui ne se pose que sur les surfaces
+        qui bloquent.
+        """
+        from ...strategy_planner.setups import plus_gros_outil_passant
+        from ...tool_model import build_ballnose
+
+        if i in self.diagnostics:
+            return self.diagnostics[i]
+        ctx = self._contexte_diag
+        if not ctx or i >= len(self._points_surfaces):
+            raise RuntimeError("aucune verification a diagnostiquer")
+
+        # UNIQUEMENT les points qu'une machine ideale refuse aussi.
+        #
+        # Defaut trouve au premier essai : en me rabattant sur tous les points
+        # bloquants quand il n'y en avait aucun de ce type, je diagnostiquais
+        # « ce n'est plus une question d'outil mais de dessin » pour une
+        # surface dont les six points sont bloques par LE MONTAGE — elle
+        # regarde le plateau. Le moteur distingue les deux causes
+        # (``mount_limited`` contre ``n_tool_limited``) et je venais d'ecraser
+        # la distinction. Faire changer d'outil pour un probleme de pose est
+        # exactement le mauvais conseil.
+        blocages = self._blocages[i] if i < len(self._blocages) else ()
+        indices = (self._blocages_outil[i]
+                   if i < len(self._blocages_outil) else ())
+        if not blocages:
+            res = {"etat": "rien", "phrase":
+                   "Aucun point bloquant dans la pose de départ."}
+            self.diagnostics[i] = res
+            return res
+        if not indices:
+            res = {"etat": "montage", "phrase":
+                   f"Les {len(blocages)} point(s) bloquants le sont à cause du "
+                   f"MONTAGE, pas de l'outil : même une machine sans "
+                   f"limite de course les atteindrait. Changer d'outil n'y "
+                   f"ferait rien — c'est la pose de la pièce qu'il faut "
+                   f"changer."}
+            self.diagnostics[i] = res
+            return res
+
+        pts = np.asarray(self._points_surfaces[i], dtype=float)
+        nrm = np.tile(np.asarray(self._normales_surfaces[i], dtype=float),
+                      (len(indices), 1))
+        k = np.asarray(indices, dtype=int)
+        d0 = float(self.reglages.diametre_outil)
+
+        def fabrique_outil(d: float):
+            return build_ballnose(f"D{d:.2f}", d, 20.0,
+                                  stickout=self.reglages.jauge_outil,
+                                  holder_type="ER16")
+
+        r = plus_gros_outil_passant(
+            ctx["fabrique"], ctx["champ"], ctx["mount"], ctx["machine"],
+            pts[k], nrm, fabrique_outil=fabrique_outil,
+            diametre_max=d0, diametre_min=0.4, tolerance=0.2)
+
+        if r.diametre is None:
+            phrase = (f"Aucun outil, même de 0,4 mm, ne franchit ces "
+                      f"{r.n_points} point(s) : ce n'est plus une question "
+                      f"d'outil mais de dessin. Il faut ouvrir le raccordement "
+                      f"à cet endroit.")
+            if not r.concluant:
+                phrase += (" À ce niveau de détail, le moteur ne distingue "
+                           "pas un coin trop serré de sa propre marge de "
+                           "sécurité : à confirmer sur une pièce d'essai.")
+        elif abs(r.diametre - d0) < 1e-9:
+            phrase = (f"L'outil de {d0:.0f} mm franchit ces points : le blocage "
+                      f"vient du montage, pas de l'outil.")
+        else:
+            phrase = (f"Un outil de Ø {r.diametre:.1f} mm franchit ces "
+                      f"{r.n_points} point(s), là où le vôtre de "
+                      f"{d0:.0f} mm ne passe pas.")
+            if r.prudent:
+                phrase += (" C'est une valeur prudente : le diamètre réellement "
+                           "admissible est un peu plus gros.")
+        res = {"etat": "fait", "diametre": r.diametre, "n_points": r.n_points,
+               "n_essais": r.n_essais, "concluant": r.concluant,
+               "prudent": r.prudent, "phrase": phrase,
+               "detail": r.describe()}
+        self.diagnostics[i] = res
+        return res
 
     def simuler(self, dossier: Path, *, n: int = 40) -> None:
         """Rend les images de la simulation d'usinage, en tache de fond."""
@@ -1138,4 +1287,5 @@ class Session:
             "surfaces": [dict(vars(s), etiquette=s.etiquette,
                               couleur=couleur_verdict(s.verdict))
                          for s in self.surfaces],
+            "diagnostics": {str(k): v for k, v in self.diagnostics.items()},
         }

@@ -185,6 +185,56 @@ Trois décisions, chacune prise en regardant une capture :
   confondait avec l'ambre de la pièce — indistinguables sur la capture. Sur
   cette vue le sujet est la surface, pas la matière.
 
+### 3bis-b. « Et avec quel outil, alors ? »
+
+C'est la question que posait tout refus, et l'atelier n'y répondait pas. Il
+disait *« un outil deux fois plus fin ne suffirait pas non plus »* — vrai, et
+ce n'est pas une cote à commander.
+
+Sélectionner une surface qui bloque lance une **dichotomie sur le diamètre**
+(pas sur un bouton à trouver : la question se pose d'elle-même). Elle cherche
+le plus gros outil qui franchit les points refusés, avec la géométrie de
+porte-outil réelle. Coût mesuré : **0,3 à 3 s**, deux à sept résolutions.
+
+Trois réponses possibles, et elles sont distinctes :
+
+| cas | réponse |
+|---|---|
+| les points sont bloqués par le **montage** | *« même une machine sans limite de course les atteindrait — changer d'outil n'y ferait rien »* |
+| un diamètre passe | *« un outil de Ø 0,9 mm franchit ces points, là où le vôtre de 6 mm ne passe pas »* |
+| aucun, même 0,4 mm | *« ce n'est plus une question d'outil mais de dessin »* |
+
+**Et l'asymétrie du test est portée par le résultat.** Le test de collision est
+une borne supérieure (ADR-001 / D2) : il voit un outil de rayon *r* comme un
+outil de rayon *r + δ*. Donc
+
+- **« ce diamètre passe » est fiable, et même prudent** — le vrai diamètre
+  admissible peut être plus gros. Le dire évite de faire acheter un outil plus
+  fin que nécessaire ;
+- **« aucun diamètre ne passe » est indécidable** dès que le rayon essayé est
+  comparable à δ : c'est peut-être le gonflement seul qui bloque. Le résultat
+  le dit, et renvoie à une pièce d'essai.
+
+Ma première version avait cette inégalité **à l'envers** : elle déclarait non
+concluant un diamètre de 2,4 mm sous un gonflement de 1,26 mm, alors qu'un
+passage mesuré est précisément ce dont on peut être sûr.
+
+Deux autres défauts corrigés sur les captures :
+
+- je diagnostiquais *« ce n'est plus une question d'outil mais de dessin »*
+  pour une surface dont les six points sont bloqués par le **montage** — elle
+  regarde le plateau. Le moteur distingue les deux causes et je venais
+  d'écraser la distinction ;
+- la consigne de la ligne concluait *« ajoutez un congé »* depuis le seul
+  sondage à moitié de diamètre, **en contradiction** avec le diagnostic qui
+  trouve parfois un diamètre qui passe. Deux phrases vraies qui se
+  contredisent valent moins qu'une seule qui renvoie à la mesure.
+
+Et les **points refusés sont marqués sur la pièce**, plus gros et en plein, la
+surface elle-même restant en transparence — sur une surface refusée, les deux
+étaient du même rouge et le « où exactement » disparaissait dans le
+« laquelle ».
+
 ### 3bis. La simulation d'usinage
 
 Ce n'est **pas** un tour de manège autour de la pièce. La caméra ne bouge pas ;

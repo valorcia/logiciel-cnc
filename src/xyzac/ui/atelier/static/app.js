@@ -18,6 +18,7 @@ let surfaceChoisie = null;
 // aucune surface n'est encore decidee, et s'y tenir figeait la selection sur
 // une ligne qui ne disait rien.
 let choixManuel = false;
+const diagEnCours = new Set();
 let film = { n: 0, i: 0, timer: null, images: [] };
 
 // --------------------------------------------------------- la pagination
@@ -157,6 +158,36 @@ function montrerSurface(i) {
   const n = $("#surface-nom");
   n.textContent = `${s.titre} — ${s.etiquette}`;
   n.style.color = s.couleur;
+  dessinerDiagnostic(i, s);
+}
+
+// « Et avec quel outil, alors ? » — la question que pose tout refus. Elle se
+// declenche sur la SELECTION et non sur un bouton : un bouton de plus a
+// trouver pour une question qui se pose d'elle-meme est un bouton de trop.
+function dessinerDiagnostic(i, s) {
+  const d = $("#surface-diag");
+  const dispo = (etat.diagnostics || {})[String(i)];
+  if (s.verdict === "faisable" || s.verdict === "en-cours") {
+    d.hidden = true;
+    return;
+  }
+  d.hidden = false;
+  if (dispo) {
+    d.textContent = dispo.phrase;
+    d.className = "diag" + (dispo.etat === "fait" && dispo.diametre
+      ? " outil" : "");
+    return;
+  }
+  d.className = "diag cherche";
+  d.textContent = "Recherche de l'outil qui passerait…";
+  if (!etat.occupe && !diagEnCours.has(i)) {
+    diagEnCours.add(i);
+    post("/api/diagnostic", { surface: i }).then((e) => {
+      diagEnCours.delete(i);
+      etat = e;
+      if (surfaceChoisie === i) appliquer();
+    });
+  }
 }
 
 function dessinerResultat() {

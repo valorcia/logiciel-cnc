@@ -1361,3 +1361,119 @@ def test_the_screening_reports_each_pass_as_it_is_decided():
     assert "on_pass" in sig.parameters
     src = inspect.getsource(screen_orientation)
     assert "on_pass(i, ecran, cov)" in src, src
+
+
+# ------------------------- « et avec quel outil, alors ? » (M12g)
+
+def test_a_pass_is_trustworthy_and_a_failure_may_not_be():
+    """L'asymetrie du test discret, et je l'avais ecrite a l'envers.
+
+    Le test de collision est une BORNE SUPERIEURE (ADR-001 / D2) : il voit un
+    outil de rayon r comme un outil de rayon r + delta. Donc « ce diametre
+    PASSE » est fiable et meme prudent — le vrai diametre admissible peut etre
+    plus gros. Et « aucun diametre ne passe » est indecidable des que le rayon
+    essaye est comparable a delta : c'est peut-etre le gonflement seul qui
+    bloque.
+
+    Ma premiere version declarait NON CONCLUANT un diametre de 2,4 mm sous un
+    gonflement de 1,26 mm, alors qu'un passage mesure est precisement ce dont
+    on peut etre sûr.
+    """
+    from xyzac.strategy_planner.setups import OutilPassant
+
+    trouve = OutilPassant(2.4, 0.4, 6.0, 1.26, 3, 7)
+    assert trouve.concluant, "un passage mesure est fiable"
+    assert trouve.prudent, "et sous-estime quand le gonflement pese"
+
+    gros = OutilPassant(5.0, 0.4, 6.0, 0.05, 3, 7)
+    assert gros.concluant and not gros.prudent
+
+    aucun_fin = OutilPassant(None, 0.4, 6.0, 1.26, 3, 2)
+    assert not aucun_fin.concluant, (
+        "au rayon 0,2 mm sous un gonflement de 1,26 mm, c'est le gonflement "
+        "qu'on mesure")
+    aucun_gros = OutilPassant(None, 3.0, 6.0, 0.05, 3, 2)
+    assert aucun_gros.concluant
+
+
+def test_the_search_bisects_on_the_diameter_and_counts_its_tries():
+    """La dichotomie porte sur le DIAMETRE — c'est ce qu'on lit sur un outil
+    et ce qu'on commande — et le nombre d'essais est rendu : un resultat dont
+    on ne sait pas combien il a coûte ne se compare a rien."""
+    from xyzac.strategy_planner.setups import plus_gros_outil_passant
+
+    class FauxSolveur:
+        def __init__(self, seuil, outil):
+            self.passe = outil.diameter <= seuil
+
+        def solve_point(self, p, n):
+            class R:
+                pass
+            r = R()
+            r.accessible = self.passe
+            return r
+
+    class FauxChamp:
+        inflation = np.array([0.3])
+
+        def __len__(self):
+            return 1
+
+    class FauxOutil:
+        def __init__(self, d):
+            self.diameter = d
+
+    seuil = 2.3
+    r = plus_gros_outil_passant(
+        lambda champ, mount, mach, outil: FauxSolveur(seuil, outil),
+        FauxChamp(), (0.0, 0.0, 0.0), None,
+        np.zeros((3, 3)), np.tile([0.0, 0.0, 1.0], (3, 1)),
+        fabrique_outil=FauxOutil, diametre_max=6.0, diametre_min=0.4,
+        tolerance=0.2)
+    assert r.diametre is not None
+    assert abs(r.diametre - seuil) <= 0.2, (r.diametre, seuil)
+    assert r.n_essais >= 3 and r.n_points == 3
+
+
+def test_a_mount_problem_is_never_sold_as_a_tool_problem(corpus_dir):
+    """Defaut trouve au premier essai reel : en me rabattant sur tous les
+    points bloquants, je diagnostiquais « ce n'est plus une question d'outil
+    mais de dessin » pour une surface dont les six points sont bloques par LE
+    MONTAGE — elle regarde le plateau. Faire changer d'outil pour un probleme
+    de pose est exactement le mauvais conseil, et le moteur distingue deja les
+    deux causes."""
+    from xyzac.ui.atelier.session import Surface
+
+    s = Session()
+    s.charger(corpus_dir / "C01_bloc_simple.step")
+    s._contexte_diag = {"champ": None, "mount": None, "machine": None,
+                        "fabrique": None}
+    s._points_surfaces = [np.zeros((8, 3))]
+    s._normales_surfaces = [np.array([0.0, 0.0, -1.0])]
+    s._blocages = [(0, 1, 2, 3)]
+    s._blocages_outil = [()]            # aucun que l'outil explique
+    s.surfaces = [Surface(1, 8, "a-changer", "Le dessous", "retourner")]
+
+    d = s.diagnostiquer(0)
+    assert d["etat"] == "montage", d
+    assert "MONTAGE" in d["phrase"]
+    assert "outil" in d["phrase"].lower()
+    assert "congé" not in d["phrase"] and "dessin" not in d["phrase"]
+
+
+def test_the_row_never_contradicts_the_diagnostic():
+    """Deux phrases vraies qui se contredisent valent moins qu'une seule.
+
+    La consigne de la ligne concluait « ajoutez un congé au dessin » depuis le
+    seul sondage a moitie de diametre — alors que le diagnostic trouve parfois
+    un diametre qui passe (0,9 mm mesure sur la piece d'essai). Le sondage dit
+    qu'un outil DEUX FOIS plus fin ne suffit pas ; il ne dit pas qu'aucun ne
+    passe.
+    """
+    import inspect
+
+    src = inspect.getsource(Session._verdict_surface)
+    i = src.index("moitié de diamètre")
+    fenetre = src[i:i + 400]
+    assert "descendre plus bas" in fenetre, fenetre
+    assert "Sélectionnez cette ligne" in fenetre, fenetre
