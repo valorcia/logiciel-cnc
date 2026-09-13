@@ -89,20 +89,53 @@ remède (« le porte-outil touche → allonge la jauge »).
 
 **Pour essayer, sans rien connaître du moteur :**
 
+Récupérez le dossier, puis **double-cliquez** sur `demarrer-atelier.bat`
+(Windows) ou `demarrer-atelier.command` (macOS / Linux). C'est tout : il trouve
+Python, prépare un environnement à part, installe ce qu'il faut et ouvre la
+page. La première fois demande quelques minutes — environ 300 Mo de
+bibliothèques, mesurés sur une installation neuve. Les fois suivantes sont
+immédiates.
+
+Si vous préférez la ligne de commande, c'est la même chose :
+
 ```bash
-pip install -e ".[atelier]"       # ~50 s, pas de Qt : le serveur est en stdlib
+python tools/demarrer_atelier.py
+```
+
+<details>
+<summary>Et si je n'ai ni Python ni git ?</summary>
+
+**Python** — https://www.python.org/downloads/, version 3.11, 3.12 ou 3.13.
+Sur Windows, cochez **« Add python.exe to PATH »** sur le premier écran de
+l'installation. Ce sont les versions pour lesquelles toutes les bibliothèques
+existent déjà compilées ; au-delà, il faudrait compiler OCCT, ce qui n'est pas
+quelque chose qu'on demande à quelqu'un qui voulait regarder une pièce tourner.
+
+**Le dossier, sans git** — sur la page GitHub du projet, bouton vert
+**Code** → **Download ZIP**, puis décompressez (clic droit → « Extraire
+tout »). `git` n'est nécessaire que pour recevoir les mises à jour.
+
+</details>
+
+<details>
+<summary>Faire les choses à la main</summary>
+
+```bash
+pip install -e ".[atelier]"       # ~300 Mo, une seule fois
 python tools/make_corpus.py       # 20 géométries d'exemple (facultatif)
 python -m xyzac.ui.atelier        # ouvre l'Atelier dans le navigateur
 ```
 
-> `[atelier]` et non `[viz]` : `[viz]` ne contient pas PyVista, et l'Atelier
-> démarrait alors normalement pour mourir à la première image, sur un
-> `ModuleNotFoundError` visible seulement dans le terminal. Il contrôle
-> désormais le rendu **au démarrage** et dit quoi installer.
+`[atelier]` et non `[viz]` : `[viz]` ne contient pas PyVista, et l'Atelier
+démarrait alors normalement pour mourir à la première image, sur un
+`ModuleNotFoundError` visible seulement dans le terminal. Il contrôle désormais
+le rendu **au démarrage** et dit quoi installer.
 
 Vous n'avez pas de fichier STEP sous la main ? Sautez `make_corpus.py` et
 glissez le vôtre sur la page — c'est le chemin normal. Le corpus ne sert qu'à
 remplir la liste d'exemples.
+
+</details>
 
 L'Atelier répond à deux questions. **Cette machine peut-elle faire cette
 pièce ?** — vous glissez votre STEP, vous réglez les cotes que vous n'avez pas

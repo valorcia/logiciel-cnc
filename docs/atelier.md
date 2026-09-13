@@ -21,8 +21,30 @@ cher à découvrir après.
 
 ## 2. Lancer
 
+**Double-cliquez** sur `demarrer-atelier.bat` (Windows) ou
+`demarrer-atelier.command` (macOS / Linux). En ligne de commande, c'est le même
+fichier :
+
 ```bash
-pip install -e ".[atelier]"     # une seule fois, ~50 s
+python tools/demarrer_atelier.py
+```
+
+Il trouve Python, crée un `.venv` à côté du logiciel, installe `[atelier]` si
+nécessaire, fabrique les exemples s'ils manquent, puis démarre. La première fois
+demande environ **300 Mo** de bibliothèques — mesuré sur une installation neuve,
+pas estimé ; les suivantes sont immédiates. Effacer le dossier `.venv` annule
+tout, sans rien laisser ailleurs.
+
+Les deux lanceurs ne portent **aucune** logique : un `.bat` ne s'éprouve pas
+sur une machine Linux, un `.command` ne s'éprouve pas sur Windows, et s'ils
+installaient eux-mêmes, la moitié de ce que reçoit l'utilisateur ne serait
+jamais essayée. Ils trouvent Python et passent la main au script Python, qui
+est le même partout. Un test le vérifie.
+
+À la main, si vous préférez :
+
+```bash
+pip install -e ".[atelier]"
 python -m xyzac.ui.atelier
 ```
 

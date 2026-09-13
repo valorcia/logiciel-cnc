@@ -682,3 +682,64 @@ def test_the_state_carries_the_render_verdict_to_the_page():
     e = Session().etat()
     assert "rendu" in e
     assert isinstance(e["rendu"], str)
+
+
+# ---------------------------------------------------- les lanceurs (M12c)
+
+def test_the_double_click_launchers_only_delegate():
+    """Les lanceurs ne doivent porter AUCUNE logique.
+
+    Un ``.bat`` ne s'eprouve pas sur une machine Linux, et un ``.command``
+    ne s'eprouve pas sur Windows. S'ils installaient eux-memes, la moitie de ce
+    que recoit l'utilisateur ne serait jamais essayee. Ils se contentent donc
+    de trouver Python et de passer la main a ``tools/demarrer_atelier.py``, qui
+    est le meme partout — et qui, lui, est execute ici.
+    """
+    racine = Path(__file__).resolve().parents[1]
+    for nom in ("demarrer-atelier.bat", "demarrer-atelier.command"):
+        f = racine / nom
+        assert f.is_file(), nom
+        texte = f.read_text(encoding="utf-8")
+        assert "demarrer_atelier.py" in texte, nom
+        # On cherche la logique EXECUTEE, pas le mot. Le premier jet
+        # interdisait la chaine « venv », et tombait sur « sudo apt install
+        # python3-venv » dans un message d'aide — un motif large qui ramasse
+        # un element qu'il ne possede pas, pour la deuxieme fois dans ce
+        # fichier.
+        for appel in ("-m venv", "-m pip", "pip install", "make_corpus"):
+            assert appel not in texte, (nom, appel)
+
+
+def test_the_starter_installs_the_extra_the_readme_names():
+    """Le lanceur et le README doivent installer la MEME chose. Deux chemins
+    d'installation qui divergent, c'est un utilisateur sur deux qui tombe."""
+    racine = Path(__file__).resolve().parents[1]
+    starter = (racine / "tools" / "demarrer_atelier.py").read_text(encoding="utf-8")
+    assert "[atelier]" in starter
+    assert "PySide6" not in starter and "[ui]" not in starter
+
+
+def test_the_starter_needs_nothing_but_the_standard_library():
+    """Il tourne AVANT l'installation : s'il importait numpy, il ne pourrait
+    pas s'executer sur la machine ou il doit justement installer numpy."""
+    racine = Path(__file__).resolve().parents[1]
+    arbre = ast.parse((racine / "tools" / "demarrer_atelier.py")
+                      .read_text(encoding="utf-8"))
+    import sys as _sys
+
+    for n in ast.walk(arbre):
+        noms = ([a.name for a in n.names] if isinstance(n, ast.Import)
+                else [n.module] if isinstance(n, ast.ImportFrom) and n.module
+                else [])
+        for nom in noms:
+            racine_module = nom.split(".")[0]
+            assert racine_module in _sys.stdlib_module_names, nom
+
+
+def test_the_starter_only_names_python_versions_with_ready_made_wheels():
+    """Mesure faite sur PyPI, pas supposee : cadquery-ocp ne publie pas de roue
+    pour n'importe quelle version, et sans roue il faudrait compiler OCCT."""
+    from tools_import_demarrer import VERSIONS_SURES
+
+    assert (3, 11) in VERSIONS_SURES
+    assert all(v >= (3, 11) for v in VERSIONS_SURES)
