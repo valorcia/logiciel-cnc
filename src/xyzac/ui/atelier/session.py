@@ -58,6 +58,16 @@ MAX_INDEXATIONS = 2
 #: change, et il change ici.
 FOND_3D = "#eef1f6"
 
+#: Resserrage du cadrage des vues de l'atelier.
+#:
+#: Le cadrage porte sur « piece + brut + organes machine », ce qui le rend
+#: stable a toute indexation A/C — mais le plateau et le berceau sont bien plus
+#: grands qu'une piece de kit, qui n'occupait alors qu'un tiers de l'image.
+#: 1,6 a ete choisi en regardant les deux poses extremes d'une gamme (A = 0 et
+#: A = -90) : au-dela, la piece commence a sortir du cadre aux poses basculees.
+#: Verifie sur le corpus, pas prouve pour toute taille de piece.
+ZOOM_3D = 1.6
+
 
 def legende() -> list[dict]:
     """Ce que chaque couleur de la vue 3D veut dire.
@@ -702,7 +712,7 @@ class Session:
             # d'une a comprendre.
             camera = sc.camera_serie(self._banc, azimuth_deg=azimut,
                                      elevation_deg=elevation,
-                                     window_size=(1100, 740))
+                                     window_size=(1100, 740), zoom=ZOOM_3D)
             return sc.capture(self._banc, chemin, camera=camera,
                               window_size=(1100, 740), background=FOND_3D,
                               hidden=("limits", "machine_axes"))
@@ -804,7 +814,7 @@ class Session:
         banc.inspect_a_deg = float(plans[0][2].a_deg)
         banc.inspect_c_deg = float(plans[0][2].c_deg)
         camera = sc.camera_serie(banc, azimuth_deg=35.0, elevation_deg=18.0,
-                                 window_size=(900, 620))
+                                 window_size=(960, 640), zoom=ZOOM_3D)
 
         k = 0
         for numero, (P, R, cand, idx) in enumerate(plans, start=1):

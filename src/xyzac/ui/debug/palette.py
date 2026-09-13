@@ -61,6 +61,29 @@ OPACITY = {
 }
 
 
+#: Proprietes de MATIERE, par famille d'acteur. Le relief, pas la couleur.
+#:
+#: Une scene sans reflet est plate : un cylindre et un rectangle s'y
+#: ressemblent, et un dome n'a plus de dome. Ces reglages donnent un point
+#: brillant et un degre d'ambiance, ce qui suffit a lire une forme.
+#:
+#: **Reglage speculaire et non PBR**, alors que le PBR est plus moderne :
+#: mesure faite en comparant les deux images, le PBR fait virer l'ambre de la
+#: piece vers l'olive et le gris du brut vers le brun. Il recalcule la couleur
+#: a partir d'un modele d'eclairage, donc il DEPLACE les teintes — or ces
+#: teintes portent une signification (voir la convention ci-dessus) et une
+#: signification qui change de couleur selon l'angle de la camera ne signifie
+#: plus rien. Le speculaire ajoute un reflet SANS toucher a la teinte.
+MATIERE = {
+    "part": {"specular": 0.45, "specular_power": 18.0,
+             "diffuse": 0.95, "ambient": 0.22},
+    "tool": {"specular": 0.70, "specular_power": 30.0,
+             "diffuse": 0.90, "ambient": 0.30},
+    "stock": {"specular": 0.15, "specular_power": 8.0, "ambient": 0.30},
+    "machine": {"specular": 0.20, "specular_power": 10.0, "ambient": 0.28},
+}
+
+
 def role_color(role: str) -> str:
     """Couleur d'un role de troncon, gris neutre si le role est inconnu."""
     return TOOL_ROLE.get(str(role), NEUTRAL)

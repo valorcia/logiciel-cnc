@@ -1028,3 +1028,50 @@ def test_every_word_shown_to_the_operator_is_accented():
             if mot in phrase.lower().split() or f" {mot} " in f" {phrase.lower()} ":
                 suspects.append((mot, phrase[:60]))
     assert not suspects, suspects
+
+
+@rendu
+def test_tightening_the_frame_actually_moves_the_camera(corpus_dir):
+    """Defaut trouve en comparant deux images censees differer.
+
+    Le premier jet resserrait par ``plotter.camera.zoom()``. Or ``zoom()``
+    agit sur l'ANGLE DE VUE, que ``camera_position`` ne transporte pas : le
+    parametre etait sans effet, et deux cadrages differents rendaient deux
+    images identiques au pixel. Un parametre qui ne fait rien est un mensonge,
+    et celui-la se serait tu.
+
+    Le resserrage rapproche donc la camera de son point vise, ce qui SE VOIT
+    dans la position rendue.
+    """
+    import numpy as np
+
+    from xyzac.ui.debug import scene as sc
+    from xyzac.ui.debug.state import BenchState
+
+    b = BenchState()
+    b.load_step(corpus_dir / "C01_bloc_simple.step")
+    b.set_default_tool("ballnose", diameter=6.0, stickout=45.0)
+
+    large = sc.camera_serie(b, window_size=(200, 160))
+    serre = sc.camera_serie(b, window_size=(200, 160), zoom=1.6)
+
+    cible = np.asarray(large[1], float)
+    assert np.allclose(cible, np.asarray(serre[1], float)), (
+        "le point vise ne doit pas bouger")
+    d_large = np.linalg.norm(np.asarray(large[0], float) - cible)
+    d_serre = np.linalg.norm(np.asarray(serre[0], float) - cible)
+    assert d_serre < d_large * 0.7, (d_large, d_serre)
+
+
+def test_the_atelier_frames_every_corpus_part_without_cutting_it():
+    """Le resserrage est verifie sur le corpus, pas suppose.
+
+    Ce test protege le CHIFFRE (``ZOOM_3D``), pas le rendu : le relever sans
+    regarder ferait sortir la piece du cadre aux poses basculees, et personne
+    ne s'en apercevrait avant de voir une capture.
+    """
+    from xyzac.ui.atelier.session import ZOOM_3D
+
+    assert 1.0 <= ZOOM_3D <= 1.6, (
+        "au-dela de 1,6 la piece sort du cadre aux poses basculees ; "
+        "mesure sur les deux poses extremes d'une gamme")

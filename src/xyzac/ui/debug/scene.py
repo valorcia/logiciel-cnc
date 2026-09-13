@@ -84,6 +84,13 @@ ROLE_LAYER = {
 }
 
 
+#: Methode d'anti-crenelage. « ssaa » rend a plus haute resolution puis
+#: reduit : c'est la plus propre et la plus chere. Le surcoût est mesure dans
+#: ``docs/atelier.md`` ; il se paie une fois par image, et une simulation en
+#: compte quelques dizaines.
+ANTICRENELAGE = "ssaa"
+
+
 def _pv():
     """Import paresseux : ``state`` et les tests n'ont pas besoin de PyVista."""
     import pyvista as pv
@@ -247,7 +254,7 @@ class DebugScene:
     def add_part(self, mesh) -> None:
         self._add("part", mesh, color=palette.PART,
                   opacity=palette.OPACITY["part"], smooth_shading=True,
-                  name="part")
+                  name="part", **palette.MATIERE["part"])
 
     def add_stock(self, mesh) -> None:
         if mesh is None:
@@ -255,7 +262,8 @@ class DebugScene:
             return
         self._add("stock", mesh, color=palette.STOCK,
                   opacity=palette.OPACITY["stock"], show_edges=True,
-                  edge_color=palette.GRID, name="stock")
+                  edge_color=palette.GRID, name="stock",
+                  **palette.MATIERE["stock"])
 
     def add_tool(self, tool: ToolAssembly, tcp: np.ndarray, axis: np.ndarray) -> None:
         """L'outil COMPLET, un acteur par troncon, colore par role.
@@ -271,7 +279,8 @@ class DebugScene:
                                    tcp, axis),
                       color=palette.role_color(seg.role.value),
                       opacity=palette.OPACITY["tool"], smooth_shading=True,
-                      name=f"tool_{i}_{seg.role.value}")
+                      name=f"tool_{i}_{seg.role.value}",
+                      **palette.MATIERE["tool"])
 
     def add_machine_volumes(self, machine: MachineKinematics,
                             a_deg: float = 0.0, c_deg: float = 0.0) -> None:
@@ -360,9 +369,15 @@ class DebugScene:
         # choix conservatif pour l'affichage, celui qui ne cache pas un
         # mouvement hors matiere derriere une couleur de coupe.
         seg_rapid = R[1:] | R[:-1]
-        for mask, layer, color, width in (
-            (~seg_rapid, "path_cut", palette.PATH, 3),
-            (seg_rapid, "path_rapid", palette.WARNING, 1),
+        # Les liaisons sont TRES nombreuses : mesure sur une ebauche du corpus,
+        # 1 615 remontees-descentes pour 12 700 segments de coupe. Dessinees au
+        # meme poids que la coupe, elles formaient une palissade verticale qui
+        # cachait la piece et la trajectoire qu'on venait regarder. Elles
+        # restent visibles — ce sont elles qui portent les mouvements qui
+        # traversent la piece quand ils sont mal generes — mais au second plan.
+        for mask, layer, color, width, opacite in (
+            (seg_rapid, "path_rapid", palette.WARNING, 1, 0.28),
+            (~seg_rapid, "path_cut", palette.PATH, 3, 1.0),
         ):
             idx = np.flatnonzero(mask)
             if idx.size == 0:
@@ -379,7 +394,7 @@ class DebugScene:
             poly.points = pts
             poly.lines = cells
             self._add(layer, poly, color=color, line_width=width,
-                      name=f"{layer}_lines")
+                      opacity=opacite, name=f"{layer}_lines")
 
     def add_orientations(self, result, machine: MachineKinematics, mount_offset,
                          a_deg: float, c_deg: float, *,
@@ -638,7 +653,8 @@ def _arrow_length(state) -> float:
 
 
 def camera_serie(state, *, azimuth_deg: float = 0.0, elevation_deg: float = 0.0,
-                 window_size=(1280, 860), deflection: float = 0.05):
+                 window_size=(1280, 860), deflection: float = 0.05,
+                 zoom: float = 1.0):
     """Camera FIXE a passer a ``capture`` pour une suite d'images.
 
     Le cadrage automatique de ``capture`` porte sur « piece + brut + outil ».
@@ -671,7 +687,21 @@ def camera_serie(state, *, azimuth_deg: float = 0.0, elevation_deg: float = 0.0,
         plotter.camera.azimuth += float(azimuth_deg)
     if elevation_deg:
         plotter.camera.elevation += float(elevation_deg)
-    cam = tuple(tuple(float(x) for x in v) for v in plotter.camera_position)
+    cam = [list(map(float, v)) for v in plotter.camera_position]
+    # Le cadrage porte sur les ORGANES, ce qui le rend stable a toute
+    # indexation A/C — mais le plateau et le berceau sont bien plus grands que
+    # la piece, qui n'occupait alors qu'un tiers de l'image.
+    #
+    # Le resserrage RAPPROCHE la camera de son point vise, et n'emploie PAS
+    # ``plotter.camera.zoom()``. Mesure : ``zoom()`` agit sur l'angle de vue,
+    # que ``camera_position`` ne transporte pas — le parametre etait donc sans
+    # effet, et les deux images rendues a des zooms differents identiques au
+    # pixel. Un parametre qui ne fait rien est un mensonge, et celui-la se
+    # serait tu.
+    if zoom and zoom != 1.0:
+        pos, cible = np.asarray(cam[0]), np.asarray(cam[1])
+        cam[0] = list(cible + (pos - cible) / float(zoom))
+    cam = tuple(tuple(v) for v in cam)
     plotter.close()
     return cam
 
@@ -704,7 +734,12 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
     pv = _pv()
     hide = set(hidden)
     pv.OFF_SCREEN = True
-    plotter = pv.Plotter(off_screen=True, window_size=window_size)
+    # « light kit » et non l'eclairage par defaut : trois sources et un
+    # remplissage, ce qui donne a un cylindre un cote eclaire et un cote a
+    # l'ombre. Sans cela la scene est plate — un dome n'a plus de dome, et un
+    # porte-outil ressemble a une tache.
+    plotter = pv.Plotter(off_screen=True, window_size=window_size,
+                         lighting="light kit")
     scene = DebugScene(plotter=plotter)
     # Le fond du BANC est sombre, et c'est justifie la-bas : le degrade de
     # l'outil va du clair (l'arete, qui doit toucher) au sombre (le nez de
@@ -738,7 +773,8 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
                                     tcp, np.array([0.0, 0.0, 1.0])),
                        color=palette.role_color(seg.role.value),
                        opacity=palette.OPACITY["tool"], smooth_shading=True,
-                       name=f"tool_{i}_{seg.role.value}")
+                       name=f"tool_{i}_{seg.role.value}",
+                       **palette.MATIERE["tool"])
     if "machine" not in hide:
         scene.add_machine_volumes(state.machine, a, c)
     if "machine_axes" not in hide:
@@ -778,6 +814,16 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
             plotter.camera.elevation += float(elevation_deg)
         if zoom and zoom != 1.0:
             plotter.camera.zoom(float(zoom))
+
+    # Anti-crenelage : les aretes en escalier sont ce qui fait qu'une image
+    # « a l'air d'un logiciel ». Applique APRES la camera, sinon VTK le perd.
+    try:
+        plotter.enable_anti_aliasing(ANTICRENELAGE)
+    except Exception:                              # noqa: BLE001
+        # Certains pilotes logiciels le refusent. Une image crenelee vaut
+        # mieux qu'une absence d'image : on ne fait pas echouer la capture
+        # pour un defaut d'aspect.
+        pass
 
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)

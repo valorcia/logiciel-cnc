@@ -160,6 +160,39 @@ pièce de 60 mm minuscule dans une cage en fil de fer — et la vue ne ressembla
 pas à celle de la simulation, alors que c'est la même scène. L'opérateur avait
 deux images à réconcilier au lieu d'une à comprendre.
 
+### 3quinquies. Le rendu de la vue 3D
+
+Quatre changements, chacun décidé en comparant deux images plutôt qu'en
+raisonnant :
+
+- **Éclairage « light kit »** — trois sources et un remplissage. Sans lui la
+  scène est plate : un dôme n'a plus de dôme, un porte-outil est une tache.
+- **Anti-crénelage SSAA.** Les arêtes en escalier sont ce qui fait qu'une image
+  « a l'air d'un logiciel ». Coût mesuré : **0,67 s par image** contre 0,42 s
+  sans, soit environ dix secondes de plus sur une simulation de 36 images.
+- **Réflexion spéculaire, et non PBR**, alors que le PBR est plus moderne.
+  Mesure sur les deux images : le PBR fait virer l'ambre de la pièce vers
+  l'olive et le gris du brut vers le brun, parce qu'il *recalcule* la couleur.
+  Or ces teintes portent une signification, et une signification qui change de
+  couleur selon l'angle de la caméra ne signifie plus rien. Le spéculaire
+  ajoute un reflet **sans toucher à la teinte**.
+- **Les liaisons au second plan** (opacité 0,28). Mesure : 1 615 remontées et
+  descentes pour 12 700 segments de coupe. Au même poids que la coupe, elles
+  formaient une palissade verticale qui cachait la pièce qu'on venait
+  regarder. Elles restent visibles — ce sont elles qui portent les mouvements
+  qui traversent la pièce quand ils sont mal générés.
+
+Et le cadrage est **resserré de 1,6** : le cadrage porte sur les organes
+machine, ce qui le rend stable à toute indexation A/C, mais le plateau et le
+berceau sont bien plus grands qu'une pièce de kit. Vérifié sur les **20 pièces
+du corpus** : zéro pixel de pièce au bord de l'image.
+
+Le resserrage rapproche la caméra de son point visé, et n'emploie *pas*
+`plotter.camera.zoom()` — mesure : `zoom()` agit sur l'angle de vue, que
+`camera_position` ne transporte pas, donc le paramètre était sans effet et deux
+cadrages différents rendaient deux images identiques au pixel. Un test le
+verrouille.
+
 ## 4. Trois décisions de construction
 
 **Serveur : bibliothèque standard de Python.** Pas Flask, pas FastAPI. Cet
