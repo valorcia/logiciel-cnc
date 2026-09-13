@@ -47,6 +47,12 @@ JOURNAL = RACINE / "demarrage.log"
 #: qui voulait regarder une piece tourner.
 VERSIONS_SURES = ((3, 11), (3, 12), (3, 13))
 
+#: En dessous de ce temps, un atelier qui se termine ne s'est pas ARRETE : il
+#: n'a pas demarre. La distinction n'est pas cosmetique — c'est elle qui decide
+#: si l'on affiche « la page ne repond plus » (vrai seulement s'il y a eu une
+#: page) ou la raison de l'echec.
+DUREE_MINIMALE = 3.0
+
 
 def python_du_venv() -> Path:
     return VENV / ("Scripts" if os.name == "nt" else "bin") / (
@@ -205,40 +211,94 @@ def main() -> int:
     py = preparer_venv()
     installer(py)
     corpus(py)
+    echecs = 0
     while True:
         titre("ATELIER XYZAC — demarrage")
         dire("La page s'ouvre dans votre navigateur.")
         dire("Pour arreter : revenez ici et faites Ctrl+C.")
         print()
+        debut = time.monotonic()
         try:
-            code = suivre([str(py), "-m", "xyzac.ui.atelier"] + sys.argv[1:])
+            code, lignes = suivre(
+                [str(py), "-m", "xyzac.ui.atelier"] + sys.argv[1:])
         except KeyboardInterrupt:
             # Ctrl+C dans une console va a TOUT le groupe de processus : le
             # lanceur le recoit en meme temps que l'atelier. Sans ce filet, la
             # facon NORMALE d'arreter l'atelier — celle qu'on ecrit a l'ecran
             # deux lignes plus haut — se terminait par une trace Python.
-            code = 0
-        if not relancer():
+            code, lignes = 0, []
+        duree = time.monotonic() - debut
+
+        # Un arret NORMAL, c'est un atelier qui a d'abord TOURNE. Un processus
+        # qui se termine en une demi-seconde n'a pas ete arrete : il n'a pas
+        # demarre. Confondre les deux faisait afficher « la page de votre
+        # navigateur ne repond plus » a quelqu'un qui n'a jamais eu de page —
+        # et cette phrase, en plus d'etre fausse, poussait la vraie raison hors
+        # de l'ecran.
+        anormal = code != 0 or duree < DUREE_MINIMALE
+        if not anormal:
+            echecs = 0
+        else:
+            echecs += 1
+            rapporter_echec(code, duree, lignes)
+            if echecs >= 2:
+                dire("Deux echecs de suite : reessayer a l'identique donnera")
+                dire("le meme resultat. Envoyez le journal ci-dessus.")
+                return code or 1
+        if not relancer(anormal):
             return code
 
 
-def suivre(cmd: list) -> int:
-    """Comme ``lancer``, mais sans lever : l'atelier a le droit de s'arreter."""
+def suivre(cmd: list) -> tuple[int, list]:
+    """Comme ``lancer``, mais sans lever : l'atelier a le droit de s'arreter.
+
+    Rend aussi les lignes produites, pour pouvoir les REMONTRER en cas
+    d'echec : le temps qu'on lise le message d'arret, la raison est deja
+    remontee hors de l'ecran.
+    """
     noter(f"\n$ {' '.join(str(c) for c in cmd)}")
+    lignes: list = []
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True,
                             errors="replace", bufsize=1)
     try:
         for ligne in proc.stdout:
             print(ligne, end="", flush=True)
-            noter(ligne.rstrip("\n"))
+            ligne = ligne.rstrip("\n")
+            noter(ligne)
+            lignes.append(ligne)
     except KeyboardInterrupt:
         proc.terminate()
         raise
-    return proc.wait()
+    return proc.wait(), lignes
 
 
-def relancer() -> bool:
+def rapporter_echec(code: int, duree: float, lignes: list) -> None:
+    """Remontre la raison, au lieu de la laisser defiler hors de l'ecran."""
+    titre("L'ATELIER NE S'EST PAS LANCE")
+    if duree < DUREE_MINIMALE:
+        dire(f"Il s'est termine au bout de {duree:.1f} s "
+             f"(code de sortie {code}).")
+        dire("Ce n'est pas un arret : un atelier qu'on arrete a la main a")
+        dire("d'abord tourne. Celui-ci n'a pas demarre.")
+    else:
+        dire(f"Il s'est termine sur une erreur (code de sortie {code}).")
+    utiles = [l for l in lignes if l.strip()]
+    if utiles:
+        print()
+        dire("Les dernieres lignes qu'il a ecrites :")
+        print()
+        for l in utiles[-15:]:
+            print(f"    | {l}")
+    else:
+        print()
+        dire("Il n'a rien ecrit du tout, ce qui est inhabituel.")
+    print()
+    dire(f"Tout est note dans ce fichier, qui survit a la fermeture :")
+    dire(f"  {JOURNAL}")
+
+
+def relancer(anormal: bool = False) -> bool:
     """Propose de repartir plutot que de laisser une fenetre morte.
 
     Quand l'atelier s'arrete, la page du navigateur reste affichee et ne
@@ -246,12 +306,24 @@ def relancer() -> bool:
     et « rouvrez le dossier et double-cliquez a nouveau » est une manoeuvre
     qu'on n'a pas envie de faire dix fois dans une soiree d'essais.
 
+    Apres un ECHEC, la proposition change de sens et de defaut : relancer a
+    l'identique ce qui vient de ne pas marcher n'a aucune raison de marcher, et
+    proposer « oui » par defaut enverrait quelqu'un tourner en rond.
+
     Rien n'est demande quand personne ne peut repondre (script lance par un
     autre programme, integration continue) : une invite sans clavier derriere
     bloquerait pour toujours, ce qui est la pire facon d'echouer.
     """
     if not (sys.stdin and sys.stdin.isatty()):
         return False
+    if anormal:
+        print()
+        try:
+            reponse = input("  Reessayer quand meme ? [o/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return False
+        return reponse in ("o", "oui", "y", "yes")
     titre("ATELIER XYZAC — arrete")
     dire("La page de votre navigateur ne repond plus : elle vous le dit.")
     dire(f"Journal de cette session : {JOURNAL.name}")

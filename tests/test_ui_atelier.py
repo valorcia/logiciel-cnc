@@ -815,3 +815,64 @@ def test_an_already_used_port_is_explained_not_dumped(monkeypatch, capsys):
     assert "Traceback" not in sortie
     assert f"http://127.0.0.1:{port}/" in sortie, "il faut dire quoi essayer"
     assert f"--port {port + 1}" in sortie, "il faut dire comment en lancer un autre"
+
+
+def test_a_workshop_that_never_started_is_not_called_stopped(capsys):
+    """Defaut rapporte depuis une vraie machine : l'atelier ne s'ouvrait pas,
+    et le lanceur repondait « La page de votre navigateur ne repond plus ».
+
+    Cette phrase est fausse pour quelqu'un qui n'a jamais eu de page, et elle
+    poussait la vraie raison hors de l'ecran. Un arret NORMAL, c'est un atelier
+    qui a d'abord TOURNE ; un processus qui se termine en une demi-seconde n'a
+    pas ete arrete, il n'a pas demarre.
+    """
+    import tools_import_demarrer as passerelle
+
+    m = passerelle.module
+    assert m.DUREE_MINIMALE > 0
+
+    m.rapporter_echec(2, 0.2, ["Le port 8765 est deja occupe."])
+    sortie = capsys.readouterr().out
+    assert "PAS LANCE" in sortie
+    assert "ne repond plus" not in sortie
+    # la raison doit etre REMONTREE : le temps qu'on lise, elle a defile
+    assert "Le port 8765 est deja occupe." in sortie
+    assert "demarrage.log" in sortie
+
+
+def test_retrying_after_a_failure_is_not_the_default(monkeypatch):
+    """Relancer a l'identique ce qui vient de ne pas marcher n'a aucune raison
+    de marcher. Proposer « oui » par defaut enverrait tourner en rond."""
+    import tools_import_demarrer as passerelle
+
+    m = passerelle.module
+
+    class FauxClavier:
+        @staticmethod
+        def isatty():
+            return True
+
+    monkeypatch.setattr(m.sys, "stdin", FauxClavier)
+    monkeypatch.setattr("builtins.input", lambda _: "")     # touche Entree
+
+    assert m.relancer(anormal=False) is True, "apres un arret normal, oui"
+    assert m.relancer(anormal=True) is False, "apres un echec, non"
+
+
+def test_nothing_is_asked_when_no_one_can_answer(monkeypatch):
+    """Une invite sans clavier derriere bloque pour toujours : c'est la pire
+    facon d'echouer."""
+    import tools_import_demarrer as passerelle
+
+    m = passerelle.module
+
+    class SansClavier:
+        @staticmethod
+        def isatty():
+            return False
+
+    monkeypatch.setattr(m.sys, "stdin", SansClavier)
+    monkeypatch.setattr("builtins.input",
+                        lambda _: pytest.fail("rien ne doit etre demande"))
+    assert m.relancer() is False
+    assert m.relancer(anormal=True) is False
