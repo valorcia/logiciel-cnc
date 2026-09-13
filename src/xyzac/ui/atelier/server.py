@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from .session import CORPUS, TAILLE_MAX, Session
+from .session import CORPUS, TAILLE_MAX, Session, rendu_3d
 
 STATIQUE = Path(__file__).resolve().parent / "static"
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript",
@@ -96,7 +96,17 @@ class Atelier(BaseHTTPRequestHandler):
             out = (type(self).travail /
                    f"vue_{s.revision}_{az:.0f}_{el:.0f}_{cadrage}.png")
             if not out.exists():
-                s.vue(out, azimut=az, elevation=el, cadrage=cadrage)
+                try:
+                    s.vue(out, azimut=az, elevation=el, cadrage=cadrage)
+                except Exception as e:             # noqa: BLE001
+                    # Sans ce filet, une panne de rendu remontait dans
+                    # ``http.server``, qui coupe la connexion : le navigateur
+                    # affichait une image vide et ne disait rien, la trace
+                    # n'existant que dans le terminal. Une panne doit se dire
+                    # la ou on la subit.
+                    return self._json(
+                        {"erreur": rendu_3d() or f"{type(e).__name__} : {e}"},
+                        500)
             return self._fichier(out)
         if u.path == "/api/image":
             i = int(q.get("i", ["0"])[0])

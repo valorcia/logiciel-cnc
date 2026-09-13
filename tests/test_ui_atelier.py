@@ -606,3 +606,79 @@ def test_the_simulation_walks_the_tool_along_a_real_toolpath(corpus_dir, tmp_pat
     # vue de l'etape « Regardez » montrerait la machine basculee a la derniere
     # pose de l'ebauche, en contradiction avec la phrase qui l'accompagne.
     assert s._banc.inspect_a_deg == 0.0 and s._banc.inspect_c_deg == 0.0
+
+
+# ------------------------------------------------- l'installation (M12c)
+
+def test_the_atelier_extra_exists_and_does_not_drag_qt_along():
+    """Defaut trouve en repondant a « je fais quoi avec cette commande ? ».
+
+    Le README envoyait installer ``.[viz]``, qui ne contient pas PyVista :
+    l'atelier demarrait, la piece se chargeait, et la premiere vue mourait sur
+    un ``ModuleNotFoundError`` que seul le terminal montrait. Une consigne
+    d'installation fausse se paie exactement la ou l'utilisateur n'a aucun
+    moyen de diagnostiquer.
+
+    L'extra doit aussi rester SANS Qt : le serveur est en bibliotheque
+    standard et les vues sont rendues hors ecran, donc PySide6 n'y sert a rien
+    — et c'est ~200 Mo sur un Raspberry Pi.
+    """
+    racine = Path(__file__).resolve().parents[1]
+    toml = (racine / "pyproject.toml").read_text(encoding="utf-8")
+    ligne = next(l for l in toml.splitlines() if l.startswith("atelier ="))
+    assert "pyvista" in ligne, ligne
+    assert "PySide6" not in ligne and "pyvistaqt" not in ligne, ligne
+
+    readme = (racine / "README.md").read_text(encoding="utf-8")
+    i = readme.index("python -m xyzac.ui.atelier")
+    avant = readme[:i]
+    j = avant.rindex("pip install")
+    assert "[atelier]" in avant[j:], avant[j:i]
+
+
+def test_the_render_check_says_what_to_install(monkeypatch):
+    """Un controle qui echoue doit nommer une action.
+
+    ``sys.modules[nom] = None`` fait lever ``ImportError`` a l'import suivant :
+    c'est la facon de rejouer une installation incomplete sans en fabriquer
+    une.
+    """
+    import sys
+
+    import xyzac.ui.atelier.session as sess
+
+    monkeypatch.setitem(sys.modules, "pyvista", None)
+    monkeypatch.setattr(sess, "_RENDU", [None])
+    message = sess.rendu_3d()
+    assert message, "une installation sans pyvista doit etre signalee"
+    assert "pip install" in message and "[atelier]" in message, message
+
+
+def test_a_render_failure_reaches_the_page_instead_of_cutting_the_line(serveur):
+    """Sans filet, une panne de rendu remontait dans ``http.server``, qui coupe
+    la connexion : le navigateur affichait une image vide et ne disait rien.
+    Une panne doit se dire la ou on la subit."""
+    from xyzac.ui.atelier.server import Atelier
+
+    serveur("/api/piece", {"fichier": "C01_bloc_simple.step"})
+
+    def tombe(*a, **kw):
+        raise RuntimeError("pilote graphique absent")
+
+    Atelier.session.vue = tombe
+    try:
+        with pytest.raises(urllib.error.HTTPError) as e:
+            serveur("/api/vue?a=35&e=18")
+        assert e.value.code == 500
+        corps = json.loads(e.value.read())
+        assert corps["erreur"], corps
+    finally:
+        del Atelier.session.vue
+
+
+def test_the_state_carries_the_render_verdict_to_the_page():
+    """La page doit pouvoir le dire : le terminal ne suffit pas, personne ne
+    le regarde une fois le navigateur ouvert."""
+    e = Session().etat()
+    assert "rendu" in e
+    assert isinstance(e["rendu"], str)

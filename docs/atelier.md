@@ -22,8 +22,20 @@ cher à découvrir après.
 ## 2. Lancer
 
 ```bash
+pip install -e ".[atelier]"     # une seule fois, ~50 s
 python -m xyzac.ui.atelier
 ```
+
+`[atelier]` et non `[ui]` : le serveur est en bibliothèque standard et les vues
+sont rendues hors écran, donc Qt n'y sert à rien — c'est ~200 Mo qu'un
+Raspberry Pi n'a aucune raison de porter.
+
+L'atelier **contrôle le rendu 3D au démarrage**, par une vraie image de 32 × 32
+pixels et non par un `import` : un import qui réussit ne dit pas qu'une image
+sortira, et sur un Pi sans écran c'est le pilote qui manque, pas la
+bibliothèque. S'il ne peut pas rendre, il le dit dans le terminal **et sur la
+page**, avec la commande à taper. Avant, la panne arrivait à la première vue,
+sous la forme d'une image vide muette et d'une trace visible du seul terminal.
 
 Le navigateur s'ouvre sur `http://127.0.0.1:8765/`. `Ctrl+C` pour arrêter.
 

@@ -90,16 +90,26 @@ remède (« le porte-outil touche → allonge la jauge »).
 **Pour essayer, sans rien connaître du moteur :**
 
 ```bash
-pip install -e ".[viz]"
-python tools/make_corpus.py       # 20 géométries d'exemple
+pip install -e ".[atelier]"       # ~50 s, pas de Qt : le serveur est en stdlib
+python tools/make_corpus.py       # 20 géométries d'exemple (facultatif)
 python -m xyzac.ui.atelier        # ouvre l'Atelier dans le navigateur
 ```
 
-L'Atelier répond à une question : **cette machine peut-elle faire cette
-pièce ?** Vous chargez une pièce, vous réglez les cotes que vous n'avez pas
-encore coulées dans le métal — courses, bascule A, plateau, outil — et il
-répond surface par surface, avec ce qu'il faut faire. Voir
-[docs/atelier.md](docs/atelier.md).
+> `[atelier]` et non `[viz]` : `[viz]` ne contient pas PyVista, et l'Atelier
+> démarrait alors normalement pour mourir à la première image, sur un
+> `ModuleNotFoundError` visible seulement dans le terminal. Il contrôle
+> désormais le rendu **au démarrage** et dit quoi installer.
+
+Vous n'avez pas de fichier STEP sous la main ? Sautez `make_corpus.py` et
+glissez le vôtre sur la page — c'est le chemin normal. Le corpus ne sert qu'à
+remplir la liste d'exemples.
+
+L'Atelier répond à deux questions. **Cette machine peut-elle faire cette
+pièce ?** — vous glissez votre STEP, vous réglez les cotes que vous n'avez pas
+encore coulées dans le métal (courses, bascule A, plateau, outil), et il répond
+surface par surface avec ce qu'il faut faire. **À quoi ça ressemble ?** — l'outil
+parcourt à l'écran la trajectoire d'ébauche réellement calculée, caméra fixe,
+avec X/Y/Z/A/C sous chaque image. Voir [docs/atelier.md](docs/atelier.md).
 
 ---
 

@@ -118,6 +118,54 @@ REMEDES = {
 }
 
 
+#: Resultat memorise du controle de rendu. ``None`` = pas encore controle.
+_RENDU: list = [None]
+
+
+def rendu_3d() -> str:
+    """Chaine VIDE si les vues 3D marchent ; sinon, quoi faire pour qu'elles
+    marchent.
+
+    Pourquoi un vrai rendu et pas un ``import pyvista`` : un import qui reussit
+    ne dit pas qu'une image sortira. Le pilote graphique manque aussi souvent
+    que la bibliotheque, et sur un Raspberry Pi sans ecran c'est meme le cas le
+    plus frequent. Mesurer la chose qu'on veut savoir coute ici une image de
+    32 x 32 pixels, une fois.
+
+    Defaut qui a motive cette fonction : le README envoyait installer
+    ``.[viz]``, qui ne contient pas pyvista. L'atelier demarrait, la piece se
+    chargeait, puis la premiere vue mourait sur un ``ModuleNotFoundError`` —
+    cote page, l'image restait vide sans un mot, et la trace n'apparaissait que
+    dans le terminal. Une panne d'installation doit se dire a l'endroit ou on
+    la subit.
+    """
+    if _RENDU[0] is None:
+        _RENDU[0] = _controler_rendu()
+    return _RENDU[0]
+
+
+def _controler_rendu() -> str:
+    try:
+        import pyvista as pv
+    except ImportError:
+        return ("L'affichage 3D n'est pas installe. Dans le dossier du "
+                "logiciel, tapez :  pip install -e \".[atelier]\"  puis "
+                "relancez l'atelier.")
+    try:
+        pv.OFF_SCREEN = True
+        tracoir = pv.Plotter(off_screen=True, window_size=(32, 32))
+        tracoir.add_mesh(pv.Sphere())
+        tracoir.screenshot(return_img=True)
+        tracoir.close()
+    except Exception as e:                         # noqa: BLE001
+        return (f"L'affichage 3D est installe mais ne produit pas d'image "
+                f"({type(e).__name__} : {e}). Sur une machine sans ecran, il "
+                f"manque en general le rendu logiciel : installez le paquet "
+                f"systeme libosmesa6 (Debian/Raspberry Pi OS : "
+                f"sudo apt install libosmesa6), puis relancez.")
+    return ""
+
+
 def nommer(normale) -> str:
     """Un nom qu'on peut prononcer, tire de la direction de la surface.
 
@@ -781,6 +829,7 @@ class Session:
             "avertissements": self.avertissements,
             "n_images": self.n_images,
             "revision": self.revision,
+            "rendu": rendu_3d(),
             "origine": self.origine,
             "film": self.film,
             "simulation_note": self.simulation_note,

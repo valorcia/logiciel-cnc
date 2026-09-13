@@ -28,7 +28,7 @@ async function post(url, corps) {
 }
 
 function rafraichirVue() {
-  if (!etat || !etat.chargee) return;
+  if (!etat || !etat.chargee || etat.rendu) return;
   // l'horodatage force le navigateur a redemander l'image apres un reglage
   $("#image").src = `/api/vue?a=${azimut}&e=${elevation}&t=${Date.now()}`;
 }
@@ -133,16 +133,33 @@ function appliquer() {
   $("#barre-in").style.width = `${Math.round(etat.progres * 100)}%`;
   $("#etape-texte").textContent = etat.etape || "";
 
-  document.querySelectorAll(".erreur").forEach((e) => e.remove());
+  // Ne balaye QUE les messages poses par ce bloc. Le balayage portait sur
+  // « .erreur » tout court, ce qui emportait aussi le bandeau permanent
+  // d'absence de rendu : la ligne suivante tombait alors sur un element nul,
+  // appliquer() mourait en silence, et plus aucune image ne se rafraichissait.
+  // Un selecteur large finit toujours par ramasser un element qu'il ne
+  // possede pas.
+  document.querySelectorAll(".erreur[data-jetable]").forEach((e) => e.remove());
   if (etat.erreur) {
     // Un refus de chargement s'affiche a l'etape 1, la ou l'utilisateur
     // vient d'agir. L'afficher a l'etape 4 l'obligerait a chercher.
     const d = document.createElement("div");
     d.className = "erreur";
+    d.dataset.jetable = "1";
     d.textContent = chargee
       ? `Le calcul s'est arrêté : ${etat.erreur}`
       : `Cette pièce ne peut pas être usinée telle quelle. ${etat.erreur}`;
     (chargee ? $("#etape-verif") : $("#etape-piece")).appendChild(d);
+  }
+
+  // Une panne d'affichage 3D se dit a l'ecran, pas seulement dans le
+  // terminal : c'est ici que l'utilisateur la subit.
+  const sr = $("#sans-rendu");
+  sr.hidden = !etat.rendu;
+  sr.textContent = etat.rendu || "";
+  if (etat.rendu) {
+    $("#simuler").disabled = true;
+    $("#image").removeAttribute("src");
   }
 
   const note = $("#simu-note");
