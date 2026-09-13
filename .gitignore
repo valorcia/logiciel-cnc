@@ -7,3 +7,6 @@ venv/
 out/
 build/
 dist/
+
+# journal du lanceur (tools/demarrer_atelier.py)
+demarrage.log

@@ -23,12 +23,23 @@ logiciel, que l'on peut effacer d'un coup pour tout annuler.
 from __future__ import annotations
 
 import os
+import platform
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parents[1]
 VENV = RACINE / ".venv"
+#: Tout ce qui s'affiche est AUSSI ecrit ici.
+#:
+#: Motif, rapporte par le premier essai sur une vraie machine : « il dit
+#: appuyer sur une touche pour continuer puis plus rien ». Sous Windows, une
+#: fenetre lancee au double-clic se referme des qu'on appuie sur une touche —
+#: et elle emporte le message. L'utilisateur ne peut alors meme pas dire ce
+#: qui s'est passe, ce qui rend le probleme indiagnosticable. Un journal ecrit
+#: a cote du logiciel survit a la fermeture de la fenetre.
+JOURNAL = RACINE / "demarrage.log"
 #: Versions de Python pour lesquelles les roues de TOUTES les dependances
 #: existent sur les trois systemes. Verifie sur PyPI, pas suppose : cadquery-ocp
 #: ne publie pas de roue pour n'importe quelle version, et une compilation
@@ -42,23 +53,55 @@ def python_du_venv() -> Path:
         "python.exe" if os.name == "nt" else "python")
 
 
+def noter(ligne: str) -> None:
+    """Ecrit dans le journal, sans jamais faire echouer le demarrage.
+
+    Un journal qu'on n'arrive pas a ouvrir (dossier en lecture seule, cle USB
+    retiree) ne doit pas empecher l'atelier de demarrer : il sert a expliquer
+    une panne, il ne doit pas en creer une.
+    """
+    try:
+        with JOURNAL.open("a", encoding="utf-8", errors="replace") as fh:
+            fh.write(ligne if ligne.endswith("\n") else ligne + "\n")
+    except OSError:
+        pass
+
+
 def dire(texte: str) -> None:
     print(f"  {texte}", flush=True)
+    noter(f"  {texte}")
 
 
 def titre(texte: str) -> None:
-    print(f"\n{'=' * 62}\n  {texte}\n{'=' * 62}", flush=True)
+    bloc = f"\n{'=' * 62}\n  {texte}\n{'=' * 62}"
+    print(bloc, flush=True)
+    noter(bloc)
 
 
 def lancer(cmd: list, *, quoi: str) -> None:
-    r = subprocess.run(cmd)
-    if r.returncode != 0:
+    """Execute en montrant la sortie A L'ECRAN **et** en la gardant.
+
+    Ni ``subprocess.run(cmd)`` seul — qui affiche sans garder — ni
+    ``capture_output`` — qui garde sans afficher. Les deux sont necessaires :
+    on regarde pendant que ca tourne, et on relit apres que la fenetre s'est
+    fermee.
+    """
+    noter(f"\n$ {' '.join(str(c) for c in cmd)}")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True,
+                            errors="replace", bufsize=1)
+    for ligne in proc.stdout:
+        print(ligne, end="", flush=True)
+        noter(ligne.rstrip("\n"))
+    r = proc.wait()
+    if r != 0:
         raise SystemExit(
             f"\n  ECHEC : {quoi}\n"
             f"  La commande exacte etait :\n    {' '.join(str(c) for c in cmd)}\n"
-            f"  Recopiez le message ci-dessus tel quel si vous demandez de "
-            f"l'aide :\n  il contient la raison, et elle est rarement celle "
-            f"qu'on devine.\n")
+            f"  Tout est note dans :\n    {JOURNAL}\n"
+            f"  Ouvrez ce fichier et envoyez-le si vous demandez de l'aide :\n"
+            f"  il contient la raison, et elle est rarement celle qu'on "
+            f"devine.\n")
 
 
 def controler_version() -> None:
@@ -98,6 +141,11 @@ def installer(py: Path) -> None:
         "from xyzac.ui.atelier.session import rendu_3d;"
         "sys.exit(1 if rendu_3d() else 0)"
     )
+    # Ce controle fabrique une vraie image, donc il charge VTK : mesure, une
+    # quinzaine de secondes la premiere fois. Sans cette ligne, l'ecran reste
+    # muet pendant tout ce temps et on croit que rien ne se passe — ce qui est
+    # exactement l'impression qu'on cherche a eviter.
+    dire("Verification de l'installation (quelques secondes)...")
     if subprocess.run([str(py), "-c", sonde],
                       capture_output=True).returncode == 0:
         dire("Tout est deja installe.")
@@ -131,17 +179,89 @@ def corpus(py: Path) -> None:
         dire(" glissez votre propre fichier STEP sur la page)")
 
 
+def ouvrir_journal() -> None:
+    """Entete de session : ce qu'on demanderait toujours en premier.
+
+    Systeme, version de Python, dossier. Trois lignes qui evitent trois
+    allers-retours de questions quand quelque chose se passe mal.
+    """
+    try:
+        if JOURNAL.exists() and JOURNAL.stat().st_size > 1_000_000:
+            JOURNAL.unlink()          # on garde l'historique, pas l'infini
+    except OSError:
+        pass
+    noter("\n\n" + "#" * 62)
+    noter(f"# {time.strftime('%Y-%m-%d %H:%M:%S')}  demarrage de l'atelier")
+    noter(f"# systeme : {platform.platform()}")
+    noter(f"# python  : {sys.version.splitlines()[0]}")
+    noter(f"# dossier : {RACINE}")
+    noter("#" * 62)
+
+
 def main() -> int:
+    ouvrir_journal()
     titre("ATELIER XYZAC — preparation")
     controler_version()
     py = preparer_venv()
     installer(py)
     corpus(py)
-    titre("ATELIER XYZAC — demarrage")
-    dire("La page s'ouvre dans votre navigateur.")
-    dire("Pour arreter : revenez ici et faites Ctrl+C.")
+    while True:
+        titre("ATELIER XYZAC — demarrage")
+        dire("La page s'ouvre dans votre navigateur.")
+        dire("Pour arreter : revenez ici et faites Ctrl+C.")
+        print()
+        try:
+            code = suivre([str(py), "-m", "xyzac.ui.atelier"] + sys.argv[1:])
+        except KeyboardInterrupt:
+            # Ctrl+C dans une console va a TOUT le groupe de processus : le
+            # lanceur le recoit en meme temps que l'atelier. Sans ce filet, la
+            # facon NORMALE d'arreter l'atelier — celle qu'on ecrit a l'ecran
+            # deux lignes plus haut — se terminait par une trace Python.
+            code = 0
+        if not relancer():
+            return code
+
+
+def suivre(cmd: list) -> int:
+    """Comme ``lancer``, mais sans lever : l'atelier a le droit de s'arreter."""
+    noter(f"\n$ {' '.join(str(c) for c in cmd)}")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True,
+                            errors="replace", bufsize=1)
+    try:
+        for ligne in proc.stdout:
+            print(ligne, end="", flush=True)
+            noter(ligne.rstrip("\n"))
+    except KeyboardInterrupt:
+        proc.terminate()
+        raise
+    return proc.wait()
+
+
+def relancer() -> bool:
+    """Propose de repartir plutot que de laisser une fenetre morte.
+
+    Quand l'atelier s'arrete, la page du navigateur reste affichee et ne
+    repond plus. Elle le DIT desormais, mais il faut encore pouvoir repartir —
+    et « rouvrez le dossier et double-cliquez a nouveau » est une manoeuvre
+    qu'on n'a pas envie de faire dix fois dans une soiree d'essais.
+
+    Rien n'est demande quand personne ne peut repondre (script lance par un
+    autre programme, integration continue) : une invite sans clavier derriere
+    bloquerait pour toujours, ce qui est la pire facon d'echouer.
+    """
+    if not (sys.stdin and sys.stdin.isatty()):
+        return False
+    titre("ATELIER XYZAC — arrete")
+    dire("La page de votre navigateur ne repond plus : elle vous le dit.")
+    dire(f"Journal de cette session : {JOURNAL.name}")
     print()
-    return subprocess.run([str(py), "-m", "xyzac.ui.atelier"] + sys.argv[1:]).returncode
+    try:
+        reponse = input("  Relancer l'atelier ? [O/n] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return reponse in ("", "o", "oui", "y", "yes")
 
 
 if __name__ == "__main__":

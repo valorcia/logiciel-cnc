@@ -46,5 +46,15 @@ goto fin
 
 :fin
 echo.
-echo   L'atelier est arrete. Vous pouvez fermer cette fenetre.
+echo   ======================================================
+echo     L'atelier est arrete.
+echo   ======================================================
+echo.
+echo     Si quelque chose s'est mal passe, TOUT est note dans
+echo     le fichier  demarrage.log  a cote de ce fichier-ci.
+echo     Ouvrez-le avec le Bloc-notes : il survit a la
+echo     fermeture de cette fenetre.
+echo.
+echo     Pour relancer : double-cliquez a nouveau ici.
+echo.
 pause

@@ -130,9 +130,25 @@ with sync_playwright() as pw:
     for li in page.query_selector_all("#conditions li"):
         print("     ", li.inner_text().replace("\n", " — ")[:110])
     page.screenshot(path=SORTIE / "5-lancer.png", full_page=True)
+
+    # --- 9. l'atelier s'arrete : la page doit le DIRE -----------------------
+    # Le defaut que ce pas couvre : une page qui reste affichee, boutons
+    # bleus, et ne repond plus. Personne ne fait le lien entre « j'ai ferme la
+    # fenetre noire » et « la page ne fait plus rien » — ce sont deux objets
+    # differents a l'ecran.
+    srv.shutdown()
+    srv.server_close()
+    page.wait_for_selector("#coupe:not([hidden])", timeout=30000)
+    print("9. atelier arrete — la page reagit en",
+          "moins de 30 s :", page.inner_text("#coupe").split("\n")[0])
+    assert page.evaluate("document.body.classList.contains('coupee')"), \
+        "les etapes doivent etre grisees quand plus rien ne repond"
+    texte = page.inner_text("#coupe")
+    assert "demarrer-atelier" in texte, "il faut dire COMMENT repartir"
+    print("   consigne donnee :", texte.replace("\n", " ")[-110:])
+    page.screenshot(path=SORTIE / "6-arrete.png", full_page=True)
     nav.close()
 
-srv.shutdown()
 print("\nerreurs console :", erreurs if erreurs else "aucune")
 
 

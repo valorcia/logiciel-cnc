@@ -743,3 +743,75 @@ def test_the_starter_only_names_python_versions_with_ready_made_wheels():
 
     assert (3, 11) in VERSIONS_SURES
     assert all(v >= (3, 11) for v in VERSIONS_SURES)
+
+
+def test_the_starter_keeps_a_log_that_survives_the_window_closing(monkeypatch,
+                                                                  tmp_path):
+    """Defaut rapporte depuis une vraie machine Windows : « il dit appuyer sur
+    une touche pour continuer puis plus rien ».
+
+    Une fenetre lancee au double-clic se referme des qu'on appuie sur une
+    touche, et elle emporte le message. L'utilisateur ne peut alors meme pas
+    dire ce qui s'est passe — la panne devient indiagnosticable, ce qui est
+    pire que la panne. Le journal survit a la fermeture.
+    """
+    import tools_import_demarrer as passerelle
+
+    m = passerelle.module
+    journal = tmp_path / "demarrage.log"
+    monkeypatch.setattr(m, "JOURNAL", journal)
+
+    m.ouvrir_journal()
+    m.dire("quelque chose s'est passe")
+    texte = journal.read_text(encoding="utf-8")
+
+    import platform
+    import sys
+
+    assert "quelque chose s'est passe" in texte
+    # l'entete doit porter ce qu'on demanderait de toute facon en premier
+    assert platform.platform() in texte
+    assert sys.version.splitlines()[0] in texte
+
+
+def test_the_log_never_breaks_the_start(monkeypatch, tmp_path):
+    """Un journal qu'on n'arrive pas a ecrire ne doit pas empecher de demarrer :
+    il sert a expliquer une panne, pas a en creer une."""
+    import tools_import_demarrer as passerelle
+
+    m = passerelle.module
+    monkeypatch.setattr(m, "JOURNAL", tmp_path / "absent" / "x" / "y.log")
+    m.dire("ceci ne doit pas lever")          # le dossier parent n'existe pas
+
+
+def test_the_windows_launcher_points_at_the_log():
+    """Le message qui reste a l'ecran juste avant que la fenetre se ferme doit
+    dire ou retrouver ce qu'elle emporte."""
+    racine = Path(__file__).resolve().parents[1]
+    bat = (racine / "demarrer-atelier.bat").read_text(encoding="utf-8")
+    assert "demarrage.log" in bat
+
+
+def test_an_already_used_port_is_explained_not_dumped(monkeypatch, capsys):
+    """Arrive des qu'on double-clique deux fois. Sans filet, l'utilisateur
+    recoit « OSError: [Errno 98] Address already in use » et dix lignes de
+    trace, pour une situation qui n'a rien d'anormal."""
+    import sys
+
+    from xyzac.ui.atelier import __main__ as lanceur
+    from xyzac.ui.atelier.server import servir
+
+    occupe = servir(0)
+    port = occupe.server_address[1]
+    try:
+        monkeypatch.setattr(sys, "argv",
+                            ["atelier", "--port", str(port), "--sans-navigateur"])
+        code = lanceur.main()            # ne doit PAS lever
+    finally:
+        occupe.server_close()
+
+    assert code == 2
+    sortie = capsys.readouterr().out
+    assert "Traceback" not in sortie
+    assert f"http://127.0.0.1:{port}/" in sortie, "il faut dire quoi essayer"
+    assert f"--port {port + 1}" in sortie, "il faut dire comment en lancer un autre"

@@ -14,5 +14,6 @@ _spec = importlib.util.spec_from_file_location("_demarrer_atelier", _chemin)
 _module = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_module)
 
+module = _module
 VERSIONS_SURES = _module.VERSIONS_SURES
 RACINE = _module.RACINE

@@ -18,7 +18,11 @@ const ETIQUETTES = {
   diametre_outil: "Diamètre de l'outil (mm)", jauge_outil: "Sortie d'outil (mm)",
 };
 
-async function get(url) { const r = await fetch(url); return r.json(); }
+async function get(url) {
+  const r = await fetch(url);
+  if (!r.ok && r.status >= 500) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
 async function post(url, corps) {
   const r = await fetch(url, {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -170,9 +174,59 @@ function appliquer() {
   dessinerResultat();
 }
 
+// --------------------------------------------------------- le battement
+//
+// Sans lui, un atelier arrete laisse la page telle quelle : tout est encore
+// affiche, les boutons sont encore bleus, et plus rien ne repond. Personne ne
+// fait le lien entre « j'ai ferme la fenetre noire » et « la page ne fait plus
+// rien » — ce sont deux objets differents a l'ecran. Le battement transforme
+// un silence en phrase.
+
+let coupe = false;
+let battementTimer = null;
+
+function marquerCoupe(estCoupe) {
+  if (estCoupe === coupe) return;
+  coupe = estCoupe;
+  $("#coupe").hidden = !estCoupe;
+  document.body.classList.toggle("coupee", estCoupe);
+  if (!estCoupe) {
+    // L'atelier est revenu. On repart de SON etat, pas de celui qu'on avait
+    // garde : entre-temps il a redemarre vide, et afficher une piece qu'il
+    // n'a plus serait afficher quelque chose de faux.
+    location.reload();
+  }
+}
+
+async function battre() {
+  try {
+    const e = await get("/api/etat");
+    if (coupe) { marquerCoupe(false); return; }
+    // Pendant un calcul, ``sonder`` interroge deja plus souvent : on ne
+    // double pas les requetes.
+    if (!e.occupe) { etat = e; appliquer(); }
+  } catch (err) {
+    marquerCoupe(true);
+  }
+}
+
+function demarrerBattement() {
+  if (battementTimer) clearInterval(battementTimer);
+  // 4 s : assez rapide pour que « j'ai ferme la fenetre » et « la page le dit »
+  // soient percus comme le meme evenement, assez lent pour ne rien couter.
+  battementTimer = setInterval(battre, 4000);
+}
+
 async function sonder() {
   const avant = etat ? etat.occupe : false;
-  etat = await get("/api/etat");
+  try {
+    etat = await get("/api/etat");
+  } catch (err) {
+    // Un calcul interrompu par l'arret de l'atelier ne doit pas laisser la
+    // barre de progression tourner dans le vide.
+    marquerCoupe(true);
+    return;
+  }
   appliquer();
   if (etat.occupe) {
     setTimeout(sonder, 600);
@@ -333,6 +387,7 @@ async function init() {
 
   etat = await get("/api/etat");
   appliquer();
+  demarrerBattement();
 }
 
 init();
