@@ -317,3 +317,85 @@ def test_the_benchmark_never_prints_an_extrapolation():
             continue
         fenetre = " ".join(lignes[max(0, i - 2):i + 3])
         assert any(m in fenetre for m in marqueurs), lignes[i]
+
+
+def test_the_operator_sentence_says_what_to_change():
+    """``describe()`` s'adresse a un rapport, ``consigne()`` a une personne.
+
+    Le meme verdict, deux lecteurs. Celui qui est devant la machine n'a pas les
+    categories du moteur — base du verdict, resolution de la grille — il a une
+    piece posee et une decision a prendre. La phrase est rendue dans le moteur
+    et non dans l'IHM, sinon l'IHM reconstruirait une table de remedes a cote
+    de celle du moteur, et les deux divergeraient.
+    """
+    from xyzac.strategy_planner.indexed_pass import IndexedPassVerdict
+
+    trouve = IndexedPassVerdict(n_points=150, verdict="3+2", a_deg=24.0,
+                                c_deg=-180.0, min_clearance_mm=15.0,
+                                coverage=1.0, basis="verification")
+    p = trouve.consigne()
+    assert "A = 24°" in p and "C = -180°" in p
+    assert "15.0 mm" in p
+    assert "150" in p, "la PORTEE de la verification doit y etre"
+
+    # un point qu'aucune orientation n'atteint : le motif ET le remede
+    bloque = IndexedPassVerdict(
+        n_points=150, verdict="inatteignable", n_probe=8,
+        n_probe_unreachable=4, basis="contre-exemple",
+        unreachable_reasons={"COLLISION_HOLDER": 4})
+    p = bloque.consigne()
+    assert "4 des 8" in p
+    assert "allonger la jauge" in p, p
+
+    # aucune orientation commune : le simultane, et le fait qu'il manque
+    vide = IndexedPassVerdict(n_points=150, verdict="pas-3+2", n_probe=8,
+                              basis="intersection-vide")
+    assert "simultané" in vide.consigne()
+    assert "ne calcule pas encore" in vide.consigne()
+
+    # l'accord se CALCULE : « Les 1 orientations essayées » etait affiche
+    seule = IndexedPassVerdict(n_points=150, verdict="pas-3+2",
+                               basis="verification", n_verified=1,
+                               best_clear_fraction=0.96)
+    assert "Les 1 orientations" not in seule.consigne()
+    assert "96 %" in seule.consigne()
+    deux = IndexedPassVerdict(n_points=150, verdict="pas-3+2",
+                              basis="verification", n_verified=2,
+                              best_clear_fraction=0.45)
+    assert "Les 2 orientations essayées" in deux.consigne()
+
+
+def test_the_operator_sentence_is_accented_everywhere():
+    """Une phrase lue a l'ecran et non dans un journal : elle est en français.
+
+    Le reste du module reste sans accents, par convention de code. La table de
+    remedes, elle, est la SEULE que l'operateur lit telle quelle, donc la seule
+    accentuee — et il n'y en a qu'une, faute de quoi la copie affichable et la
+    copie interne divergeraient.
+    """
+    import re
+
+    from xyzac.strategy_planner.indexed_pass import IndexedPassVerdict, _remede
+
+    mots = {"COLLISION_CUTTING": "arête", "LEAD_LIMIT": "inclinaison",
+            "COLLISION_HOLDER": "jauge", "COLLISION_NECK": "réduit",
+            "MACHINE_COLLISION": "pièce", "MACHINE_TRAVEL": "linéaire",
+            "AXIS_LIMITS": "réalise", "SINGULARITY": "rejetée",
+            "BACK_FACING": "accès"}
+    for motif, mot in mots.items():
+        assert mot in _remede({motif: 1}), (motif, _remede({motif: 1}))
+
+    # aucune phrase affichee ne doit contenir un mot manifestement non accentue
+    suspects = ("verifiee", "degagement", "sondes ", "atteignables par AUCUNE "
+                "orientation : ni 3+2 ni simultane")
+    for v in (IndexedPassVerdict(n_points=1, verdict="3+2", a_deg=0.0,
+                                 c_deg=0.0, min_clearance_mm=1.0,
+                                 basis="verification"),
+              IndexedPassVerdict(n_points=1, verdict="inatteignable",
+                                 n_probe=8, n_probe_unreachable=1,
+                                 basis="contre-exemple",
+                                 unreachable_reasons={"AXIS_LIMITS": 1})):
+        phrase = v.consigne()
+        for s in suspects:
+            assert s not in phrase, (s, phrase)
+        assert re.search(r"[éèêàôûç]", phrase), phrase

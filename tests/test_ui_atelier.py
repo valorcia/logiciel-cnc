@@ -1143,9 +1143,15 @@ def test_the_long_caveat_keeps_a_visible_short_form():
     assert len(s.simulation_resume) < len(s.simulation_note) / 2
     assert "60 %" in s.simulation_resume
     assert "16 image(s) sur 36" in s.simulation_resume
-    # et la forme longue garde ce que la courte laisse tomber
-    assert "finition" in s.simulation_note
-    assert "finition" not in s.simulation_resume
+    # Ce que la courte laisse tomber, c'est la RESERVE — ce que la simulation
+    # ne montre pas. Le partage se fait sur ce critere et non sur un mot :
+    # « 1 ébauche + 3 finitions » a sa place sur la ligne courte, parce que ce
+    # qui va etre montre change une decision. « les brides ne sont pas
+    # modelisees » n'en a pas : c'est une reserve, elle se lit une fois.
+    assert "brides" in s.simulation_note
+    assert "brides" not in s.simulation_resume
+    assert "PAS montré" in s.simulation_note
+    assert "PAS montré" not in s.simulation_resume
 
 
 # ------------------------------- le verdict relie a la geometrie (M12e)
@@ -1477,3 +1483,170 @@ def test_the_row_never_contradicts_the_diagnostic():
     fenetre = src[i:i + 400]
     assert "descendre plus bas" in fenetre, fenetre
     assert "Sélectionnez cette ligne" in fenetre, fenetre
+
+
+# --------------------------- la finition : une orientation VERIFIEE (M12g)
+
+def _faux_banc():
+    """Un banc reduit a ce que ``_operations_finition`` lui demande."""
+    class FauxMachine:
+        def tool_axis_in_part(self, a, c):
+            # Un axe reconnaissable, et surtout PAS la normale moyenne : le
+            # test veut voir d'ou vient l'orientation.
+            return np.array([0.0, 0.6, 0.8])
+
+    class FauxBanc:
+        tool = object()
+        machine = FauxMachine()
+        mount_offset = np.zeros(3)
+
+        def obstacle_field(self):
+            return None
+
+    return FauxBanc()
+
+
+def _fausse_passe(n, normale):
+    class P:
+        points = np.linspace(0.0, 10.0, 3 * n).reshape(n, 3)
+        normals = np.tile(np.asarray(normale, dtype=float), (n, 1))
+    return P()
+
+
+def test_the_finishing_orientation_is_verified_not_deduced(monkeypatch):
+    """Defaut MESURE, et c'est celui qui a fait refaire cette fonction.
+
+    La premiere version tirait l'orientation de la NORMALE MOYENNE de la
+    surface par cinematique inverse. Mesure sur le flanc avant de C05 :
+    A = -90°, C = 0° ne degage qu'en 1,2 % des points. La normale moyenne dit
+    ou REGARDE la surface ; elle ne dit rien de ce que l'outil rencontre en
+    chemin. L'orientation doit donc sortir d'une VERIFICATION, et ce test
+    l'exige en donnant une normale moyenne franchement differente du verdict.
+    """
+    from xyzac.strategy_planner import indexed_pass as ip
+    from xyzac.accessibility_solver import solver as acc
+    from xyzac.ui.atelier.session import Session
+
+    monkeypatch.setattr(acc, "AccessibilitySolver",
+                        lambda *a, **k: object())
+    monkeypatch.setattr(acc, "tcp_from_contact",
+                        lambda p, n, d, t: np.asarray(p, dtype=float))
+    verdict = ip.IndexedPassVerdict(
+        n_points=40, verdict="3+2", a_deg=24.0, c_deg=-180.0,
+        min_clearance_mm=15.0, coverage=1.0, basis="verification")
+    monkeypatch.setattr(ip, "decide_indexed_pass",
+                        lambda *a, **k: verdict)
+
+    s = Session()
+    # Normale moyenne verticale : elle donnerait A = 0, C = 0.
+    s._passes_finition = [_fausse_passe(40, (0.0, 0.0, 1.0))]
+    ops = s._operations_finition(_faux_banc())
+
+    assert len(ops) == 1
+    assert ops[0]["a_deg"] == 24.0 and ops[0]["c_deg"] == -180.0, \
+        "l'orientation doit venir du verdict verifie, pas de la normale"
+    assert ops[0]["degagement"] == 15.0
+    assert s._refus_finition == []
+
+
+def test_a_pass_without_a_clearing_orientation_is_refused_by_name(monkeypatch):
+    """Une animation de 1 % de couverture ressemble a un usinage.
+
+    C'est ce qui la rend dangereuse : elle ne se remarque pas. Une passe sans
+    orientation verifiee n'est donc PAS animee, et le refus est nomme avec son
+    motif — sur C05, aucune des six surfaces n'a d'orientation qui degage dans
+    le montage de depart.
+    """
+    from xyzac.strategy_planner import indexed_pass as ip
+    from xyzac.accessibility_solver import solver as acc
+    from xyzac.ui.atelier.session import Session, Surface
+
+    monkeypatch.setattr(acc, "AccessibilitySolver", lambda *a, **k: object())
+    monkeypatch.setattr(acc, "tcp_from_contact",
+                        lambda p, n, d, t: np.asarray(p, dtype=float))
+    refus = ip.IndexedPassVerdict(
+        n_points=40, verdict="inatteignable", n_probe=8,
+        n_probe_unreachable=4, basis="contre-exemple",
+        unreachable_reasons={"MACHINE_COLLISION": 4})
+    monkeypatch.setattr(ip, "decide_indexed_pass", lambda *a, **k: refus)
+
+    s = Session()
+    s._passes_finition = [_fausse_passe(40, (0.0, -1.0, 0.0))]
+    s.surfaces = [Surface(1, 40, "faisable", "Le flanc avant", "")]
+    ops = s._operations_finition(_faux_banc())
+
+    assert ops == [], "aucune passe ne doit etre animee sans orientation"
+    assert len(s._refus_finition) == 1
+    r = s._refus_finition[0]
+    assert r["titre"] == "Le flanc avant"
+    # le motif ET le remede, rendus par le moteur
+    assert "organe de la machine" in r["phrase"], r["phrase"]
+    assert "retourner" in r["phrase"], r["phrase"]
+
+
+def test_the_note_names_every_surface_left_without_finishing():
+    """« Certaines surfaces ne sont pas montrées » ne designe rien.
+
+    Le refus doit nommer la surface et son motif, sans quoi il se lit comme une
+    limite de l'apercu alors que c'est une limite de la MACHINE, de l'OUTIL ou
+    du MONTAGE — trois choses sur lesquelles on peut agir.
+    """
+    class FauxRapport:
+        removed_fraction = 0.6
+        unreachable_mm3 = 0.0
+        final_removable_mm3 = 0.0
+        gouged_voxels = 0
+
+    s = Session()
+    s.n_images = 10
+    s.film = [{"dans_courses": True}] * 10
+    s._refus_finition = [
+        {"surface": 0, "titre": "Le dessous", "phrase": "8 des 8 points "
+         "sondés ne sont atteignables par AUCUNE orientation."},
+        {"surface": 1, "titre": "Le flanc avant", "phrase": "le porte-outil "
+         "touche : allonger la jauge."},
+    ]
+    s._noter_simulation([(np.zeros((5, 3)), None, None, [0])], FauxRapport())
+
+    assert "Le dessous" in s.simulation_note
+    assert "Le flanc avant" in s.simulation_note
+    assert "allonger la jauge" in s.simulation_note
+    assert "2 surface(s) sans orientation" in s.simulation_resume
+
+
+def test_the_mount_gap_is_stated_and_not_left_as_a_contradiction():
+    """Deux pages, deux questions, et le risque d'une contradiction apparente.
+
+    La verification essaie SIX montages : « usinable » peut vouloir dire
+    « usinable une fois retournee ». La simulation, elle, ne sait dessiner que
+    le montage de depart. Une surface usinable sans finition animee n'est donc
+    pas une incoherence, mais elle le PARAIT si personne ne le dit.
+    """
+    from xyzac.ui.atelier.session import Surface
+
+    class FauxRapport:
+        removed_fraction = 0.6
+        unreachable_mm3 = 0.0
+        final_removable_mm3 = 0.0
+        gouged_voxels = 0
+
+    s = Session()
+    s.n_images = 10
+    s.film = [{"dans_courses": True}] * 10
+    s.surfaces = [Surface(1, 40, "faisable", "Le flanc avant", ""),
+                  Surface(2, 40, "faisable", "Le flanc arrière", "")]
+    s._noter_simulation([(np.zeros((5, 3)), None, None, [0])], FauxRapport())
+    assert "AUTRE montage" in s.simulation_note
+    assert "2 surfaces jugées usinables, 0 avec une orientation" \
+        in s.simulation_note
+
+    # ... et la phrase disparait quand le manque disparait : une reserve
+    # ecrite en dur survit a ce qu'elle decrit.
+    s2 = Session()
+    s2.n_images = 10
+    s2.film = [{"dans_courses": True}] * 10
+    s2.surfaces = [Surface(1, 40, "faisable", "Le dessus", "")]
+    s2._noter_simulation(
+        [(np.zeros((5, 3)), None, None, [0], {"titre": "Le dessus"})],
+        FauxRapport())
+    assert "AUTRE montage" not in s2.simulation_note

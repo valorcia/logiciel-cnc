@@ -47,6 +47,47 @@ TAILLE_MAX = 80 * 1024 * 1024
 #: dans la note de simulation, chiffre a l'appui, plutot que laisse a deviner.
 MAX_INDEXATIONS = 2
 
+#: Points examines par passe de finition avant de l'animer.
+#:
+#: Mesure sur C05, champ d'obstacles de 50 881 points : ``verify_direction``
+#: coûte 31 ms par point avec degagement. Les 7 909 points d'une passe
+#: demanderaient donc quatre minutes PAR orientation essayee, pour une
+#: animation de quelques secondes.
+#:
+#: 150 points REPARTIS sont donc examines, et ce chiffre est affiche a cote du
+#: verdict : une orientation validee sur un echantillon est une mesure
+#: OPTIMISTE — les points non examines peuvent bloquer. Dire « vérifiée » sans
+#: dire « en 150 points sur 7 909 » serait promettre une preuve la ou il y a
+#: un sondage.
+ECHANTILLON_FINITION = 150
+
+#: Points sondes en resolution COMPLETE pour proposer des orientations.
+#:
+#: Le sondage coûte 0,1 a 0,5 s par point (642 directions testees), et son
+#: role n'est pas de conclure mais de faire RETRECIR l'intersection des
+#: orientations admissibles. Huit points repartis suffisent a la reduire a
+#: quelques candidats, ou a exhiber un point qu'aucune orientation n'atteint —
+#: et ce second cas est un refus definitif, obtenu pour quelques dixiemes de
+#: seconde.
+SONDES_FINITION = 8
+
+#: Orientations candidates verifiees par passe.
+#:
+#: Chacune coûte un examen complet de l'echantillon (5 s). Deux, parce que
+#: ``decide_indexed_pass`` les essaie par marge decroissante du sondage : la
+#: premiere est deja la plus degagee des candidates, la seconde sert de
+#: recours quand la premiere echoue loin du sondage.
+CANDIDATS_FINITION = 2
+
+#: Temps que la recherche d'orientations de finition s'autorise, en secondes.
+#:
+#: Mesure : 4 s sur C17, 23 s sur C10 (huit surfaces). Le plafond ne sert donc
+#: pas au cas courant mais au cas imprevu — une piece a trente surfaces, ou un
+#: champ d'obstacles bien plus dense. Les surfaces non examinees sont COMPTEES
+#: et nommees dans la note : un plafond silencieux se lirait comme une absence
+#: de finition possible.
+BUDGET_FINITION = 90.0
+
 #: Fond des vues 3D de l'atelier.
 #:
 #: Le banc de debug a un fond sombre, et c'est justifie la-bas : le degrade de
@@ -67,6 +108,19 @@ FOND_3D = "#eef1f6"
 #: A = -90) : au-dela, la piece commence a sortir du cadre aux poses basculees.
 #: Verifie sur le corpus, pas prouve pour toute taille de piece.
 ZOOM_3D = 1.6
+
+
+@dataclass(frozen=True)
+class _Indexation:
+    """Un couple (A, C), pour presenter une finition comme une ebauche.
+
+    Les operations d'ebauche portent un ``DirectionCandidate`` du planner ; une
+    finition n'en a pas. Plutot que deux chemins dans la boucle d'images, on
+    donne a la finition le meme visage : un objet qui a ``a_deg`` et ``c_deg``.
+    """
+
+    a_deg: float
+    c_deg: float
 
 
 def couleur_verdict(verdict: str) -> str:
@@ -378,6 +432,17 @@ class Session:
     #: Indices des points que la machine refuse dans la POSE DE DEPART, par
     #: surface : c'est la pose que la vue montre, donc la seule ou marquer un
     #: point veut dire quelque chose.
+    #: Les passes de finition elles-memes, gardees apres la verification :
+    #: la simulation en a besoin, et les recalculer coûterait deux secondes
+    #: pour reproduire a l'identique ce qu'on vient de jeter.
+    _passes_finition: list = field(default_factory=list, repr=False)
+    #: Les surfaces dont la finition N'EST PAS animee, et pourquoi — une
+    #: phrase par surface, rendue par le moteur.
+    #:
+    #: Garde plutot que recalcule au moment de rediger la note : la raison
+    #: d'un refus se connait a l'instant du refus, et la reconstituer apres
+    #: coup demanderait de refaire le calcul qui vient de refuser.
+    _refus_finition: list = field(default_factory=list, repr=False)
     _blocages: list = field(default_factory=list, repr=False)
     #: Ceux que MEME une machine ideale refuse : aucun montage ne les leve, et
     #: ce sont donc eux que la recherche d'outil doit franchir.
@@ -492,6 +557,8 @@ class Session:
         self.surfaces, self.resume, self.montages = [], "", []
         self._points_surfaces = []
         self._normales_surfaces = []
+        self._passes_finition = []
+        self._refus_finition = []
         self._blocages = []
         self._blocages_outil = []
         self.diagnostics = {}
@@ -625,6 +692,7 @@ class Session:
                                  for f in passes]
         self._normales_surfaces = [np.asarray(f.normals, dtype=float).mean(axis=0)
                                    for f in passes]
+        self._passes_finition = list(passes)
 
         # La liste s'affiche ENTIERE des maintenant, verdicts vides : les noms
         # ne dependent que des normales, donc ils sont deja connus. L'attente
@@ -859,6 +927,8 @@ class Session:
         self.surfaces, self.resume, self.montages = [], "", []
         self._points_surfaces = []
         self._normales_surfaces = []
+        self._passes_finition = []
+        self._refus_finition = []
         self._blocages = []
         self._blocages_outil = []
         self.diagnostics = {}
@@ -1123,13 +1193,23 @@ class Session:
         for j in range(len(plan.operations)):
             P, R = banc.operation_path(j)
             chemins.append((P, R, rapport.chosen[j]))
-        total = float(sum(len(P) for P, _, _ in chemins)) or 1.0
+        # La FINITION rejoint le film, apres l'ebauche : c'est elle qui fait la
+        # piece, et la simulation ne la montrait pas.
+        self.etape = "orientations de finition"
+        finitions = self._operations_finition(banc)
+        for f in finitions:
+            chemins.append((f["tcp"], None,
+                            _Indexation(f["a_deg"], f["c_deg"]), f))
+
+        total = float(sum(len(P) for P, *_ in chemins)) or 1.0
         plans = []
-        for P, R, cand in chemins:
+        for entree in chemins:
+            P, R, cand = entree[0], entree[1], entree[2]
+            info = entree[3] if len(entree) > 3 else None
             q = max(2, int(round(n * len(P) / total)))
             idx = np.unique(np.linspace(1, max(len(P) - 1, 1), q).astype(int))
-            plans.append((P, R, cand, idx))
-        n_total = sum(len(idx) for *_, idx in plans)
+            plans.append((P, R, cand, idx, info))
+        n_total = sum(len(p[3]) for p in plans)
 
         # Camera FIXE pour toute la serie, posee avant la premiere image. Le
         # cadrage automatique suit l'outil ; sur une suite d'images, la piece
@@ -1141,7 +1221,7 @@ class Session:
                                  window_size=(960, 640), zoom=ZOOM_3D)
 
         k = 0
-        for numero, (P, R, cand, idx) in enumerate(plans, start=1):
+        for numero, (P, R, cand, idx, info) in enumerate(plans, start=1):
             banc.inspect_a_deg = float(cand.a_deg)
             banc.inspect_c_deg = float(cand.c_deg)
             for i in idx:
@@ -1157,7 +1237,10 @@ class Session:
                 lect = banc.axis_readout()
                 self.film.append({
                     "operation": numero,
-                    "titre": self._titre_operation(numero, len(plans), cand),
+                    "titre": (self._titre_finition(info, cand) if info
+                              else self._titre_operation(numero, len(plans),
+                                                         cand)),
+                    "finition": info is not None,
                     "x": round(float(lect.x_mm or 0.0), 1),
                     "y": round(float(lect.y_mm or 0.0), 1),
                     "z": round(float(lect.z_mm or 0.0), 1),
@@ -1171,10 +1254,136 @@ class Session:
                 self.progres = 0.1 + 0.9 * k / max(n_total, 1)
         self._noter_simulation(plans, rapport)
 
+    def _operations_finition(self, banc):
+        """Les passes de FINITION a simuler, avec une orientation VERIFIEE.
+
+        La simulation ne montrait que l'ebauche, et le disait. Or c'est la
+        finition qui fait la piece : c'est elle qui donne l'etat de surface,
+        c'est elle qui passe au plus pres, et c'est donc elle qu'on veut voir
+        avant de lancer.
+
+        Comment l'orientation est choisie, et pourquoi pas autrement
+        ------------------------------------------------------------
+        La premiere version prenait la NORMALE MOYENNE de la surface et en
+        tirait le couple (A, C) par cinematique inverse. C'etait faux, et la
+        mesure l'a dit tout de suite : sur le flanc avant de C05, A = -90°,
+        C = 0° ne degage qu'en **1,2 % des points**. La normale moyenne dit ou
+        REGARDE la surface ; elle ne dit rien de ce que l'outil rencontre en
+        chemin — ni le berceau, ni le porte-outil, ni le rayon local. C'est la
+        meme faute que partout ailleurs dans ce projet : lire une grandeur
+        voisine de celle qu'on veut.
+
+        L'orientation vient donc de ``decide_indexed_pass`` (M10), qui sonde
+        quelques points en resolution complete, intersecte leurs ensembles
+        admissibles pour obtenir des CANDIDATS, puis verifie chaque candidat en
+        chaque point examine. Une passe n'est animee que si un candidat degage
+        PARTOUT sur l'echantillon.
+
+        Ce que cette fonction refuse de faire
+        -------------------------------------
+        Animer une passe sans orientation verifiee. Le cas est frequent — sur
+        C05 aucune des six surfaces n'a d'orientation qui degage dans le
+        montage de depart — et le refus est alors NOMME, avec le motif et le
+        remede rendus par le moteur. Une animation de 1 % de couverture
+        ressemble a un usinage ; c'est ce qui la rend dangereuse.
+
+        Le montage, et la reserve qui reste
+        -----------------------------------
+        Tout se passe dans le montage de DEPART, le seul que la scene sait
+        dessiner. Une surface que la verification a jugee « usinable » peut
+        l'etre dans un RETOURNEMENT — c'est meme le cas de trois surfaces de
+        C05 — et n'avoir aucune orientation ici. Les deux verdicts ne portent
+        donc pas sur la meme question, et la note de simulation le dit au lieu
+        de laisser lire une contradiction.
+        """
+        import time
+
+        from ...accessibility_solver.solver import (AccessibilityConfig,
+                                                    AccessibilitySolver,
+                                                    tcp_from_contact)
+        from ...strategy_planner.indexed_pass import decide_indexed_pass
+
+        self._refus_finition = []
+        if not self._passes_finition:
+            return []
+
+        cfg = AccessibilityConfig(subdivisions=3, max_lead_deg=45.0,
+                                  cutting_depth=0.0)
+        solveur = AccessibilitySolver(banc.tool, banc.machine,
+                                      banc.obstacle_field(), cfg,
+                                      mount_offset_mm=banc.mount_offset)
+        out = []
+        t0 = time.time()
+        n_s = len(self._passes_finition)
+        for i, fp in enumerate(self._passes_finition):
+            titre = (self.surfaces[i].titre if i < len(self.surfaces)
+                     else f"surface {i + 1}")
+            if time.time() - t0 > BUDGET_FINITION:
+                self._refus_finition.append({
+                    "surface": i, "titre": titre,
+                    "phrase": (f"non examinée : les {BUDGET_FINITION:.0f} s "
+                               "que la recherche d'orientations s'autorise "
+                               "étaient épuisées."),
+                })
+                continue
+            pts = np.asarray(fp.points, dtype=float)
+            nrm = np.asarray(fp.normals, dtype=float)
+            # Echantillon REGULIER : un echantillon aleatoire donnerait un
+            # chiffre different a chaque lancement, et un chiffre qui bouge
+            # sans que rien ne bouge n'est pas une mesure.
+            k = np.unique(np.linspace(0, len(pts) - 1,
+                                      min(ECHANTILLON_FINITION, len(pts))
+                                      ).astype(int))
+            self.etape = (f"orientation de finition — {titre} "
+                          f"({i + 1}/{n_s})")
+            # La barre avance pendant cette recherche : elle dure jusqu'a une
+            # vingtaine de secondes, et une barre immobile pendant vingt
+            # secondes se lit comme un calcul bloque. Les images occupent
+            # ensuite 0,1 a 1,0 ; cette phase tient donc dans 0,02 a 0,10.
+            self.progres = 0.02 + 0.08 * i / max(n_s, 1)
+            verdict = decide_indexed_pass(
+                solveur, pts[k], nrm[k],
+                n_probe=SONDES_FINITION, max_candidates=CANDIDATS_FINITION)
+            if not verdict.indexable:
+                self._refus_finition.append({
+                    "surface": i, "titre": titre,
+                    "phrase": verdict.consigne(),
+                })
+                continue
+            axe = banc.machine.tool_axis_in_part(verdict.a_deg, verdict.c_deg)
+            tcp = np.array([tcp_from_contact(pts[j], nrm[j], axe, banc.tool)
+                            for j in range(len(pts))])
+            out.append({
+                "surface": i, "titre": titre,
+                "a_deg": float(verdict.a_deg), "c_deg": float(verdict.c_deg),
+                "tcp": tcp, "n_points": len(pts),
+                "n_verifies": int(len(k)),
+                "degagement": verdict.min_clearance_mm,
+                "consigne": verdict.consigne(),
+            })
+        return out
+
     @staticmethod
     def _titre_operation(numero: int, sur: int, cand) -> str:
         return (f"Ébauche {numero}/{sur} — la pièce est basculée à "
                 f"A = {cand.a_deg:.0f}°, C = {cand.c_deg:.0f}°")
+
+    @staticmethod
+    def _titre_finition(info: dict, cand) -> str:
+        """Le titre porte la MESURE et sa PORTEE, pas seulement un nom.
+
+        « Finition du dessus » ne dit pas si l'orientation dégage.
+        « orientation vérifiée » ne dit pas sur combien de points. Le titre
+        porte donc les deux nombres : ceux qu'on a examinés et ceux de la
+        passe. Un opérateur qui lit « 150 sur 7 909 » sait que le reste n'a
+        pas été regardé ; « vérifiée » seul le lui aurait caché.
+        """
+        deg = ("" if info["degagement"] is None
+               else f", dégagement {info['degagement']:.1f} mm")
+        return (f"Finition — {info['titre'].lower()} à A = {cand.a_deg:.0f}°, "
+                f"C = {cand.c_deg:.0f}° · orientation vérifiée en "
+                f"{info['n_verifies']} points répartis sur les "
+                f"{info['n_points']} de la passe{deg}")
 
     def _noter_simulation(self, plans, rapport) -> None:
         """Ce que la simulation a montre, et ce qu'elle n'a PAS montre.
@@ -1187,9 +1396,15 @@ class Session:
         """
         n_points = sum(len(P) for P, *_ in plans)
         hors = sum(1 for f in self.film if not f["dans_courses"])
+        # Compte les deux familles depuis les PLANS, et non depuis une phrase
+        # ecrite : « seule l'ebauche est calculee » etait vrai hier et faux
+        # aujourd'hui, et une phrase qui decrit un manque survit a la
+        # disparition du manque si on ne la calcule pas.
+        n_fin = sum(1 for p in plans if len(p) > 4 and p[4] is not None)
+        n_eb = len(plans) - n_fin
         bouts = [
-            f"{len(plans)} opération(s) d'ébauche, {n_points} points de "
-            f"trajectoire, {self.n_images} images.",
+            f"{n_eb} opération(s) d'ébauche et {n_fin} de finition, "
+            f"{n_points} points de trajectoire, {self.n_images} images.",
             f"L'ébauche enlève {rapport.removed_fraction * 100:.0f} % de la "
             f"matière du brut.",
         ]
@@ -1214,16 +1429,59 @@ class Session:
             bouts.append(f"{hors} image(s) sur {self.n_images} placent l'outil "
                          f"HORS des courses réglées plus haut : la machine "
                          f"ne pourrait pas y aller.")
-        bouts.append(
-            "Ce qui n'est PAS montré ici : les passes de finition (seule "
-            "l'ébauche est calculée), la matière qui disparaît au fur et à "
-            "mesure (la pièce finie est dessinée dès la première image), et "
-            "les brides, qui ne sont pas modélisées du tout.")
+        # Les surfaces sans finition animee sont NOMMEES, avec le motif rendu
+        # par le moteur. « Certaines surfaces ne sont pas montrées » ne dit ni
+        # lesquelles ni pourquoi, et laisse croire a une limite de l'apercu la
+        # ou il y a une limite de la MACHINE, de l'OUTIL ou du MONTAGE.
+        refus = list(self._refus_finition)
+        if refus:
+            bouts.append(f"{len(refus)} surface(s) n'ont pas de finition "
+                         f"simulée, faute d'orientation qui dégage dans le "
+                         f"montage de départ :")
+            for r in refus[:4]:
+                bouts.append(f"« {r['titre']} » — {r['phrase']}")
+            if len(refus) > 4:
+                # Les surfaces en trop sont NOMMEES sans leur motif, et non
+                # regroupees sous « même raison » : rien ne dit qu'elles
+                # partagent la leur, et l'ecrire serait affirmer une mesure
+                # qu'on n'a pas faite.
+                autres = ", ".join(f"« {r['titre']} »" for r in refus[4:])
+                bouts.append(f"Également sans finition : {autres} — motifs "
+                             f"non détaillés ici.")
+        if n_fin:
+            bouts.append("Les orientations de finition montrées sont "
+                         "vérifiées sur un ÉCHANTILLON réparti de chaque "
+                         "passe, pas sur tous ses points : la mesure est donc "
+                         "optimiste, et le titre de chaque image dit sur "
+                         "combien de points elle porte.")
+        manques = []
+        # La finition est montree dans le montage de DEPART, celui que la vue
+        # dessine. La verification, elle, essaie six montages. Une surface
+        # « usinable » sans finition animee n'est donc pas une contradiction,
+        # mais deux questions differentes — et c'est a dire, sans quoi les deux
+        # pages se contrediraient a l'ecran.
+        usinables = sum(1 for x in self.surfaces if x.verdict == "faisable")
+        if usinables > n_fin:
+            manques.append(
+                f"la finition des surfaces usinables dans un AUTRE montage "
+                f"({usinables} surfaces jugées usinables, {n_fin} avec une "
+                f"orientation dans le montage de départ) : retourner la pièce "
+                f"n'est pas encore simulé")
+        manques.append("la matière qui disparaît au fur et à mesure (la pièce "
+                       "finie est dessinée dès la première image)")
+        manques.append("les brides, qui ne sont pas modélisées du tout")
+        bouts.append("Ce qui n'est PAS montré ici : " + ", ".join(manques) + ".")
         self.simulation_note = " ".join(bouts)
 
         # La ligne courte : seulement ce qui change une decision.
-        courts = [f"{len(plans)} opération(s) d'ébauche",
+        courts = [f"{n_eb} ébauche(s) + {n_fin} finition(s)",
                   f"{rapport.removed_fraction * 100:.0f} % de matière enlevée"]
+        if refus:
+            # Un refus compte autant qu'une operation montree : sans ce
+            # chiffre sur la ligne courte, « 0 finition(s) » se lirait comme
+            # un calcul qui n'a pas eu lieu.
+            courts.append(f"{len(refus)} surface(s) sans orientation qui "
+                          f"dégage")
         if rapport.gouged_voxels:
             courts.append(f"{rapport.gouged_voxels} points de la pièce touchés")
         if hors:

@@ -314,6 +314,42 @@ with sync_playwright() as pw:
     page.wait_for_timeout(300)
     page.locator("#bloc-simu").screenshot(path=SORTIE / "4b-trajectoire.png")
 
+    # La FINITION : c'est elle qui fait la piece. Deux issues possibles, et
+    # l'epreuve exige l'une ou l'autre — jamais le silence.
+    #
+    #   * une orientation VERIFIEE existe : l'image de finition doit dire sur
+    #     combien de points la verification porte, parce qu'un echantillon
+    #     annonce comme une preuve serait une fausse valeur ;
+    #   * aucune ne degage dans le montage de depart (cas de C05) : le refus
+    #     doit etre NOMME. Une absence muette se lirait comme une simulation
+    #     complete, et c'est exactement ce que l'ancienne version faisait — en
+    #     animant une orientation qui degageait sur 1 % des points.
+    finitions = page.evaluate(
+        "() => film.images.map((f, i) => [i, f])"
+        ".filter(([, f]) => f.finition).map(([i]) => i)")
+    if finitions:
+        page.fill("#curseur", str(finitions[len(finitions) // 2]))
+        page.dispatch_event("#curseur", "input")
+        page.wait_for_function(
+            "document.querySelector('#film').complete && "
+            "document.querySelector('#film').naturalWidth > 0", timeout=60000)
+        page.wait_for_timeout(400)
+        titre = page.inner_text("#film-titre")
+        print(f"   finition animee ({len(finitions)} images) :", titre)
+        assert "Finition" in titre, titre
+        assert "vérifiée en" in titre and "répartis sur" in titre, (
+            "le titre doit dire la PORTEE de la verification", titre)
+        page.locator("#bloc-simu").screenshot(path=SORTIE / "4c-finition.png")
+    else:
+        court = page.inner_text("#simu-resume")
+        page.locator("#bloc-note summary").click()
+        longue = page.inner_text("#simu-note")
+        page.locator("#bloc-note summary").click()
+        assert "sans orientation qui dégage" in court, court
+        assert "n'ont pas de finition simulée" in longue, longue
+        print("   aucune finition animee, et le refus est nomme :")
+        print("     ", court)
+
     # --- 8. le bouton LANCER -----------------------------------------------
     page.click("#suivant")                    # vers l'etape 5
     tient_dans_l_ecran("lancement")

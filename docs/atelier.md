@@ -245,16 +245,75 @@ l'outil coupe ou se déplace en rapide, et **s'il sort des courses réglées** �
 ce dernier point a trouvé un cas réel dès le premier essai (plan de dégagement
 à Z = 62 mm pour une course qui s'arrête à 60).
 
+Les passes de **finition** ont rejoint le film, après l'ébauche — voir
+§ 3bis-c, y compris pour le cas fréquent où il n'y en a aucune à montrer.
+
 Ce que la simulation **ne** montre **pas**, et qu'elle écrit sous elle, chiffré
 depuis l'état réel :
 
-- les passes de **finition** — seule l'ébauche est calculée ;
 - la **matière qui disparaît** — la pièce finie est dessinée dès la première
   image ;
 - les **brides**, qui ne sont modélisées nulle part dans le projet ;
 - la matière restante, séparée en deux : celle qu'**aucune** indexation
   candidate ne voit (il faut reposer la pièce) et celle que l'aperçu laisse
   parce qu'il **se limite à 2 indexations** pour tenir en quelques secondes.
+
+### 3bis-c. L'orientation de finition : cherchée, pas déduite
+
+C'est la finition qui fait la pièce : c'est elle qui donne l'état de surface,
+elle qui passe au plus près. Le film la montre donc, après l'ébauche — mais
+seulement quand une orientation a été **vérifiée**.
+
+**Le défaut mesuré, et ce qu'il enseigne.** La première version prenait la
+*normale moyenne* de la surface et en tirait le couple (A, C) par cinématique
+inverse. C'est séduisant et c'est faux. Mesure sur le flanc avant de
+`C05_ailettes_rapprochees` : A = −90°, C = 0° ne dégage qu'en **1,2 % des
+points**. La normale moyenne dit où **regarde** la surface ; elle ne dit rien
+de ce que l'outil rencontre en chemin — ni le berceau, ni le porte-outil, ni le
+rayon local. C'est la même faute que six autres dans ce projet : *lire une
+grandeur voisine de celle qu'on veut*.
+
+**Ce qui a remplacé ça.** `decide_indexed_pass` (moteur M10, pas l'IHM) sonde
+8 points en résolution complète, intersecte leurs ensembles admissibles pour
+obtenir des **candidats**, puis vérifie chaque candidat en chaque point examiné.
+Une passe n'est animée que si un candidat dégage **partout** sur l'échantillon.
+Sur `C01_bloc_simple`, le dessus sort ainsi à **A = 24°, C = −180°, dégagement
+15,0 mm** — et non à A = 0 comme la normale l'aurait dicté.
+
+**La portée est affichée avec la mesure.** Le champ d'obstacles fait
+50 881 points sur C05, et `verify_direction` y coûte 31 ms par point : les
+7 909 points d'une passe demanderaient quatre minutes *par orientation
+essayée*. 150 points répartis sont donc examinés, et le titre de l'image le
+dit : « orientation vérifiée en 150 points répartis sur les 5 278 de la
+passe ». Une vérification sur échantillon est une mesure **optimiste** ; écrire
+« vérifiée » sans écrire « sur 150 » promettrait une preuve là où il y a un
+sondage.
+
+**Quand il n'y a rien à montrer, c'est dit.** Sur C05, **aucune** des six
+surfaces n'a d'orientation qui dégage dans le montage de départ. La simulation
+n'anime alors aucune finition, et nomme chaque refus avec son motif *et son
+remède*, rendus par le moteur :
+
+> « Le dessous » — 8 des 8 points sondés ne sont atteignables par AUCUNE
+> orientation : ni 3+2 ni simultané ne passeront là. Ce qui bloque : aucun
+> couple (A, C) ne réalise l'orientation requise : cette face demande un second
+> montage.
+>
+> « Le dessus » — 4 des 8 points sondés ne sont atteignables par AUCUNE
+> orientation […]. Ce qui bloque : le porte-outil touche : allonger la jauge.
+
+Une animation de 1 % de couverture ressemble à un usinage : c'est ce qui la
+rend dangereuse, elle ne se remarque pas. Un refus nommé, si.
+
+**Deux pages, deux questions — et la contradiction apparente est dite.** La
+vérification (étape 3) essaie **six montages** : « usinable » peut vouloir dire
+« usinable une fois retournée ». La simulation, elle, ne sait dessiner que le
+montage de départ. Trois surfaces de C05 sont donc jugées usinables sans avoir
+de finition animée, et la note l'énonce — *« 3 surfaces jugées usinables,
+0 avec une orientation dans le montage de départ : retourner la pièce n'est pas
+encore simulé »* — plutôt que de laisser deux pages se contredire à l'écran.
+Cette phrase est **calculée** depuis les deux comptes : elle disparaît d'elle
+même le jour où le remontage sera simulé.
 
 ### 3ter. Le bouton LANCER
 
@@ -402,6 +461,20 @@ Le second demande `playwright` et un navigateur, ce qui explique qu'il vive
 dans `tools/` : il ne doit pas alourdir la suite du projet. Il clique
 réellement sur les boutons, attend les images, lit les verdicts, et laisse ses
 captures dans `out/atelier/`.
+
+La pièce s'impose par `PIECE=` — et il vaut la peine d'en éprouver **deux**,
+parce que la finition a deux issues, toutes deux à vérifier :
+
+```bash
+PIECE=C01_bloc_simple.step           python tools/test_atelier_navigateur.py
+PIECE=C05_ailettes_rapprochees.step  python tools/test_atelier_navigateur.py
+```
+
+Sur la première, une orientation de finition est trouvée et l'épreuve exige que
+le titre de l'image dise **sur combien de points** la vérification porte. Sur
+la seconde, aucune ne dégage dans le montage de départ, et l'épreuve exige que
+le refus soit **nommé** — dans la ligne courte comme dans la note. Le silence
+échoue dans les deux sens.
 
 Résultat de la dernière exécution : fichier `.step` **téléversé** par le
 sélecteur (60 × 60 × 25 mm, annoncé « votre fichier »), un `.txt` **refusé** en

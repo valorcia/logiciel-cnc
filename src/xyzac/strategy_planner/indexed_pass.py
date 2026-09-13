@@ -129,6 +129,53 @@ class IndexedPassVerdict:
         return self.basis in ("verification", "contre-exemple",
                               "intersection-vide")
 
+    def consigne(self) -> str:
+        """Le meme verdict, mais dit a l'OPERATEUR : ce qu'on a trouve, ou
+        ce qu'il faut changer.
+
+        ``describe()`` s'adresse a qui lit un rapport de moteur : il nomme la
+        base du verdict, la resolution de la grille, les compteurs. Une
+        personne devant la machine n'a pas ces categories ; elle a une piece
+        posee et une decision a prendre. La phrase est donc rendue ICI, et non
+        dans l'interface : le remede vient de ``_remede``, donc du meme endroit
+        que celui qui connait les motifs. Redigee dans l'IHM, elle aurait
+        reconstruit une table de remedes a cote de celle-ci, et les deux
+        auraient diverge.
+
+        Aucune phrase n'est ecrite en dur pour un manque : tout sort des
+        champs mesures. Une phrase ecrite survit a la disparition de ce
+        qu'elle decrit.
+        """
+        if self.n_points == 0:
+            return "Aucun point à usiner sur cette surface."
+        if self.indexable:
+            deg = ("" if self.min_clearance_mm is None
+                   else f", dégagement {self.min_clearance_mm:.1f} mm")
+            return (f"Orientation trouvée : A = {self.a_deg:.0f}°, "
+                    f"C = {self.c_deg:.0f}°{deg}, vérifiée en chacun des "
+                    f"{self.n_points} points examinés.")
+        if self.verdict == "inatteignable":
+            return (f"{self.n_probe_unreachable} des {self.n_probe} points "
+                    f"sondés ne sont atteignables par AUCUNE orientation : "
+                    f"ni 3+2 ni simultané ne passeront là. Ce qui bloque : "
+                    f"{_remede(self.unreachable_reasons)}.")
+        if self.basis == "intersection-vide":
+            return ("Aucune orientation unique ne dégage sur toute la "
+                    "surface : il faudrait du 5 axes simultané, que le "
+                    "moteur ne calcule pas encore.")
+        # « Les 1 orientations essayées » : l'accord se calcule, il ne
+        # s'ecrit pas. Un pluriel invariable dans une phrase affichee a
+        # l'operateur se lit comme une phrase generee, donc comme une phrase
+        # qu'on n'a pas relue.
+        if self.n_verified == 1:
+            tete = "La seule orientation candidate dégage"
+        else:
+            tete = f"Les {self.n_verified} orientations essayées dégagent"
+        return (f"{tete} au mieux "
+                f"{self.best_clear_fraction * 100:.0f} % de la surface : il "
+                "faudrait du 5 axes simultané, que le moteur ne calcule pas "
+                "encore.")
+
     def describe(self) -> str:
         head = f"{self.n_points} points : {self.verdict}"
         if self.indexable:
@@ -274,33 +321,39 @@ def _remede(motifs: dict[str, int]) -> str:
     course par la position de la piece, une inaccessibilite de face inferieure
     par un RETOURNEMENT — c'est-a-dire un second montage, que le moteur ne
     sait pas encore ordonnancer.
+
+    Ces phrases sont ACCENTUEES, contrairement au reste du module : elles sont
+    les seules que l'operateur lit telles quelles, au travers de
+    ``consigne()``. Une table interne doublee d'une table affichable finirait
+    par diverger, et celle qui aurait diverge serait celle qu'on lit a
+    l'ecran : il n'y en a donc qu'une.
     """
     if not motifs:
         return ""
     dominant = max(motifs, key=lambda k: motifs[k])
     return {
-        "COLLISION_CUTTING": "l'arete de coupe elle-meme ne rentre pas : le "
+        "COLLISION_CUTTING": "l'arête de coupe elle-même ne rentre pas : le "
                              "rayon local de la surface est plus petit que le "
                              "bec de l'outil. Aucun montage n'y changera rien, "
                              "il faut un outil de bec plus petit",
         "LEAD_LIMIT": "aucune direction ne tient dans l'inclinaison admise : "
-                      "relever max_lead_deg si la surface le supporte, sinon "
-                      "outil plus court",
+                      "relever l'inclinaison maximale si la surface le "
+                      "supporte, sinon un outil plus court",
         "COLLISION_HOLDER": "le porte-outil touche : allonger la jauge",
         "COLLISION_SPINDLE": "le nez de broche touche : allonger la jauge",
         "COLLISION_SHANK": "la tige touche : outil plus long ou col plus fin",
-        "COLLISION_NECK": "le col touche : outil a col reduit",
-        "MACHINE_COLLISION": "l'outil touche un organe machine (plateau, "
-                             "berceau) : rehausser ou decaler la piece, ou "
-                             "retourner la piece si cette face regarde le "
+        "COLLISION_NECK": "le col touche : il faut un outil à col réduit",
+        "MACHINE_COLLISION": "l'outil touche un organe de la machine "
+                             "(plateau, berceau) : rehausser ou décaler la "
+                             "pièce, ou la retourner si cette face regarde le "
                              "plateau",
-        "MACHINE_TRAVEL": "hors course lineaire : rapprocher la piece du "
+        "MACHINE_TRAVEL": "hors course linéaire : rapprocher la pièce du "
                           "centre du plateau",
-        "AXIS_LIMITS": "aucun couple (A, C) ne realise l'orientation requise : "
+        "AXIS_LIMITS": "aucun couple (A, C) ne réalise l'orientation requise : "
                        "cette face demande un second montage",
-        "SINGULARITY": "orientation quasi verticale rejetee comme singuliere : "
-                       "en 3+2 le plateau est bloque, donc A = 0 est utilisable "
-                       "(allow_singular)",
-        "BACK_FACING": "la normale regarde a l'oppose de tout acces : second "
-                       "montage",
+        "SINGULARITY": "orientation quasi verticale rejetée comme singulière : "
+                       "en 3+2 le plateau est bloqué, donc A = 0 est "
+                       "utilisable",
+        "BACK_FACING": "la normale regarde à l'opposé de tout accès : il faut "
+                       "un second montage",
     }.get(dominant, f"motif dominant {dominant}")
