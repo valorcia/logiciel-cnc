@@ -18,6 +18,8 @@ est un simulateur : il montre ce qui se passerait.
 
 from __future__ import annotations
 
+import subprocess
+import sys
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -144,26 +146,70 @@ def rendu_3d() -> str:
     return _RENDU[0]
 
 
+#: Le controle, execute dans un processus SEPARE.
+_SONDE = (
+    "import pyvista as pv;"
+    "pv.OFF_SCREEN=True;"
+    "p=pv.Plotter(off_screen=True, window_size=(32,32));"
+    "p.add_mesh(pv.Sphere());"
+    "p.screenshot(return_img=True);"
+    "p.close();"
+    "print('RENDU-OK')"
+)
+
+
 def _controler_rendu() -> str:
+    """Fabrique une image dans un AUTRE processus, et rend ce qu'il faut faire.
+
+    **Pourquoi un autre processus.** Le pilote graphique est du code natif : il
+    ne leve pas d'exception, il fait tomber le processus. Mesure faite sur une
+    machine Windows ou le rendu logiciel avait ete demande a tort : le controle
+    a tue l'atelier entier, code de sortie 3221225477 (violation d'acces), sans
+    une ligne de Python — donc sans rien a lire pour comprendre. Un controle
+    qui tue le programme qu'il controle ne controle plus rien.
+
+    Isole, le meme plantage devient un code de retour, donc une phrase.
+    """
     try:
-        import pyvista as pv
-    except ImportError:
+        r = subprocess.run([sys.executable, "-c", _SONDE], capture_output=True,
+                           text=True, errors="replace", timeout=300)
+    except OSError as e:
+        return f"Impossible de controler l'affichage 3D ({e})."
+    except subprocess.TimeoutExpired:
+        return ("Le controle de l'affichage 3D ne repond pas au bout de "
+                "5 minutes. Le pilote graphique de cette machine est "
+                "probablement en cause.")
+
+    if r.returncode == 0 and "RENDU-OK" in r.stdout:
+        return ""
+
+    sortie = f"{r.stdout}\n{r.stderr}"
+    bas = sortie.lower()
+    if "modulenotfounderror" in bas and "pyvista" in bas:
         return ("L'affichage 3D n'est pas installe. Dans le dossier du "
                 "logiciel, tapez :  pip install -e \".[atelier]\"  puis "
                 "relancez l'atelier.")
-    try:
-        pv.OFF_SCREEN = True
-        tracoir = pv.Plotter(off_screen=True, window_size=(32, 32))
-        tracoir.add_mesh(pv.Sphere())
-        tracoir.screenshot(return_img=True)
-        tracoir.close()
-    except Exception as e:                         # noqa: BLE001
-        return (f"L'affichage 3D est installe mais ne produit pas d'image "
-                f"({type(e).__name__} : {e}). Sur une machine sans ecran, il "
-                f"manque en general le rendu logiciel : installez le paquet "
-                f"systeme libosmesa6 (Debian/Raspberry Pi OS : "
-                f"sudo apt install libosmesa6), puis relancez.")
-    return ""
+    if "osmesa" in bas:
+        # Le cas exact qui a casse l'atelier sous Windows. On nomme la variable
+        # plutot que de conseiller d'installer OSMesa : sur un poste qui a un
+        # ecran, le rendu logiciel n'a rien a faire la, et c'est la DEMANDE
+        # qu'il faut retirer, pas la bibliotheque qu'il faut ajouter.
+        return ("L'affichage 3D a reclame le rendu logiciel OSMesa, qui n'est "
+                "pas installe. Si cette machine a un ecran, c'est la demande "
+                "qui est en trop : videz la variable d'environnement "
+                "VTK_DEFAULT_OPENGL_WINDOW et relancez. Sur une machine SANS "
+                "ecran, installez le rendu logiciel (Debian et Raspberry Pi "
+                "OS : sudo apt install libosmesa6).")
+    if r.returncode < 0 or r.returncode > 255:
+        # Code anormal = le processus est TOMBE, il ne s'est pas termine.
+        return (f"L'affichage 3D fait tomber le programme (code "
+                f"{r.returncode}). C'est un probleme de pilote graphique, pas "
+                f"de l'atelier : mettez a jour le pilote de votre carte "
+                f"graphique, puis relancez.")
+    derniere = [l for l in sortie.splitlines() if l.strip()]
+    detail = derniere[-1][:200] if derniere else f"code {r.returncode}"
+    return (f"L'affichage 3D est installe mais ne produit pas d'image. "
+            f"Message : {detail}")
 
 
 def nommer(normale) -> str:

@@ -45,7 +45,13 @@ JOURNAL = RACINE / "demarrage.log"
 #: ne publie pas de roue pour n'importe quelle version, et une compilation
 #: d'OCCT depuis les sources n'est pas quelque chose qu'on demande a quelqu'un
 #: qui voulait regarder une piece tourner.
-VERSIONS_SURES = ((3, 11), (3, 12), (3, 13))
+#:
+#: 3.14 a ete ajoutee sur une mesure, pas sur une impression : le journal d'une
+#: installation reelle sous Windows 11 montre cadquery-ocp, vtk, numpy, scipy
+#: et pillow installes en cp314, sans une erreur. L'avertissement « version plus
+#: recente que les versions eprouvees » etait donc FAUX, et un avertissement
+#: faux use la confiance dans les vrais.
+VERSIONS_SURES = ((3, 11), (3, 12), (3, 13), (3, 14))
 
 #: En dessous de ce temps, un atelier qui se termine ne s'est pas ARRETE : il
 #: n'a pas demarre. La distinction n'est pas cosmetique — c'est elle qui decide
@@ -289,7 +295,13 @@ def rapporter_echec(code: int, duree: float, lignes: list) -> None:
         dire("Les dernieres lignes qu'il a ecrites :")
         print()
         for l in utiles[-15:]:
-            print(f"    | {l}")
+            # ``dire`` et non ``print`` : le premier journal recu d'une vraie
+            # machine s'arretait a « Les dernieres lignes qu'il a ecrites : »
+            # suivi de RIEN, parce que les lignes citees partaient a l'ecran
+            # sans passer par le journal. La partie la plus utile du rapport
+            # etait exactement celle qui ne survivait pas a la fermeture de la
+            # fenetre.
+            dire(f"  | {l}")
     else:
         print()
         dire("Il n'a rien ecrit du tout, ce qui est inhabituel.")

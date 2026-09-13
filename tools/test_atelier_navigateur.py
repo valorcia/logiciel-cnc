@@ -33,12 +33,23 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 time.sleep(0.4)
 
 erreurs = []
+# L'etape 9 COUPE le serveur volontairement : le navigateur signale alors un
+# ERR_CONNECTION_REFUSED, qui est le comportement attendu et non un defaut.
+# Sans ce drapeau, l'epreuve echouait sur la panne qu'elle provoque elle-meme.
+coupure_voulue = [False]
+
+
+def _console(m):
+    if m.type == "error" and not coupure_voulue[0]:
+        erreurs.append(m.text)
+
+
 with sync_playwright() as pw:
     chemin_nav = os.environ.get("NAVIGATEUR", "")
     nav = (pw.chromium.launch(executable_path=chemin_nav) if chemin_nav
            else pw.chromium.launch())
     page = nav.new_page(viewport={"width": 900, "height": 1100})
-    page.on("console", lambda m: erreurs.append(m.text) if m.type == "error" else None)
+    page.on("console", _console)
     page.on("pageerror", lambda e: erreurs.append(f"pageerror: {e}"))
     page.goto("http://127.0.0.1:8792/", wait_until="networkidle")
     page.screenshot(path=SORTIE / "1-accueil.png", full_page=True)
@@ -136,6 +147,7 @@ with sync_playwright() as pw:
     # bleus, et ne repond plus. Personne ne fait le lien entre « j'ai ferme la
     # fenetre noire » et « la page ne fait plus rien » — ce sont deux objets
     # differents a l'ecran.
+    coupure_voulue[0] = True
     srv.shutdown()
     srv.server_close()
     page.wait_for_selector("#coupe:not([hidden])", timeout=30000)

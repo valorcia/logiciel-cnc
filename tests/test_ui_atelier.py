@@ -636,24 +636,6 @@ def test_the_atelier_extra_exists_and_does_not_drag_qt_along():
     assert "[atelier]" in avant[j:], avant[j:i]
 
 
-def test_the_render_check_says_what_to_install(monkeypatch):
-    """Un controle qui echoue doit nommer une action.
-
-    ``sys.modules[nom] = None`` fait lever ``ImportError`` a l'import suivant :
-    c'est la facon de rejouer une installation incomplete sans en fabriquer
-    une.
-    """
-    import sys
-
-    import xyzac.ui.atelier.session as sess
-
-    monkeypatch.setitem(sys.modules, "pyvista", None)
-    monkeypatch.setattr(sess, "_RENDU", [None])
-    message = sess.rendu_3d()
-    assert message, "une installation sans pyvista doit etre signalee"
-    assert "pip install" in message and "[atelier]" in message, message
-
-
 def test_a_render_failure_reaches_the_page_instead_of_cutting_the_line(serveur):
     """Sans filet, une panne de rendu remontait dans ``http.server``, qui coupe
     la connexion : le navigateur affichait une image vide et ne disait rien.
@@ -742,6 +724,9 @@ def test_the_starter_only_names_python_versions_with_ready_made_wheels():
     from tools_import_demarrer import VERSIONS_SURES
 
     assert (3, 11) in VERSIONS_SURES
+    assert (3, 14) in VERSIONS_SURES, (
+        "mesure sur une installation reelle sous Windows 11 : cp314 existe "
+        "pour toutes les dependances, donc avertir etait faux")
     assert all(v >= (3, 11) for v in VERSIONS_SURES)
 
 
@@ -876,3 +861,113 @@ def test_nothing_is_asked_when_no_one_can_answer(monkeypatch):
                         lambda _: pytest.fail("rien ne doit etre demande"))
     assert m.relancer() is False
     assert m.relancer(anormal=True) is False
+
+
+# --------------------------------------- l'affichage 3D selon le systeme
+
+@pytest.mark.parametrize("plateforme,environnement,attendu", [
+    ("win32", {}, False),
+    ("darwin", {}, False),
+    ("linux", {}, True),
+    ("linux", {"DISPLAY": ":0"}, False),
+    ("linux", {"WAYLAND_DISPLAY": "wayland-0"}, False),
+])
+def test_software_rendering_is_only_forced_on_linux(plateforme, environnement,
+                                                    attendu):
+    """Defaut trouve en cassant l'atelier sur la machine de quelqu'un d'autre.
+
+    ``DISPLAY`` et ``WAYLAND_DISPLAY`` sont des variables X11 et Wayland :
+    elles n'existent pas sous Windows ni sous macOS. « Pas de DISPLAY donc pas
+    d'ecran » y est donc TOUJOURS vrai, et le rendu logiciel s'y trouvait force
+    sur toutes les machines — or osmesa.dll n'est pas livre avec Windows.
+    Violation d'acces memoire au demarrage (code 3221225477), sur un poste qui
+    a pourtant un ecran.
+
+    Une absence de variable X11 mesure l'absence de X11, pas l'absence
+    d'ecran. Les deux coincident sur Linux et nulle part ailleurs.
+    """
+    from xyzac.ui.atelier.__main__ import rendu_logiciel
+
+    assert rendu_logiciel(plateforme, environnement) is attendu
+
+
+def _faux_essai(code=0, sortie="", erreur=""):
+    class R:
+        returncode = code
+        stdout = sortie
+        stderr = erreur
+    return lambda *a, **kw: R()
+
+
+@pytest.mark.parametrize("code,sortie,attendu", [
+    (1, "ModuleNotFoundError: No module named 'pyvista'", "pip install"),
+    (1, "ModuleNotFoundError: No module named 'pyvista'", "[atelier]"),
+    (3221225477, "osmesa.dll not found", "VTK_DEFAULT_OPENGL_WINDOW"),
+    (3221225477, "", "pilote"),
+    (1, "RuntimeError: quelque chose", "quelque chose"),
+])
+def test_a_render_crash_becomes_a_sentence(monkeypatch, code, sortie, attendu):
+    """Le pilote graphique est du code natif : il ne leve pas d'exception, il
+    fait TOMBER le processus. Le controle tourne donc dans un processus a part,
+    ou le meme plantage devient un code de retour — donc une phrase.
+
+    Un controle qui tue le programme qu'il controle ne controle plus rien.
+    """
+    import xyzac.ui.atelier.session as sess
+
+    monkeypatch.setattr(sess.subprocess, "run", _faux_essai(code, sortie))
+    monkeypatch.setattr(sess, "_RENDU", [None])
+    message = sess.rendu_3d()
+    assert message, "un echec doit etre signale"
+    assert attendu in message, message
+
+
+def test_a_working_render_reports_nothing(monkeypatch):
+    """Et le cas qui marche ne doit rien inventer : le controle s'appuie sur un
+    temoin ECRIT par la sonde, pas sur le seul code de retour — un processus
+    peut sortir a zero sans avoir rien dessine."""
+    import xyzac.ui.atelier.session as sess
+
+    monkeypatch.setattr(sess.subprocess, "run", _faux_essai(0, "RENDU-OK\n"))
+    monkeypatch.setattr(sess, "_RENDU", [None])
+    assert sess.rendu_3d() == ""
+
+    monkeypatch.setattr(sess.subprocess, "run", _faux_essai(0, "rien du tout"))
+    monkeypatch.setattr(sess, "_RENDU", [None])
+    assert sess.rendu_3d() != "", "sortir a zero sans image n'est pas un succes"
+
+
+def test_the_quoted_failure_lines_reach_the_log(monkeypatch, tmp_path, capsys):
+    """Le premier journal recu d'une vraie machine s'arretait a « Les dernieres
+    lignes qu'il a ecrites : » suivi de RIEN : les lignes citees partaient a
+    l'ecran sans passer par le journal. La partie la plus utile du rapport
+    etait exactement celle qui ne survivait pas a la fermeture de la fenetre."""
+    import tools_import_demarrer as passerelle
+
+    m = passerelle.module
+    journal = tmp_path / "d.log"
+    monkeypatch.setattr(m, "JOURNAL", journal)
+    m.rapporter_echec(3221225477, 12.0, ["osmesa.dll not found"])
+    assert "osmesa.dll not found" in journal.read_text(encoding="utf-8")
+
+
+def test_a_real_native_crash_does_not_take_the_workshop_down(monkeypatch):
+    """L'isolement est eprouve par un VRAI plantage, pas par une imitation.
+
+    ``os.abort()`` dans le processus fils fait ce que fait un pilote graphique
+    defaillant : il tombe, sans exception Python. Si la sonde tournait encore
+    dans le processus courant, ce test ferait tomber pytest — ce qui est
+    exactement ce qui est arrive a l'atelier sur une machine Windows.
+
+    Verifier avec un ``subprocess.run`` simule aurait mesure la simulation.
+    """
+    import xyzac.ui.atelier.session as sess
+
+    monkeypatch.setattr(sess, "_SONDE", "import os; os.abort()")
+    monkeypatch.setattr(sess, "_RENDU", [None])
+
+    message = sess.rendu_3d()                 # ne doit PAS tuer ce processus
+    assert message, "un plantage doit etre signale"
+    assert "pilote" in message, message
+    # et on est toujours vivant pour le dire
+    assert sess.rendu_3d() == message

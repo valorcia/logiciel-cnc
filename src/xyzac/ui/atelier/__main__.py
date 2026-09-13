@@ -5,14 +5,39 @@ import os
 import threading
 import webbrowser
 
-# Sans ecran, VTK tente d'ouvrir une connexion X, echoue, et imprime un
-# avertissement en jaune avant de se rabattre tout seul sur le rendu logiciel.
-# L'image sort quand meme — mais quelqu'un qui monte un kit et qui lit
-# « bad X server connection » croit que le logiciel est casse. On choisit donc
-# le rendu logiciel d'entree, et UNIQUEMENT s'il n'y a effectivement pas
-# d'ecran : sur un poste qui en a un, forcer le logiciel serait plus lent pour
-# rien.
-if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+import sys
+
+
+def rendu_logiciel(plateforme: str, environnement) -> bool:
+    """Faut-il demander a VTK le rendu logiciel (OSMesa) ?
+
+    **Uniquement sous Linux, et seulement sans serveur d'affichage.**
+
+    Motif de la premiere condition, apprise en cassant l'atelier chez quelqu'un
+    d'autre : ``DISPLAY`` et ``WAYLAND_DISPLAY`` sont des variables X11 et
+    Wayland. Elles n'existent pas sous Windows ni sous macOS. « Pas de DISPLAY
+    donc pas d'ecran » y est donc TOUJOURS vrai, et le rendu logiciel s'y
+    trouvait force sur toutes les machines — or ``osmesa.dll`` n'est pas livre
+    avec Windows. Resultat : violation d'acces memoire (code 3221225477) au
+    demarrage, sur un poste qui a un ecran parfaitement utilisable.
+
+    Une absence de variable X11 mesure l'absence de X11, pas l'absence
+    d'ecran. Les deux coincident sur Linux et nulle part ailleurs.
+
+    Motif de la seconde : sans serveur d'affichage, VTK tente une connexion X,
+    echoue, et imprime un avertissement en jaune avant de se rabattre tout seul
+    sur le rendu logiciel. L'image sort quand meme — mais quelqu'un qui monte
+    un kit et qui lit « bad X server connection » croit que le logiciel est
+    casse. Sur un poste qui a un ecran, forcer le logiciel serait plus lent
+    pour rien.
+    """
+    if not plateforme.startswith("linux"):
+        return False
+    return not (environnement.get("DISPLAY")
+                or environnement.get("WAYLAND_DISPLAY"))
+
+
+if rendu_logiciel(sys.platform, os.environ):
     os.environ.setdefault("VTK_DEFAULT_OPENGL_WINDOW", "vtkOSOpenGLRenderWindow")
 
 from .server import servir
