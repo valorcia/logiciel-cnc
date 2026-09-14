@@ -79,6 +79,7 @@ def build_scene(
     material: MaterialState | None = None,
     material_pitch: float | None = None,
     material_state: str = "intact",
+    shape=None,
 ) -> Scene:
     """Assemble la scene et le champ d'obstacles a partir d'un ``Setup``.
 
@@ -96,8 +97,16 @@ def build_scene(
 
     ``include_stock=False`` retire purement le brut. Conserve pour les essais,
     a ne pas utiliser pour valider quoi que ce soit.
+
+    ``shape`` evite de RELIRE le STEP quand l'appelant l'a deja en main. Le
+    planner est dans ce cas, et il interroge cette fonction une fois par
+    indexation candidate : relire et retesseler le fichier a chaque fois
+    coûtait le prix de l'import pour un resultat identique. Cela leve aussi
+    une exigence que rien ne justifiait — un ``Setup`` dont le chemin STEP
+    n'existe pas reste utilisable quand la forme est fournie.
     """
-    shape = brep.load_step(setup.part_step_path)
+    if shape is None:
+        shape = brep.load_step(setup.part_step_path)
     part = brep.sample_surface(shape, spacing=sample_spacing)
 
     if material is None and material_state in ("intact", "finished"):

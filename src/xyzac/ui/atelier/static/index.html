@@ -143,6 +143,41 @@
     <ul id="avertissements" class="reserves"></ul>
   </div>
 
+  <!-- Comment la piece est TENUE. A l'etape 3 parce que cela change la
+       reponse, et avant les cotes de machine parce qu'un bridage non declare
+       rend tout le verdict optimiste. -->
+  <div id="bloc-bridage" class="avis-action avis-action--doux" hidden>
+    <p><strong>Comment tenez-vous la pièce&nbsp;?</strong>
+      <span id="bridage-resume"></span></p>
+    <div class="grille">
+      <div class="champ">
+        <label for="b-forme">Montage</label>
+        <select id="b-forme"></select>
+      </div>
+      <div class="champ" id="champ-prise">
+        <label for="b-prise">Prise dans l'étau (mm)</label>
+        <input id="b-prise" type="number" min="1" max="200" step="1">
+      </div>
+      <div class="champ" id="champ-axe">
+        <label for="b-axe">Serrage selon</label>
+        <select id="b-axe"><option value="x">X</option>
+          <option value="y">Y</option></select>
+      </div>
+      <div class="champ" id="champ-nbrides">
+        <label for="b-nbrides">Nombre de brides</label>
+        <input id="b-nbrides" type="number" min="1" max="4" step="1">
+      </div>
+      <div class="champ" id="champ-recouvrement">
+        <label for="b-recouvrement">Recouvrement du bord (mm)</label>
+        <input id="b-recouvrement" type="number" min="0" max="50" step="1">
+      </div>
+      <div class="champ" id="champ-hbrides">
+        <label for="b-hbrides">Hauteur des brides (mm)</label>
+        <input id="b-hbrides" type="number" min="1" max="200" step="1">
+      </div>
+    </div>
+  </div>
+
   <details class="volet" id="bloc-reglages">
     <summary>Ma machine n'a pas ces cotes — les ajuster</summary>
     <div class="volet-in">
@@ -163,7 +198,29 @@
       calculée. La caméra ne bouge pas&nbsp;: ce qui bouge, c'est la
       machine.</p></div>
   </div>
+  <div class="champ champ--large">
+    <label for="matiere">Dans quelle matière&nbsp;?</label>
+    <select id="matiere"></select>
+    <p class="doux">La matière ne change pas la faisabilité&nbsp;: elle change
+    le <b>temps</b>. Les paramètres de coupe viennent d'une table, et le
+    logiciel refuse de les deviner pour une matière voisine.</p>
+  </div>
+
   <button id="simuler" class="btn btn--primaire btn--bloc">Simuler l'usinage</button>
+
+  <!-- Le cas ou il n'y a RIEN a animer. Il vit hors du lecteur, parce que le
+       lecteur ne s'affiche que s'il y a des images : la phrase la plus
+       importante — « aucun programme, et voici pourquoi » — serait restee
+       invisible exactement quand elle compte. -->
+  <p id="sans-simu" class="note note--avis" hidden></p>
+
+  <!-- La correction que le moteur CALCULE, applicable en un clic. Un
+       decalage au dixieme de millimetre que l'operateur devrait retrouver
+       lui-meme serait le travail qu'on pretend lui enlever. -->
+  <div id="bloc-correction" class="avis-action" hidden>
+    <p id="correction-texte"></p>
+    <button id="corriger" class="btn btn--primaire">Reposer la pièce ainsi</button>
+  </div>
 
   <div id="bloc-simu" class="lecteur" hidden>
     <figure class="scene">
@@ -180,6 +237,16 @@
       <p id="film-titre" class="film-titre"></p>
       <div id="axes" class="axes"></div>
       <p id="simu-resume" class="resume-court" hidden></p>
+      <!-- Le TEMPS. « au moins » fait partie du chiffre : sans lui, quelqu'un
+           organise sa journee sur un minorant. -->
+      <div id="bloc-duree" hidden>
+        <p class="duree"><span id="duree-texte"></span>
+          <span class="duree-part" id="duree-part"></span></p>
+        <details class="volet volet--serre">
+          <summary>Ce que ce temps ne compte pas</summary>
+          <div class="volet-in"><p id="duree-note" class="note"></p></div>
+        </details>
+      </div>
       <details id="bloc-note" class="volet volet--serre" hidden>
         <summary>Ce qui n'est pas montré</summary>
         <div class="volet-in"><p id="simu-note" class="note"></p></div>

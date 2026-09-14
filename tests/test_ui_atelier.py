@@ -312,13 +312,23 @@ def test_several_setups_warn_that_errors_add_up():
 
 
 def test_the_settings_that_can_be_tried_are_the_ones_that_change_the_verdict():
-    """Cinq cotes de machine et deux d'outil : ce sont celles qui changent
-    l'ACCESSIBILITE. Les avances changent le temps d'usinage, pas la
-    faisabilite, et les melanger ferait croire qu'elles se valent."""
+    """Les cotes qui changent l'ACCESSIBILITE, et rien d'autre.
+
+    Les avances changent le TEMPS d'usinage, pas la faisabilite, et les
+    melanger ferait croire qu'elles se valent.
+
+    La POSE de la piece a rejoint la liste, et elle y a sa place au meme
+    titre : un depassement de course se rattrape en decalant la piece, et le
+    moteur calcule ce decalage au dixieme de millimetre. Trois scalaires et
+    non un vecteur, parce que l'API des reglages lit des nombres — un tuple
+    s'y serait casse en silence.
+    """
     champs = set(vars(Reglages()))
     assert champs == {"course_x", "course_y", "course_z_bas", "course_z_haut",
                       "a_min", "a_max", "rayon_plateau", "diametre_outil",
-                      "jauge_outil"}
+                      "jauge_outil",
+                      "decalage_piece_x", "decalage_piece_y", "decalage_piece_z"}
+    assert Reglages(decalage_piece_z=-6.0).decalage_piece == (0.0, 0.0, -6.0)
     m = Reglages(course_x=99.0, a_min=-60.0, rayon_plateau=40.0).machine()
     assert m.x.max_mm == 99.0 and m.a.min_deg == -60.0
     rayons = [v.radius for v in m.collision_volumes if v.radius is not None]
@@ -1488,16 +1498,17 @@ def test_the_row_never_contradicts_the_diagnostic():
 # --------------------------- la finition : une orientation VERIFIEE (M12g)
 
 def _faux_banc():
-    """Un banc reduit a ce que ``_operations_finition`` lui demande."""
-    class FauxMachine:
-        def tool_axis_in_part(self, a, c):
-            # Un axe reconnaissable, et surtout PAS la normale moyenne : le
-            # test veut voir d'ou vient l'orientation.
-            return np.array([0.0, 0.6, 0.8])
+    """Un banc reduit a ce que ``_operations_finition`` lui demande.
+
+    La machine est la VRAIE : depuis que la finition mesure ses courses
+    lineaires — la meme exigence que l'ebauche, sur le meme ecran —, une
+    machine factice sans pivots ne repond plus a la question posee.
+    """
+    from xyzac.machine_model import default_xyzac_kit
 
     class FauxBanc:
         tool = object()
-        machine = FauxMachine()
+        machine = default_xyzac_kit()
         mount_offset = np.zeros(3)
 
         def obstacle_field(self):
@@ -1650,3 +1661,218 @@ def test_the_mount_gap_is_stated_and_not_left_as_a_contradiction():
         [(np.zeros((5, 3)), None, None, [0], {"titre": "Le dessus"})],
         FauxRapport())
     assert "AUTRE montage" not in s2.simulation_note
+
+
+# ------------------- les courses lineaires, et le decalage propose (M13a)
+
+class _FauxRefus:
+    """Un refus de course tel que le planner en rend, reduit a l'utile."""
+
+    def __init__(self, exces_z, gain, correction=(0.0, 0.0, -6.0)):
+        from xyzac.strategy_planner.travel import CourseLineaire
+
+        self.course = CourseLineaire(
+            a_deg=0.0, c_deg=0.0, lo=(0, 0, 0), hi=(0, 0, 0),
+            exces_mm=(0.0, 0.0, float(exces_z)),
+            etendue_excedentaire_mm=(0.0, 0.0, 0.0),
+            n_points=100, n_hors=10, exact=True,
+            correction_piece_mm=correction)
+
+        class C:
+            label = "+Z"
+            a_deg = 0.0
+            c_deg = 0.0
+            reachable_mm3 = float(gain)
+        self.candidate = C()
+
+
+def test_the_offered_shift_recovers_the_richest_indexation_not_the_nearest():
+    """Le critere est le GAIN, pas la distance — et la difference est reelle.
+
+    Sur la poche C02 l'indexation ecartee vaut 36 028 mm³ pour 0,2 mm de
+    course : c'est celle-la qu'on veut recuperer. Proposer « la moins
+    eloignee » aurait pu designer une indexation qui ne voit presque rien, et
+    faire refaire un montage pour ce presque rien.
+    """
+    s = Session()
+    s._proposer_correction([
+        _FauxRefus(exces_z=0.2, gain=1000.0, correction=(0.0, 0.0, -0.2)),
+        _FauxRefus(exces_z=6.0, gain=36028.0, correction=(0.0, 0.0, -6.0)),
+    ])
+    assert s.correction is not None
+    assert s.correction["dz"] == -6.0, s.correction
+    assert "36028" in s.correction["texte"]
+
+
+def test_no_shift_is_offered_when_no_shift_would_help():
+    """Une piece plus longue que la course sort par les deux bouts.
+
+    Proposer un decalage dans ce cas enverrait refaire un montage pour rien :
+    translater ne fait que changer le bout qui depasse.
+    """
+    s = Session()
+    s._proposer_correction([_FauxRefus(exces_z=30.0, gain=9e9,
+                                       correction=None)])
+    assert s.correction is None
+    assert s.appliquer_correction() is False
+
+
+def test_applying_the_shift_moves_the_part_and_invalidates_the_verdict():
+    """Appliquer la correction change la POSE, donc tout ce qui en depend.
+
+    Garder le verdict precedent afficherait un jugement porte sur une autre
+    pose, et rien a l'ecran ne le signalerait. La correction elle-meme
+    disparait aussi : gardee, elle proposerait d'ajouter un decalage a un
+    decalage deja applique.
+    """
+    from xyzac.ui.atelier.session import Surface
+
+    s = Session()
+    s.surfaces = [Surface(1, 10, "faisable", "Le dessus", "")]
+    s._proposer_correction([_FauxRefus(exces_z=6.0, gain=36028.0)])
+    r0 = s.revision
+
+    assert s.appliquer_correction() is True
+    assert s.reglages.decalage_piece == (0.0, 0.0, -6.0)
+    assert s.revision > r0
+    assert s.surfaces == []
+    assert s.correction is None
+
+
+def test_the_declared_pose_adds_to_the_suggested_one(corpus_dir):
+    """Le decalage s'AJOUTE a la pose suggeree, il ne la remplace pas.
+
+    Consequence voulue : remettre le decalage a zero retrouve exactement la
+    pose de depart, et non une pose derivee des essais successifs. Une pose
+    qui derive a chaque essai rend les verdicts incomparables entre eux.
+    """
+    s = Session()
+    s.charger(corpus_dir / "C01_bloc_simple.step")
+    base = np.asarray(s._banc.suggested_mount(s._banc.part.bbox), dtype=float)
+
+    s.reglages.decalage_piece_z = -6.0
+    s._poser_piece()
+    assert np.allclose(np.asarray(s._banc.mount_offset_mm),
+                       base + np.array([0.0, 0.0, -6.0]))
+
+    s.reglages.decalage_piece_z = 0.0
+    s._poser_piece()
+    assert np.allclose(np.asarray(s._banc.mount_offset_mm), base)
+
+
+def test_an_empty_plan_says_whether_the_travel_is_the_cause():
+    """Deux absences qui se ressemblent et ne se corrigent pas pareil.
+
+    « Aucune indexation ne voit assez de matiere » est une affaire de piece.
+    « Aucune indexation ne tient dans les courses » est une affaire de
+    MONTAGE, et se rattrape en decalant la piece de quelques millimetres. La
+    premiere version ne connaissait que la premiere phrase, de sorte qu'une
+    piece recalee de 6 mm se lisait comme une piece inusinable.
+    """
+    class FauxPlan:
+        operations = []
+
+    class FauxRapport:
+        removed_fraction = 0.0
+        unreachable_mm3 = 0.0
+        final_removable_mm3 = 0.0
+        gouged_voxels = 0
+        refuses_course = [_FauxRefus(exces_z=6.0, gain=36028.0)]
+
+    s = Session()
+    # on rejoue exactement la branche « plan vide » de la simulation
+    rapport = FauxRapport()
+    refus = list(rapport.refuses_course)
+    pire = min(refus, key=lambda r: max(r.course.exces_mm))
+    s._proposer_correction(refus)
+    assert s.correction is not None
+    assert "Décaler la pièce" in pire.course.consigne()
+    assert "6.0 mm" in pire.course.consigne()
+
+
+def test_the_finishing_pass_is_held_to_the_same_travel_rule_as_the_roughing(
+        monkeypatch):
+    """Une exigence plus faible pour la finition, sur le meme ecran.
+
+    Le solveur d'accessibilite connait MACHINE_TRAVEL et le verifie AUX POINTS
+    EXAMINES ; la trajectoire, elle, passe aussi ailleurs. Sans mesure des
+    courses sur ses sommets, la finition etait animee la ou l'ebauche aurait
+    ete refusee.
+    """
+    from xyzac.accessibility_solver import solver as acc
+    from xyzac.strategy_planner import indexed_pass as ip
+    from xyzac.ui.atelier.session import Session, Surface
+
+    monkeypatch.setattr(acc, "AccessibilitySolver", lambda *a, **k: object())
+    # des TCP tres hauts : a A = 0 ils sortent par le haut de la course Z
+    monkeypatch.setattr(acc, "tcp_from_contact",
+                        lambda p, n, d, t: np.array([0.0, 0.0, 400.0]))
+    monkeypatch.setattr(ip, "decide_indexed_pass", lambda *a, **k:
+                        ip.IndexedPassVerdict(
+                            n_points=40, verdict="3+2", a_deg=0.0, c_deg=0.0,
+                            min_clearance_mm=9.0, basis="verification"))
+
+    s = Session()
+    s._passes_finition = [_fausse_passe(40, (0.0, 0.0, 1.0))]
+    s.surfaces = [Surface(1, 40, "faisable", "Le dessus", "")]
+    ops = s._operations_finition(_faux_banc())
+
+    assert ops == [], "une passe hors course ne doit pas etre animee"
+    assert len(s._refus_finition) == 1
+    phrase = s._refus_finition[0]["phrase"]
+    assert "dégage" in phrase, phrase
+    assert "course Z" in phrase, phrase
+
+
+def test_a_shift_that_buries_the_part_in_the_table_is_not_offered(corpus_dir):
+    """Le remede doit etre PRATICABLE, pas seulement geometrique.
+
+    Defaut mesure sur la boucle reelle : l'atelier proposait -6 mm, puis
+    -24 mm, soit des cales a -30 mm pour une piece posee sur 25 mm — donc la
+    piece enfoncee de 5 mm DANS le plateau. Le calcul de course ne regarde pas
+    le plateau et le dit ; c'est donc a l'atelier, qui connait la pose,
+    d'ecarter ce remede. Un remede impraticable est pire qu'un constat : il
+    fait demonter un montage pour rien.
+    """
+    s = Session()
+    s.charger(corpus_dir / "C05_ailettes_rapprochees.step")
+    z_bas = float(s._banc.part.bbox.lo[2])
+    cales = float(s._banc.mount_offset_mm[2])
+    # un decalage plus grand que la hauteur des cales sous la piece
+    trop = -(cales + z_bas) - 5.0
+    s._proposer_correction([_FauxRefus(exces_z=abs(trop), gain=9e6,
+                                       correction=(0.0, 0.0, trop))])
+    assert s.correction is None
+    assert "SOUS le plateau" in s._correction_impraticable
+    assert "5.0 mm" in s._correction_impraticable
+
+    # et un decalage qui laisse la piece au-dessus du plateau reste propose
+    s._proposer_correction([_FauxRefus(exces_z=1.0, gain=9e6,
+                                       correction=(0.0, 0.0, -1.0))])
+    assert s.correction is not None
+    assert s._correction_impraticable == ""
+
+
+def test_the_offered_shift_is_never_a_rounding_artefact():
+    """« Décaler la pièce de 3,7e-16 mm en X » est une consigne insuivable.
+
+    La transposee d'une rotation laisse un residu de cet ordre. L'arrondi est
+    au centieme et PAR EXCES : arrondi vers le bas, le decalage laisserait la
+    trajectoire a un centieme de la butee, donc dehors.
+    """
+    from xyzac.strategy_planner.travel import course_lineaire
+    from xyzac.machine_model import default_xyzac_kit
+
+    m = default_xyzac_kit()
+    P = np.array([[0.0, 0.0, 70.0], [3.0, 4.0, 65.0]])
+    c = course_lineaire(m, P, (0.0, 0.0, 25.0), -90.0, -90.0, exact=True)
+    assert c.correction_piece_mm is not None
+    for v in c.correction_piece_mm:
+        assert v == 0.0 or abs(v) >= 0.01, c.correction_piece_mm
+        assert abs(v * 100 - round(v * 100)) < 1e-9, "arrondi au centieme"
+    # et il SUFFIT : applique, il fait tenir la trajectoire
+    corrige = course_lineaire(m, P,
+                              np.array([0.0, 0.0, 25.0])
+                              + np.asarray(c.correction_piece_mm),
+                              -90.0, -90.0, exact=True)
+    assert corrige.tient, corrige.describe()

@@ -255,9 +255,21 @@ function appliquer() {
   if (chargee) {
     const source = etat.origine === "votre fichier"
       ? "votre fichier" : "exemple fourni";
+    // La pose DECLAREE est un fait permanent du montage, pas un message
+    // passager : affichee ici, elle explique tous les verdicts qui suivent.
+    // Un message transitoire apres le clic aurait disparu avant le calcul
+    // qu'il explique.
+    const d = etat.decalage_piece || [0, 0, 0];
+    const bouge = d.some((v) => Math.abs(v) >= 0.005);
+    const pose = bouge
+      ? `<span class="jeton jeton--pose">pièce reposée de ` +
+        d.map((v, i) => Math.abs(v) >= 0.005
+              ? `${v > 0 ? "+" : ""}${v.toFixed(1)} mm en ${"XYZ"[i]}` : null)
+         .filter(Boolean).join(", ") + `</span>`
+      : "";
     info.innerHTML = `<strong>${etat.piece}</strong>` +
       `<span>${etat.dimensions}</span>` +
-      `<span class="jeton">${source}</span>` +
+      `<span class="jeton">${source}</span>` + pose +
       (etat.import_detail ? `<span class="doux">${etat.import_detail}</span>` : "");
   }
 
@@ -304,6 +316,22 @@ function appliquer() {
   $("#simu-resume").textContent = etat.simulation_resume || "";
   $("#bloc-note").hidden = !etat.simulation_note;
   $("#simu-note").textContent = etat.simulation_note || "";
+
+  // Pas d'images mais une note : c'est le cas « aucun programme n'est
+  // produit », et il a sa propre place a l'ecran. Sans cela la note vivait
+  // dans le lecteur, donc restait cachee dans le seul cas ou elle est
+  // indispensable.
+  const vide = !fait && !!etat.simulation_note;
+  $("#sans-simu").hidden = !vide;
+  $("#sans-simu").textContent = vide ? etat.simulation_note : "";
+
+  dessinerMatiere();
+  dessinerDuree();
+  dessinerBridage();
+
+  const cor = etat.correction;
+  $("#bloc-correction").hidden = !cor;
+  $("#correction-texte").textContent = cor ? cor.texte : "";
 
   dessinerLegende();
   dessinerFil();
@@ -412,6 +440,71 @@ async function sonder() {
     // un calcul vient de finir
     if (etat.n_images > 0) preparerFilm();
     rafraichirVue();
+  }
+}
+
+// ------------------------------------------- matiere, temps et bridage
+
+// La matiere est un choix FERME : la liste vient du moteur, qui refuse de
+// deviner les parametres d'une matiere voisine. Un champ libre aurait laisse
+// saisir « alu » et ne rien obtenir.
+function dessinerMatiere() {
+  const sel = $("#matiere");
+  if (!sel) return;
+  const liste = etat.matieres || [];
+  if (sel.dataset.rempli !== String(liste.length)) {
+    sel.innerHTML = liste.map((m) =>
+      `<option value="${m}">${m.replace(/-/g, " ")}</option>`).join("");
+    sel.dataset.rempli = String(liste.length);
+  }
+  if (etat.matiere) sel.value = etat.matiere;
+  sel.disabled = !!etat.occupe;
+}
+
+// « au moins » fait partie du chiffre, pas de la note : quelqu'un organisera
+// sa journee dessus.
+function dessinerDuree() {
+  const bloc = $("#bloc-duree");
+  if (!bloc) return;
+  const d = etat.duree;
+  bloc.hidden = !d;
+  if (!d) return;
+  $("#duree-texte").textContent = `au moins ${d.texte} de cycle`;
+  $("#duree-part").textContent =
+    `${Math.round(d.part_en_coupe * 100)} % du temps en coupe`;
+  $("#duree-note").textContent = d.consigne;
+}
+
+// Le bridage : les champs affiches suivent le montage choisi. Montrer les six
+// d'un coup demanderait de deviner lesquels comptent.
+function dessinerBridage() {
+  const bloc = $("#bloc-bridage");
+  if (!bloc || !etat.bridage) return;
+  const b = etat.bridage;
+  bloc.hidden = !etat.chargee;
+  const sel = $("#b-forme");
+  const noms = { aucun: "aucun bridage déclaré", etau: "étau",
+                 brides: "brides sur plateau" };
+  if (sel.dataset.rempli !== String((b.formes || []).length)) {
+    sel.innerHTML = (b.formes || []).map((f) =>
+      `<option value="${f}">${noms[f] || f}</option>`).join("");
+    sel.dataset.rempli = String((b.formes || []).length);
+  }
+  sel.value = b.forme;
+  $("#bridage-resume").textContent = b.resume || "";
+  $("#b-prise").value = b.prise_mm;
+  $("#b-axe").value = b.axe_serrage;
+  $("#b-nbrides").value = b.n_brides;
+  $("#b-recouvrement").value = b.recouvrement_mm;
+  $("#b-hbrides").value = b.hauteur_brides_mm;
+  $("#champ-prise").hidden = b.forme !== "etau";
+  $("#champ-axe").hidden = b.forme !== "etau";
+  $("#champ-nbrides").hidden = b.forme !== "brides";
+  $("#champ-recouvrement").hidden = b.forme !== "brides";
+  $("#champ-hbrides").hidden = b.forme !== "brides";
+  for (const id of ["#b-forme", "#b-prise", "#b-axe", "#b-nbrides",
+                    "#b-recouvrement", "#b-hbrides"]) {
+    $(id).disabled = !!etat.occupe;
   }
 }
 
@@ -573,6 +666,43 @@ async function init() {
     appliquer(); sonder();
   };
   $("#resimuler").addEventListener("click", lancerSimulation);
+  $("#matiere").addEventListener("change", async (e) => {
+    // La matiere n'invalide pas le verdict : elle ne change que le temps.
+    etat = await post("/api/coupe", { matiere: e.target.value });
+    appliquer();
+  });
+
+  const envoyerBridage = async () => {
+    // Le bridage, lui, invalide tout : il change ce qui est atteignable.
+    etat = await post("/api/bridage", {
+      forme: $("#b-forme").value,
+      axe_serrage: $("#b-axe").value,
+      prise_mm: Number($("#b-prise").value),
+      n_brides: Number($("#b-nbrides").value),
+      recouvrement_mm: Number($("#b-recouvrement").value),
+      hauteur_brides_mm: Number($("#b-hbrides").value),
+    });
+    appliquer();
+    rafraichirVue();
+  };
+  for (const id of ["#b-forme", "#b-axe", "#b-prise", "#b-nbrides",
+                    "#b-recouvrement", "#b-hbrides"]) {
+    $(id).addEventListener("change", envoyerBridage);
+  }
+
+  $("#corriger").addEventListener("click", async () => {
+    // Appliquer la correction invalide le verdict ET la simulation : la pose
+    // a change, donc tout ce qui en dependait. On renvoie l'operateur a la
+    // verification plutot que de recalculer d'office — une demi-minute de
+    // calcul ne se lance pas sans qu'il l'ait demande.
+    const b = $("#corriger");
+    b.disabled = true;
+    try {
+      etat = await post("/api/corriger", {});
+      allerA(PAGES.indexOf("etape-verif"));
+      appliquer();
+    } finally { b.disabled = false; }
+  });
   $("#simuler").addEventListener("click", async () => {
     reinitialiserFilm();
     etat = await post("/api/simuler", { images: 36 });

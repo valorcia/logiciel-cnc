@@ -233,6 +233,26 @@ def test_candidates_are_filtered_by_machine_travel(pocket, tool):
 
 
 def test_greedy_plan_covers_most_of_the_material(pocket, tool):
+    """Ce que la gamme couvre — de ce qu'elle a le droit de couvrir.
+
+    Ce test exigeait 40 %, et c'est l'ajout de la mesure des courses
+    LINEAIRES qui l'a fait tomber a 31 %. La raison est instructive :
+    l'indexation ``+Z``, la plus riche des cinq (36 028 mm3), sort de la
+    course Z sur 532 de ses 5 512 positions — de **0,2 mm**. Le plan
+    l'incluait et annonçait 40 % d'une gamme que la machine aurait refusee a
+    la premiere ligne.
+
+    Puis la porte de COLLISION sur l'entree en matiere l'a fait tomber a
+    16 % : les indexations laterales, a 45 mm de jauge, font traverser le brut
+    par le nez de broche ou le porte-outil avant meme de couper.
+
+    16 % executables valent mieux que 40 % dont une operation s'arrete en
+    pleine matiere. Et aucun rejet n'est muet : celui des courses porte le
+    decalage qui rendrait l'indexation utilisable — et reposer la piece de
+    2 mm suffit a remonter la gamme a 30 % (voir
+    ``test_the_cutting_edge_touching_material_is_not_a_crash``). C'est cette
+    pose corrigee qui est la bonne, et c'est l'atelier qui la propose.
+    """
     shape, _, _, stock, bb = pocket
     setup = Setup(setup_id="p", machine=default_xyzac_kit(), part_step_path="x.step",
                   stock=stock, tools=[tool],
@@ -241,8 +261,23 @@ def test_greedy_plan_covers_most_of_the_material(pocket, tool):
     plan, report = plan_roughing(shape, setup, ms, tool, layer_thickness=3.0,
                                  point_spacing=2.0, max_setups=4)
     assert plan.operations
-    assert report.removed_fraction > 0.4
+    # Le seuil dit ce que cette POSE permet, et rien de plus. Le relever
+    # reviendrait a exiger une gamme que la machine refuserait.
+    assert report.removed_fraction > 0.1
     assert report.gouged_voxels == 0
+
+    # AUCUNE operation retenue ne sort des courses : c'est la condition qui
+    # remplace le seuil de 40 %.
+    assert report.courses and all(c.tient for c in report.courses)
+    assert len(report.courses) == len(plan.operations)
+
+    # et l'indexation ecartee est rapportee, avec de quoi la recuperer
+    assert report.refuses_course, "un rejet muet ferait croire a une limite"
+    ref = report.refuses_course[0]
+    assert 0.0 < max(ref.course.exces_mm) < 1.0, ref.describe()
+    assert "Décaler la pièce" in ref.course.consigne()
+    assert ref.candidate.reachable_mm3 > report.removed_per_step[0], \
+        "l'indexation ecartee etait la plus riche : ca vaut la peine de le dire"
 
 
 def test_plan_report_keeps_the_full_candidate_list(pocket, tool):
@@ -569,3 +604,215 @@ def test_ramps_that_could_not_be_built_are_counted_not_hidden(pocket, tool):
 
     # sans journal fourni, le comportement ne change pas
     assert len(_entree_en_matiere(un_point, 1.0, tool)) == 1
+
+
+# ------------------- les courses LINEAIRES entrent dans la decision (M13a)
+
+def _machine_essai(**kw):
+    """Une machine reduite, pour poser des questions de course sans piece."""
+    from xyzac.machine_model.machine import LinearAxis, MachineKinematics, RotaryAxis
+
+    d = dict(x=LinearAxis(name="X", min_mm=-100.0, max_mm=100.0,
+                          max_feed_mm_min=4000.0),
+             y=LinearAxis(name="Y", min_mm=-100.0, max_mm=100.0,
+                          max_feed_mm_min=4000.0),
+             z=LinearAxis(name="Z", min_mm=-100.0, max_mm=50.0,
+                          max_feed_mm_min=3000.0),
+             a=RotaryAxis(name="A", min_deg=-120.0, max_deg=30.0,
+                          max_feed_deg_min=3600.0),
+             c=RotaryAxis(name="C", min_deg=-360.0, max_deg=360.0,
+                          continuous=True, max_feed_deg_min=7200.0),
+             pivot_a=[0.0, 0.0, -40.0], pivot_c=[0.0, 0.0, 0.0])
+    d.update(kw)
+    return MachineKinematics(machine_id="essai", **d)
+
+
+def test_a_trajectory_inside_the_travel_is_conclusive_both_ways():
+    """Le domaine des courses est une BOITE, donc convexe.
+
+    C'est ce qui rend ce test EXACT, et c'est le seul de tout le projet a
+    l'etre dans les deux sens : un segment dont les deux extremites tiennent
+    tient entierement, donc tester les sommets de la polyligne suffit. Rien
+    n'est echantillonne, donc il n'y a pas de reserve a enoncer.
+    """
+    from xyzac.strategy_planner.travel import course_lineaire
+
+    m = _machine_essai()
+    P = np.array([[0.0, 0.0, 0.0], [10.0, 10.0, 10.0]])
+    c = course_lineaire(m, P, (0.0, 0.0, 0.0), 0.0, 0.0, exact=True)
+    assert c.tient and c.concluant and c.n_hors == 0
+    assert c.correction_piece_mm is None       # rien a corriger
+    assert "tient" in c.consigne()
+
+
+def test_the_part_height_becomes_a_Y_travel_when_the_cradle_tips():
+    """Le fait que personne ne peut deviner, et qui a mis C05 hors course.
+
+    A -90° le berceau couche la piece : un point a la hauteur z se retrouve en
+    Y = z + 40 (l'offset du pivot A). La hauteur de la piece se paie donc en
+    course Y, et ce module doit le montrer plutot que le laisser decouvrir a la
+    machine.
+    """
+    from xyzac.strategy_planner.travel import course_lineaire
+
+    m = _machine_essai()
+    # un point a 70 mm de haut, 25 mm de cales : Y attendu = 70 + 25 + 40 = 135
+    c = course_lineaire(m, np.array([[0.0, 0.0, 70.0]]), (0.0, 0.0, 25.0),
+                        -90.0, 0.0, exact=True)
+    assert abs(c.hi[1] - 135.0) < 1e-6, c.describe()
+    assert not c.tient
+    assert c.axe_le_plus_court == "Y"
+    assert abs(c.exces_mm[1] - 35.0) < 1e-6
+
+
+def test_the_remedy_is_computed_in_the_frame_where_the_operator_acts():
+    """Un depassement sans remede laisse l'utilisateur devant un constat.
+
+    Le depassement se lit dans le repere MACHINE, les cales agissent dans le
+    repere PIECE : le vecteur rendu est donc transporte, et l'appliquer doit
+    reellement faire tenir la trajectoire. Ce test le VERIFIE en l'appliquant,
+    au lieu de se fier au signe.
+    """
+    from xyzac.strategy_planner.travel import course_lineaire
+
+    m = _machine_essai()
+    P = np.array([[0.0, 0.0, 70.0], [10.0, 5.0, 60.0]])
+    cales = np.array([0.0, 0.0, 25.0])
+    c = course_lineaire(m, P, cales, -90.0, 0.0, exact=True)
+    assert c.correction_piece_mm is not None, c.describe()
+
+    corrige = course_lineaire(m, P, cales + np.asarray(c.correction_piece_mm),
+                              -90.0, 0.0, exact=True)
+    assert corrige.tient, corrige.describe()
+    assert "Décaler la pièce" in c.consigne()
+    # et la reserve est dite : ce calcul ne regarde pas les collisions
+    assert "ne touche" in c.consigne()
+
+
+def test_an_extent_longer_than_the_travel_admits_no_shift():
+    """Deux echecs qui se ressemblent et ne se corrigent pas pareil.
+
+    Une piece decalee sort par un bout : la translation la rattrape. Une piece
+    plus LONGUE que la course sort par les deux bouts : translater ne fait que
+    changer le bout qui depasse. Proposer un decalage dans ce cas serait
+    envoyer l'operateur refaire son montage pour rien.
+    """
+    from xyzac.strategy_planner.travel import course_lineaire
+
+    m = _machine_essai()          # X sur 200 mm
+    P = np.array([[-130.0, 0.0, 0.0], [130.0, 0.0, 0.0]])
+    c = course_lineaire(m, P, (0.0, 0.0, 0.0), 0.0, 0.0, exact=True)
+    assert not c.tient
+    assert c.correction_piece_mm is None
+    assert "Aucun décalage" in c.consigne()
+    assert abs(c.etendue_excedentaire_mm[0] - 60.0) < 1e-6
+
+
+def test_the_envelope_test_never_discards_a_candidate_it_cannot_judge():
+    """L'asymetrie du test de boite, et ce qu'on a donc le droit d'en faire.
+
+    Les huit coins donnent EXACTEMENT l'enveloppe machine de la boite : « la
+    boite tient » prouve que tout ce qu'elle contient tient. L'inverse ne
+    prouve rien — la trajectoire n'occupe pas les coins. Le classement peut
+    donc favoriser une candidate prouvee, jamais ecarter les autres.
+    """
+    from xyzac.strategy_planner.travel import enveloppe_indexation
+
+    m = _machine_essai()
+    dedans = enveloppe_indexation(m, (-10, -10, 0), (10, 10, 10),
+                                  (0, 0, 25), 0.0, 0.0, marge_mm=1.0)
+    assert dedans.tient and dedans.concluant and not dedans.exact
+
+    dehors = enveloppe_indexation(m, (-10, -10, 0), (10, 10, 70),
+                                  (0, 0, 25), -90.0, 0.0, marge_mm=1.0)
+    assert not dehors.tient
+    assert not dehors.concluant, "un « ne tient pas » de boite ne conclut pas"
+    assert "peut-être" in dehors.consigne()
+
+
+def test_the_planner_prefers_an_indexation_that_fits_and_measures_the_one_it_takes(
+        corpus_dir):
+    """Le defaut d'origine : le planner classait sur le seul volume enlevable.
+
+    Sur C05 il retenait A = -90°, C = -90° et produisait 3 974 positions hors
+    course sur 18 249, sans rien en dire. Deux exigences, donc : une candidate
+    dont l'enveloppe TIENT passe devant celles qui ne tiennent pas, et
+    l'operation retenue porte la mesure exacte de ce qu'elle demande.
+    """
+    from xyzac.ui.debug.state import BenchState
+
+    st = BenchState()
+    st.load_step(corpus_dir / "C01_bloc_simple.step")
+    st.set_default_tool("ballnose", diameter=6.0, stickout=40.0)
+    plan, rapport = st.plan_roughing_preview(layer_thickness=3.0, max_setups=1,
+                                             pitch=3.0, point_spacing=3.0)
+
+    # toutes les candidates portent une course, et le classement met celles
+    # qui tiennent devant
+    assert rapport.candidates
+    assert all(c.course is not None for c in rapport.candidates)
+    tiennent = [c.tient_en_course for c in rapport.candidates]
+    assert tiennent == sorted(tiennent, reverse=True), \
+        "une candidate qui tient doit passer devant une qui ne tient pas"
+
+    # et l'operation retenue porte la mesure EXACTE, alignee sur ``chosen``
+    assert len(rapport.courses) == len(rapport.chosen) == len(plan.operations)
+    for co in rapport.courses:
+        assert co.exact and co.n_points > 0
+        # la note de l'operation dit le depassement, ou ne dit rien
+        assert co.tient == ("HORS COURSE" not in plan.operations[0].notes)
+
+
+def test_an_indexation_the_tool_cannot_enter_is_discarded(pocket, tool):
+    """Le defaut que l'ajout des courses a fait apparaitre d'un coup.
+
+    L'indexation d'ebauche etait choisie sur le volume, filtree sur la
+    cinematique, puis sur les courses — jamais sur la COLLISION. Sur la poche
+    C02 avec une fraise de 45 mm de jauge, l'indexation laterale A = -90° fait
+    traverser le brut par le NEZ DE BROCHE pendant l'approche : 0,26 mm de
+    penetration au premier segment, 6,5 mm au suivant. Le plan la retenait.
+
+    Ce n'etait pas visible parce que l'indexation du dessus passait toujours
+    en premier ; le jour ou elle a ete ecartee pour 2 mm de course, le defaut
+    est sorti.
+    """
+    shape, _, _, stock, bb = pocket
+    setup = Setup(setup_id="p", machine=default_xyzac_kit(), part_step_path="x.step",
+                  stock=stock, tools=[tool],
+                  part_to_table_mm=[float(-bb.center[0]), float(-bb.center[1]), 25.0])
+    ms = _material(pocket, pitch=1.6)
+    _plan, report = plan_roughing(shape, setup, ms, tool, layer_thickness=3.0,
+                                  point_spacing=2.0, max_setups=4)
+    assert report.refuses_entree, "les indexations laterales traversent le brut"
+    r = report.refuses_entree[0]
+    assert r.n_touche > 0 and r.n_segments >= r.n_touche
+    # le motif NOMME l'organe : « la tige touche » et « le nez de broche
+    # touche » ne se corrigent pas de la meme façon
+    assert any(mot in r.motif for mot in
+               ("spindle_nose", "holder", "shank", "neck")), r.motif
+    assert "outil plus long" in r.consigne()
+
+
+def test_the_cutting_edge_touching_material_is_not_a_crash(pocket, tool):
+    """L'arete de coupe est FAITE pour toucher la matiere.
+
+    Premiere version de cette porte : elle comptait tout contact, donc aussi
+    « cutting / PART », et ecartait l'indexation du dessus de la poche C02
+    pour avoir coupe. Combien l'ebauche entame la piece FINIE est une autre
+    question, et elle a sa propre mesure — ``gouged_voxels``.
+
+    Le test le verifie par sa consequence : l'indexation du dessus, une fois
+    la piece reposee de 2 mm, est RETENUE, et la gamme passe de 2 % a 30 %.
+    """
+    shape, _, _, stock, bb = pocket
+    cales = [float(-bb.center[0]), float(-bb.center[1]), 23.0]
+    setup = Setup(setup_id="p", machine=default_xyzac_kit(), part_step_path="x.step",
+                  stock=stock, tools=[tool], part_to_table_mm=cales)
+    ms = _material(pocket, pitch=1.6)
+    plan, report = plan_roughing(shape, setup, ms, tool, layer_thickness=3.0,
+                                 point_spacing=2.0, max_setups=2)
+    assert plan.operations, "l'indexation du dessus doit redevenir utilisable"
+    assert any(c.label == "+Z" for c in report.chosen), \
+        [c.label for c in report.chosen]
+    assert report.removed_fraction > 0.25, report.removed_fraction
+    assert not report.refuses_course, "a 23 mm de cales, +Z tient en course"

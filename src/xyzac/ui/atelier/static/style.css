@@ -326,6 +326,43 @@ h2{margin:0;font-size:19.5px;font-weight:650;letter-spacing:-.012em}
   border:1px solid var(--trait);border-radius:var(--r-petit);padding:13px 15px;
   line-height:1.6}
 
+/* Une note qui porte un REFUS, et non une reserve : elle prend la teinte
+   « attention » du code couleur, la meme que partout ailleurs dans le
+   logiciel. Rien n'est invente ici : les teintes viennent du moteur. */
+.note--avis{color:var(--texte);background:var(--attention-pale);
+  border-color:#e7c58a}
+
+/* Le bloc d'une correction APPLICABLE : un texte et le bouton qui le fait.
+   Il se distingue d'une note parce qu'il se termine par un geste. */
+.avis-action{margin-top:14px;padding:14px 16px;border-radius:var(--r-petit);
+  background:var(--accent-pale);border:1px solid #bcd3f0;
+  display:flex;flex-direction:column;gap:12px;align-items:flex-start}
+.avis-action p{margin:0;font-size:13.5px;line-height:1.6;color:var(--texte)}
+/* Sur 10 pouces le bouton reste a gauche, pleine lisibilite, sans etirer. */
+.avis-action .btn{align-self:stretch}
+@media (min-width:700px){.avis-action .btn{align-self:flex-start}}
+
+/* La pose declaree, dans la fiche de la piece : un fait du montage. */
+.jeton--pose{background:var(--attention-pale);color:var(--attention)}
+
+/* Le bloc du bridage : une question, pas une alerte — d'ou la teinte neutre.
+   Il partage la forme du bloc d'action parce qu'il se termine aussi par un
+   geste : choisir son montage. */
+.avis-action--doux{background:var(--creux);border-color:var(--trait)}
+.avis-action--doux .grille{width:100%}
+
+/* Un champ qui prend toute la largeur : la matiere, avant la simulation. */
+.champ--large{margin:14px 0 0;display:flex;flex-direction:column;gap:5px}
+.champ--large select{max-width:340px}
+.champ--large .doux{margin:2px 0 0}
+
+/* Le TEMPS. Gros, parce que c'est le chiffre qu'on vient chercher — et
+   « au moins » dans le meme souffle, parce que sans lui le chiffre ment. */
+.duree{margin:12px 0 6px;font-size:17px;font-weight:650;color:var(--texte);
+  display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.duree-part{font-size:12.5px;font-weight:600;color:var(--attention);
+  background:var(--attention-pale);border-radius:20px;padding:2px 9px}
+
 /* -------------------------------------------------- conditions de lancement */
 .conditions{list-style:none;padding:0;margin:16px 0 0;display:grid;gap:10px}
 .conditions li{background:var(--creux);border:1px solid var(--trait);

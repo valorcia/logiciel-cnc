@@ -182,6 +182,42 @@ class Atelier(BaseHTTPRequestHandler):
             s.invalider()
             return self._json(s.etat())
 
+        if u.path == "/api/coupe":
+            # La matiere change le TEMPS, pas la faisabilite : elle n'invalide
+            # donc PAS le verdict. Le relancer pour un changement d'alliage
+            # ferait attendre quarante secondes pour rien.
+            m = str(corps.get("matiere", "")).strip()
+            if m not in s.coupe.matieres():
+                return self._json({"erreur": f"matière inconnue : {m}"}, 400)
+            s.coupe.matiere = m
+            return self._json(s.etat())
+
+        if u.path == "/api/bridage":
+            # Le bridage, LUI, change la faisabilite : il invalide tout.
+            forme = str(corps.get("forme", s.bridage.forme))
+            if forme not in s.bridage.formes():
+                return self._json({"erreur": f"montage inconnu : {forme}"}, 400)
+            s.bridage.forme = forme
+            if "axe_serrage" in corps:
+                axe = str(corps["axe_serrage"])
+                if axe not in ("x", "y"):
+                    return self._json({"erreur": "axe de serrage : x ou y"}, 400)
+                s.bridage.axe_serrage = axe
+            for k in ("prise_mm", "n_brides", "recouvrement_mm",
+                      "hauteur_brides_mm"):
+                if k in corps:
+                    setattr(s.bridage, k, float(corps[k]))
+            s.invalider()
+            return self._json(s.etat())
+
+        if u.path == "/api/corriger":
+            # Applique le decalage que le MOTEUR a calcule. Le corps est vide :
+            # laisser l'IHM envoyer le vecteur aurait mis la valeur dans deux
+            # endroits, dont un qui peut avoir change depuis l'affichage.
+            if not s.appliquer_correction():
+                return self._json({"erreur": "aucune correction proposée"}, 409)
+            return self._json(s.etat())
+
         if u.path == "/api/diagnostic":
             i = int(corps.get("surface", 0))
             if not s.surfaces or i >= len(s.surfaces):

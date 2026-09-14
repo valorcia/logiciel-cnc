@@ -191,6 +191,23 @@ class Reglages:
     diametre_outil: float = 6.0
     jauge_outil: float = 45.0
 
+    #: Decalage DECLARE de la piece, ajoute a la pose suggeree, en mm dans le
+    #: repere de la piece.
+    #:
+    #: Ce n'est pas une cote de machine, et c'est pourtant ici sa place : la
+    #: pose change le verdict d'accessibilite exactement comme une course, et
+    #: c'est le levier que le moteur propose quand une indexation est ecartee
+    #: faute de 6 mm. Trois scalaires et non un vecteur : l'API des reglages
+    #: lit des nombres, et un tuple s'y serait casse en silence.
+    decalage_piece_x: float = 0.0
+    decalage_piece_y: float = 0.0
+    decalage_piece_z: float = 0.0
+
+    @property
+    def decalage_piece(self) -> tuple[float, float, float]:
+        return (self.decalage_piece_x, self.decalage_piece_y,
+                self.decalage_piece_z)
+
     def machine(self):
         """Construit la machine correspondante. La cinematique vient du moteur."""
         from ...machine_model import default_xyzac_kit
@@ -205,6 +222,111 @@ class Reglages:
                 v.radius = self.rayon_plateau
                 break
         return m
+
+
+@dataclass
+class Bridage:
+    """Comment la piece est TENUE, en deux ou trois cotes.
+
+    Troisieme groupe de reglages, et il a sa raison d'etre propre : le bridage
+    change la FAISABILITE comme les courses, mais il se declare avec des cotes
+    de montage — une prise d'etau, un recouvrement de bride — et non avec des
+    cotes de machine. Les mettre ensemble ferait chercher « prise en mm » dans
+    une liste de courses.
+
+    Le defaut par defaut est ``aucun``, et c'est assume : supposer un bridage
+    serait pire que de n'en supposer aucun, parce que cela ferait rejeter des
+    orientations au nom d'un obstacle que personne n'a pose. Ce qui compte est
+    de DIRE dans lequel des deux cas on se trouve — un verdict sans bridage
+    declare est optimiste, et l'atelier l'ecrit.
+    """
+
+    forme: str = "aucun"
+    #: Etau : sur quelle hauteur la piece est prise, et selon quel axe.
+    prise_mm: float = 12.0
+    axe_serrage: str = "x"
+    #: Brides : combien, et ce qu'elles couvrent de la piece.
+    n_brides: float = 4.0
+    recouvrement_mm: float = 6.0
+    hauteur_brides_mm: float = 12.0
+
+    @staticmethod
+    def formes() -> list[str]:
+        from ...machine_model.bridage import FORMES
+
+        return list(FORMES)
+
+    def fixtures(self, bbox_lo, bbox_hi) -> list:
+        """La geometrie, construite par le MOTEUR depuis ces quelques cotes."""
+        from ...machine_model import bridage
+
+        if self.forme == bridage.ETAU:
+            return bridage.etau(bbox_lo, bbox_hi, axe=self.axe_serrage,
+                                prise_mm=float(self.prise_mm))
+        if self.forme == bridage.BRIDES:
+            return bridage.brides_sur_plateau(
+                bbox_lo, bbox_hi, n=int(self.n_brides),
+                recouvrement_mm=float(self.recouvrement_mm),
+                hauteur_mm=float(self.hauteur_brides_mm))
+        return []
+
+    def fixtures_declares(self) -> bool:
+        from ...machine_model.bridage import AUCUN
+
+        return self.forme != AUCUN
+
+    def resume(self) -> str:
+        """Une phrase, celle qui doit accompagner tout verdict."""
+        from ...machine_model import bridage
+
+        if self.forme == bridage.ETAU:
+            return (f"Étau, pièce prise sur {self.prise_mm:.0f} mm selon "
+                    f"{self.axe_serrage.upper()}.")
+        if self.forme == bridage.BRIDES:
+            return (f"{int(self.n_brides)} bride(s) de "
+                    f"{self.hauteur_brides_mm:.0f} mm de haut, couvrant "
+                    f"{self.recouvrement_mm:.0f} mm du bord.")
+        return ("Aucun bridage déclaré : tous les verdicts sont donc "
+                "OPTIMISTES, parce qu'un bridage réel retire des "
+                "orientations.")
+
+
+@dataclass
+class Coupe:
+    """Ce dont depend le TEMPS d'usinage, et rien d'autre.
+
+    Groupe distinct des ``Reglages`` a dessein, et ce n'est pas du rangement :
+    les reglages changent la FAISABILITE — une course plus courte rend une
+    surface inaccessible —, la matiere change le TEMPS. Les melanger ferait
+    croire qu'ils se valent, et ferait relancer une verification de 40 s parce
+    que l'operateur a change d'alliage.
+
+    La liste des matieres vient de ``recipe_profiles`` : ce module refuse de
+    deviner les parametres d'une matiere voisine, et l'atelier ne peut donc
+    proposer que celles qu'il connait.
+    """
+
+    matiere: str = "aluminium-6061"
+
+    @staticmethod
+    def matieres() -> list[str]:
+        from ...recipe_profiles.recipes import MATERIALS
+
+        return sorted(MATERIALS)
+
+    def recette(self, tool, machine):
+        """La recette de coupe, ou ``None`` si la matiere n'est pas connue.
+
+        ``None`` plutot qu'une exception : une matiere inconnue ne doit pas
+        faire echouer une simulation dont le reste est valable — elle doit
+        faire disparaitre le TEMPS, qui est la seule chose qui en depend.
+        """
+        from ...recipe_profiles.recipes import UnknownMaterialError, build_recipe
+
+        try:
+            return build_recipe(self.matiere, tool, machine)
+        except (UnknownMaterialError, KeyError):
+            return None
 
 
 #: Motif rendu par le moteur -> ce que l'utilisateur peut y faire.
@@ -380,6 +502,10 @@ class Surface:
 @dataclass
 class Session:
     reglages: Reglages = field(default_factory=Reglages)
+    #: Ce dont depend le temps d'usinage. Separe des reglages : voir ``Coupe``.
+    coupe: Coupe = field(default_factory=Coupe)
+    #: Comment la piece est tenue. Separe aussi : voir ``Bridage``.
+    bridage: Bridage = field(default_factory=Bridage)
     piece: str = ""
     dimensions: str = ""
     import_detail: str = ""
@@ -399,6 +525,26 @@ class Session:
     film: list[dict] = field(default_factory=list)
     #: Ce que la simulation a montre, et ce qu'elle n'a PAS montre.
     simulation_note: str = ""
+    #: Le decalage de piece que le moteur PROPOSE, quand une indexation a ete
+    #: ecartee faute de course : ``{"dx", "dy", "dz", "texte", "gain_mm3"}``.
+    #:
+    #: Propose et non applique : la pose est une declaration de l'operateur, et
+    #: la baisser rapproche la piece du plateau — ce que ce calcul ne regarde
+    #: pas. Mais lui faire calculer lui-meme un decalage que le moteur connait
+    #: au dixieme de millimetre serait lui rendre le travail qu'on pretend lui
+    #: enlever.
+    #: Le temps PLANCHER du cycle, tel que ``strategy_planner.duree`` le
+    #: calcule, avec sa reserve. ``None`` quand rien n'a ete simule ou quand
+    #: la matiere n'est pas connue — pas de temps invente dans ce cas.
+    duree: dict | None = None
+    correction: dict | None = None
+    #: Pourquoi il n'y a PAS de correction a proposer, quand la seule qui
+    #: rattraperait la course enfoncerait la piece dans le plateau.
+    _correction_impraticable: str = field(default="", repr=False)
+    #: Les operations d'ebauche de la derniere simulation. Gardees pour le
+    #: calcul du temps : le rapport du planner porte les courses mais pas les
+    #: trajectoires, et les recalculer coûterait une simulation entiere.
+    _operations_simulees: list = field(default_factory=list, repr=False)
     #: Le meme, en une ligne — pour un ecran de 10 pouces.
     #:
     #: Deux champs et non un seul tronque : ce qui doit rester VISIBLE, ce sont
@@ -542,6 +688,30 @@ class Session:
         self.simulation_resume = ""
         self.erreur = ""
 
+    def _poser_piece(self) -> None:
+        """Repose la piece selon le decalage DECLARE, sur la pose suggeree.
+
+        Appelee avant chaque calcul et non une fois au chargement : un
+        decalage se change sans recharger la piece, et une pose appliquee au
+        seul chargement aurait laisse le verdict porter sur l'ancienne.
+
+        La pose suggeree reste la reference : le decalage s'AJOUTE, de sorte
+        qu'un operateur qui remet le decalage a zero retrouve exactement la
+        pose de depart — et non une pose derivee de ses essais successifs.
+        """
+        banc = self._banc
+        if banc is None or getattr(banc, "part", None) is None:
+            return
+        base = np.asarray(banc.suggested_mount(banc.part.bbox), dtype=float)
+        banc.mount_offset_mm = list(
+            base + np.asarray(self.reglages.decalage_piece, dtype=float))
+        # Le BRIDAGE est pose en meme temps que la piece, et pour la meme
+        # raison : les deux decrivent le montage, et un champ d'obstacles
+        # calcule avant l'un des deux ne decrit rien.
+        bb = banc.part.bbox
+        banc.fixtures = self.bridage.fixtures(bb.lo, bb.hi)
+        banc._obstacles = None
+
     def _refuser(self, nom: str, pourquoi: str) -> None:
         """Ecarte une piece en gardant le motif a l'ecran.
 
@@ -559,11 +729,16 @@ class Session:
         self._normales_surfaces = []
         self._passes_finition = []
         self._refus_finition = []
+        self._operations_simulees = []
+        self.duree = None
         self._blocages = []
         self._blocages_outil = []
         self.diagnostics = {}
         self.film, self.simulation_note, self.simulation_resume = [], "", ""
         self.n_images = 0
+        # La correction proposee portait sur l'ancienne pose : la garder
+        # afficherait un decalage a ajouter a un decalage deja applique.
+        self.correction = None
         self.erreur = pourquoi
 
     def televerser(self, nom: str, donnees: bytes, dossier: Path) -> None:
@@ -654,6 +829,7 @@ class Session:
         machine = self.reglages.machine()
         banc.machine = machine
         banc._obstacles = None
+        self._poser_piece()
 
         self.etape = "découpe des surfaces"
         self.progres = 0.05
@@ -929,11 +1105,16 @@ class Session:
         self._normales_surfaces = []
         self._passes_finition = []
         self._refus_finition = []
+        self._operations_simulees = []
+        self.duree = None
         self._blocages = []
         self._blocages_outil = []
         self.diagnostics = {}
         self.film, self.simulation_note, self.simulation_resume = [], "", ""
         self.n_images = 0
+        # La correction proposee portait sur l'ancienne pose : la garder
+        # afficherait un decalage a ajouter a un decalage deja applique.
+        self.correction = None
 
     def vue(self, chemin: Path, *, azimut: float = 35.0,
             elevation: float = 18.0) -> Path:
@@ -1162,6 +1343,7 @@ class Session:
         banc = self._banc
         banc.machine = self.reglages.machine()
         banc._obstacles = None
+        self._poser_piece()
         banc.set_default_tool("ballnose",
                               diameter=self.reglages.diametre_outil,
                               stickout=self.reglages.jauge_outil)
@@ -1172,11 +1354,54 @@ class Session:
         plan, rapport = banc.plan_roughing_preview(
             layer_thickness=3.0, max_setups=MAX_INDEXATIONS,
             pitch=2.0, point_spacing=2.0)
+        self._operations_simulees = list(plan.operations)
 
         if not plan.operations:
             # Rien plutot qu'une animation qui ne correspondrait a rien. Une
             # image fausse est pire qu'une absence d'image : l'absence, on la
             # remarque.
+            #
+            # Mais l'absence doit dire sa cause, et il y en a deux : « pas
+            # assez de matiere vue » et « aucune indexation ne tient dans les
+            # courses ». La premiere version ne connaissait que la premiere, et
+            # une piece recalee de 6 mm se lisait donc comme une piece
+            # inusinable.
+            refus_entree = list(getattr(rapport, "refuses_entree", ()) or ())
+            refus_course = list(getattr(rapport, "refuses_course", ()) or ())
+            if refus_entree and not refus_course:
+                pire_e = max(refus_entree,
+                             key=lambda r: r.candidate.reachable_mm3)
+                self.simulation_resume = ("aucune ébauche : l'outil ne peut "
+                                          "entrer nulle part")
+                self.simulation_note = (
+                    f"Aucune trajectoire d'ébauche n'est montrée : sur les "
+                    f"{len(refus_entree)} indexation(s) essayée(s), l'outil "
+                    f"traverse la matière ou la machine avant même de couper. "
+                    + pire_e.consigne()
+                    + " Aucun programme n'est produit dans ce cas : un contact "
+                      "hors coupe n'est pas une passe, c'est un choc.")
+                return
+            if refus_course:
+                pire = min(refus_course, key=lambda r: max(r.course.exces_mm))
+                self._proposer_correction(refus_course)
+                self.simulation_resume = (
+                    f"aucune ébauche : il manque "
+                    f"{max(pire.course.exces_mm):.1f} mm de course "
+                    f"{pire.course.axe_le_plus_court}")
+                self.simulation_note = (
+                    f"Aucune trajectoire d'ébauche n'est montrée, et ce n'est "
+                    f"pas la pièce qui est en cause : les "
+                    f"{len(refus_course)} indexation(s) essayée(s) produisent toutes "
+                    f"des positions hors des courses de la machine. La moins "
+                    f"éloignée : " + pire.course.consigne(
+                        remede=not self._correction_impraticable)
+                    + " Aucun programme n'est produit tant qu'il sortirait des "
+                      "courses : une position hors course ne s'arrête pas à la "
+                      "simulation, elle s'arrête à la machine, en pleine "
+                      "matière."
+                    + (" " + self._correction_impraticable
+                       if self._correction_impraticable else ""))
+                return
             self.simulation_note = (
                 "Aucune trajectoire d'ébauche n'a pu être construite sur cette "
                 "pièce : aucune des indexations essayées ne voit assez de "
@@ -1302,6 +1527,7 @@ class Session:
                                                     AccessibilitySolver,
                                                     tcp_from_contact)
         from ...strategy_planner.indexed_pass import decide_indexed_pass
+        from ...strategy_planner.travel import course_lineaire
 
         self._refus_finition = []
         if not self._passes_finition:
@@ -1353,6 +1579,23 @@ class Session:
             axe = banc.machine.tool_axis_in_part(verdict.a_deg, verdict.c_deg)
             tcp = np.array([tcp_from_contact(pts[j], nrm[j], axe, banc.tool)
                             for j in range(len(pts))])
+
+            # LES COURSES LINEAIRES, sur la passe de finition aussi. Le
+            # solveur d'accessibilite connait MACHINE_TRAVEL et le verifie aux
+            # points examines ; la trajectoire, elle, passe aussi par des
+            # points non examines, et c'est sur ses sommets que le verdict est
+            # exact. Sans ce test, la finition etait tenue a une exigence plus
+            # faible que l'ebauche — sur le meme ecran.
+            course = course_lineaire(banc.machine, tcp, banc.mount_offset,
+                                     verdict.a_deg, verdict.c_deg, exact=True)
+            if not course.tient:
+                self._refus_finition.append({
+                    "surface": i, "titre": titre,
+                    "phrase": ("l'orientation trouvée dégage, mais "
+                               + course.consigne()),
+                })
+                continue
+
             out.append({
                 "surface": i, "titre": titre,
                 "a_deg": float(verdict.a_deg), "c_deg": float(verdict.c_deg),
@@ -1396,6 +1639,7 @@ class Session:
         """
         n_points = sum(len(P) for P, *_ in plans)
         hors = sum(1 for f in self.film if not f["dans_courses"])
+        self._calculer_duree(rapport)
         # Compte les deux familles depuis les PLANS, et non depuis une phrase
         # ecrite : « seule l'ebauche est calculee » etait vrai hier et faux
         # aujourd'hui, et une phrase qui decrit un manque survit a la
@@ -1425,27 +1669,69 @@ class Session:
         if rapport.gouged_voxels:
             bouts.append(f"ATTENTION : {rapport.gouged_voxels} points de la "
                          f"pièce finie sont touchés par l'ébauche.")
+        # Les COURSES, mesurees sur la trajectoire et non comptees sur les
+        # images. « 15 images sur 36 hors courses » comptait les 36 poses
+        # echantillonnees pour l'animation : un chiffre qui depend du nombre
+        # d'images demandees, pas de la gamme. Le planner mesure maintenant
+        # chaque sommet du programme, et le domaine des courses etant une
+        # boite, ce verdict est exact et sans reserve.
+        # Les COURSES. Plus aucune operation retenue n'en sort — le planner
+        # ecarte celles qui le feraient —, donc ce qui reste a dire est ce
+        # qu'on a PERDU en les ecartant, et a quel prix on le recupererait.
+        # C'est la partie utile : sur la poche C02, l'indexation la plus riche
+        # est ecartee pour 0,2 mm.
+        refus_course = list(getattr(rapport, "refuses_course", ()) or ())
+        if refus_course:
+            pire = min(refus_course, key=lambda r: max(r.course.exces_mm))
+            self._proposer_correction(refus_course)
+            perdu = max(r.candidate.reachable_mm3 for r in refus_course)
+            bouts.append(f"{len(refus_course)} indexation(s) ont été ÉCARTÉES "
+                         f"parce que leur trajectoire sortait des courses — la "
+                         f"plus riche voyait {perdu:.0f} mm³. La moins "
+                         f"éloignée : "
+                         + pire.course.consigne(
+                             remede=not self._correction_impraticable))
+            if self._correction_impraticable:
+                bouts.append(self._correction_impraticable)
+
+        # Les indexations ecartees parce qu'on ne peut pas y ENTRER : un
+        # organe qui ne doit jamais toucher traverse le brut ou la piece. Sans
+        # cette phrase, une gamme a 2 % de matiere enlevee restait
+        # inexpliquee — et j'avais ajoute le champ sans l'afficher, ce qui est
+        # exactement l'echec silencieux que ce projet traque.
+        refus_entree = list(getattr(rapport, "refuses_entree", ()) or ())
+        if refus_entree:
+            pire_e = max(refus_entree, key=lambda r: r.candidate.reachable_mm3)
+            bouts.append(
+                f"{len(refus_entree)} indexation(s) ont été écartées parce "
+                f"qu'on ne peut pas y entrer en matière — la plus riche voyait "
+                f"{pire_e.candidate.reachable_mm3:.0f} mm³ : "
+                + pire_e.consigne())
         if hors:
+            # Il reste un comptage sur les images, et il ne porte que sur les
+            # poses affichees : la finition mesure ses courses passe par passe,
+            # mais une pose intermediaire de l'animation peut sortir sans que
+            # la trajectoire le fasse.
             bouts.append(f"{hors} image(s) sur {self.n_images} placent l'outil "
-                         f"HORS des courses réglées plus haut : la machine "
-                         f"ne pourrait pas y aller.")
+                         f"hors des courses réglées — comptage sur les poses "
+                         f"affichées, pas sur la trajectoire entière.")
         # Les surfaces sans finition animee sont NOMMEES, avec le motif rendu
         # par le moteur. « Certaines surfaces ne sont pas montrées » ne dit ni
         # lesquelles ni pourquoi, et laisse croire a une limite de l'apercu la
         # ou il y a une limite de la MACHINE, de l'OUTIL ou du MONTAGE.
-        refus = list(self._refus_finition)
-        if refus:
-            bouts.append(f"{len(refus)} surface(s) n'ont pas de finition "
+        refus_fin = list(self._refus_finition)
+        if refus_fin:
+            bouts.append(f"{len(refus_fin)} surface(s) n'ont pas de finition "
                          f"simulée, faute d'orientation qui dégage dans le "
                          f"montage de départ :")
-            for r in refus[:4]:
+            for r in refus_fin[:4]:
                 bouts.append(f"« {r['titre']} » — {r['phrase']}")
-            if len(refus) > 4:
+            if len(refus_fin) > 4:
                 # Les surfaces en trop sont NOMMEES sans leur motif, et non
                 # regroupees sous « même raison » : rien ne dit qu'elles
                 # partagent la leur, et l'ecrire serait affirmer une mesure
                 # qu'on n'a pas faite.
-                autres = ", ".join(f"« {r['titre']} »" for r in refus[4:])
+                autres = ", ".join(f"« {r['titre']} »" for r in refus_fin[4:])
                 bouts.append(f"Également sans finition : {autres} — motifs "
                              f"non détaillés ici.")
         if n_fin:
@@ -1469,26 +1755,172 @@ class Session:
                 f"n'est pas encore simulé")
         manques.append("la matière qui disparaît au fur et à mesure (la pièce "
                        "finie est dessinée dès la première image)")
-        manques.append("les brides, qui ne sont pas modélisées du tout")
-        bouts.append("Ce qui n'est PAS montré ici : " + ", ".join(manques) + ".")
+        # La reserve sur le bridage se CALCULE, et c'est tout l'objet du
+        # troisieme groupe de reglages : « les brides ne sont pas modélisées du
+        # tout » etait vrai hier et faux aujourd'hui, et une phrase qui decrit
+        # un manque survit a la disparition du manque si on ne la calcule pas.
+        if not self.bridage.fixtures_declares():
+            manques.append("les brides, qui ne sont pas déclarées — tous les "
+                           "verdicts sont donc optimistes")
+        if self.bridage.fixtures_declares():
+            # Un verdict rendu AVEC bridage doit dire lequel : le meme refus
+            # n'a pas le meme remede selon qu'un mors ou la piece bloque, et
+            # l'operateur doit pouvoir reconnaitre son montage.
+            bouts.append("Bridage pris en compte — " + self.bridage.resume()
+                         + " Une boîte surestime un bridage réel : un refus "
+                           "peut donc être prudent, un passage est fiable.")
+        if manques:
+            bouts.append("Ce qui n'est PAS montré ici : "
+                         + ", ".join(manques) + ".")
         self.simulation_note = " ".join(bouts)
 
         # La ligne courte : seulement ce qui change une decision.
         courts = [f"{n_eb} ébauche(s) + {n_fin} finition(s)",
                   f"{rapport.removed_fraction * 100:.0f} % de matière enlevée"]
-        if refus:
+        if self.duree:
+            # Le temps a sa place sur la ligne courte : c'est le chiffre que
+            # l'operateur regarde avant de lancer. « au moins » en fait partie
+            # et n'est pas une precaution de style — sans lui, quelqu'un
+            # organise sa journee sur un minorant.
+            courts.append(f"au moins {self.duree['texte']}")
+        if refus_fin:
             # Un refus compte autant qu'une operation montree : sans ce
             # chiffre sur la ligne courte, « 0 finition(s) » se lirait comme
             # un calcul qui n'a pas eu lieu.
-            courts.append(f"{len(refus)} surface(s) sans orientation qui "
+            courts.append(f"{len(refus_fin)} surface(s) sans orientation qui "
                           f"dégage")
         if rapport.gouged_voxels:
             courts.append(f"{rapport.gouged_voxels} points de la pièce touchés")
+        if refus_entree:
+            courts.append(f"{len(refus_entree)} indexation(s) où l'outil ne "
+                          f"peut pas entrer")
+        if refus_course:
+            courts.append(f"{len(refus_course)} indexation(s) écartée(s) faute de "
+                          f"{max(pire.course.exces_mm):.1f} mm de course "
+                          f"{pire.course.axe_le_plus_court}")
         if hors:
             courts.append(f"{hors} image(s) sur {self.n_images} HORS courses")
         self.simulation_resume = " · ".join(courts)
 
     # ------------------------------------------------------------ le lancement
+
+    def _calculer_duree(self, rapport) -> None:
+        """Le temps PLANCHER du cycle d'ebauche, ou rien.
+
+        Rien, et non un zero ni un « — », quand la matiere n'est pas connue :
+        ``recipe_profiles`` refuse de deviner les parametres d'une matiere
+        voisine, et un temps calcule sur une avance inventee serait la fausse
+        valeur type. L'interface affiche alors ce qui manque : la matiere.
+
+        Le temps ne couvre que l'EBAUCHE, parce que c'est d'elle que le plan
+        porte les trajectoires. La finition a ses propres passes, et son temps
+        viendra quand elles entreront dans le plan plutot que dans le film.
+        """
+        from ...strategy_planner.duree import duree_plan
+
+        banc = self._banc
+        self.duree = None
+        ops = list(self._operations_simulees)
+        if banc is None or not ops or not getattr(rapport, "courses", None):
+            return
+        rec = self.coupe.recette(banc.tool, banc.machine)
+        if rec is None:
+            return
+        d = duree_plan(banc.machine, ops, rapport.courses, banc.mount_offset,
+                       avance_coupe_mm_min=rec.feed_mm_min,
+                       bridages=tuple(rec.clamped))
+        self.duree = {
+            "texte": d.texte(),
+            "consigne": d.consigne(),
+            "part_en_coupe": d.part_en_coupe,
+            "coupe_s": d.coupe_s, "rapide_s": d.rapide_s,
+            "rotation_s": d.rotation_s, "total_s": d.total_s,
+            "longueur_coupe_mm": d.longueur_coupe_mm,
+            "longueur_rapide_mm": d.longueur_rapide_mm,
+            "avance_coupe_mm_min": d.avance_coupe_mm_min,
+            "matiere": self.coupe.matiere,
+        }
+
+    def _proposer_correction(self, refus: list) -> None:
+        """Le decalage de piece qui recupererait le plus de matiere.
+
+        Pas « la moins eloignee » mais la PLUS RICHE parmi celles qu'un
+        decalage rattrape : sur la poche C02, l'indexation ecartee vaut
+        36 028 mm3 pour 0,2 mm de course — c'est celle-la qu'on veut
+        recuperer, et le critere doit donc etre le gain, pas la distance.
+
+        Les indexations qu'aucun decalage ne rattrape sont exclues d'office :
+        proposer un decalage qui ne resoudrait rien enverrait refaire un
+        montage pour rien.
+        """
+        from ...strategy_planner.travel import hauteur_sur_plateau
+
+        self._correction_impraticable = ""
+        banc = self._banc
+        rattrapables = [r for r in refus
+                        if r.course.correction_piece_mm is not None]
+
+        # Un decalage PRATICABLE, et non seulement geometrique. Mesure sur
+        # C05 : la boucle proposait -6 puis -24 mm, soit des cales a -30 mm
+        # pour une piece posee sur 25 mm de cales — donc la piece enfoncee de
+        # 5 mm DANS le plateau. Le calcul de course ne regarde pas le plateau,
+        # et il le dit ; c'est donc ici, ou la pose est connue, que le remede
+        # impraticable doit etre ecarte. Un remede impraticable est pire qu'un
+        # constat : il fait demonter un montage pour rien.
+        impraticables = []
+        if banc is not None and getattr(banc, "part", None) is not None:
+            z_bas = float(banc.part.bbox.lo[2])
+            pose = np.asarray(banc.mount_offset_mm, dtype=float)
+            gardes = []
+            for r in rattrapables:
+                d = np.asarray(r.course.correction_piece_mm, dtype=float)
+                h = hauteur_sur_plateau(banc.machine, z_bas, pose + d)
+                (gardes if h >= 0.0 else impraticables).append((r, h))
+            rattrapables = [r for r, _ in gardes]
+
+        if not rattrapables:
+            self.correction = None
+            if impraticables:
+                _r, h = max(impraticables, key=lambda x: x[1])
+                # Phrase CALCULEE a chaque fois, et non rangee dans la liste
+                # des avertissements : celle-la est remplie au chargement et
+                # aurait garde ce message apres que le decalage a change,
+                # c'est-a-dire apres qu'il a cesse d'etre vrai.
+                self._correction_impraticable = (
+                    f"Le décalage qui rendrait utilisable l'indexation la plus "
+                    f"riche ferait descendre la pièce {abs(h):.1f} mm SOUS le "
+                    f"plateau : il n'est pas praticable. Il faut une course "
+                    f"plus longue, des cales plus hautes au départ, ou une "
+                    f"pièce moins haute.")
+            return
+        meilleur = max(rattrapables, key=lambda r: r.candidate.reachable_mm3)
+        d = meilleur.course.correction_piece_mm
+        axes = [f"{v:+.1f} mm en {nom}"
+                for v, nom in zip(d, ("X", "Y", "Z")) if abs(v) >= 0.005]
+        self.correction = {
+            "dx": float(d[0]), "dy": float(d[1]), "dz": float(d[2]),
+            "gain_mm3": float(meilleur.candidate.reachable_mm3),
+            "texte": ("Reposer la pièce " + ", ".join(axes)
+                      + f" rendrait utilisable une indexation qui voit "
+                        f"{meilleur.candidate.reachable_mm3:.0f} mm³ — "
+                        f"vérifiez qu'elle ne touche alors ni le plateau ni le "
+                        f"berceau."),
+        }
+
+    def appliquer_correction(self) -> bool:
+        """Applique le decalage propose, puis invalide tout ce qui en depend.
+
+        Rend ``False`` quand il n'y a rien a appliquer, plutot que de lever :
+        deux clics rapides sur le meme bouton ne sont pas une erreur.
+        """
+        c = self.correction
+        if not c:
+            return False
+        self.reglages.decalage_piece_x += float(c["dx"])
+        self.reglages.decalage_piece_y += float(c["dy"])
+        self.reglages.decalage_piece_z += float(c["dz"])
+        self.invalider()
+        return True
 
     def lancement(self) -> dict:
         """Ce qui manque pour qu'un programme puisse partir a la machine.
@@ -1540,6 +1972,20 @@ class Session:
             "film": self.film,
             "simulation_note": self.simulation_note,
             "simulation_resume": self.simulation_resume,
+            "duree": self.duree,
+            "matiere": self.coupe.matiere,
+            "matieres": self.coupe.matieres(),
+            "bridage": {"forme": self.bridage.forme,
+                        "formes": self.bridage.formes(),
+                        "resume": self.bridage.resume(),
+                        "prise_mm": self.bridage.prise_mm,
+                        "axe_serrage": self.bridage.axe_serrage,
+                        "n_brides": self.bridage.n_brides,
+                        "recouvrement_mm": self.bridage.recouvrement_mm,
+                        "hauteur_brides_mm": self.bridage.hauteur_brides_mm,
+                        "declare": self.bridage.forme != "aucun"},
+            "correction": self.correction,
+            "decalage_piece": list(self.reglages.decalage_piece),
             "reglages": {k: getattr(self.reglages, k)
                          for k in vars(Reglages()) if not k.startswith("_")},
             "surfaces": [dict(vars(s), etiquette=s.etiquette,

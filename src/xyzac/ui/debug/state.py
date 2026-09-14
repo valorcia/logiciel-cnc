@@ -147,6 +147,10 @@ class BenchState:
     #: (0, 0, 25) et le sont toutes accessibles, avec 35 a 38 orientations
     #: admissibles, une fois la piece centree et rehaussee.
     mount_offset_mm: list[float] = field(default_factory=lambda: [0.0, 0.0, 25.0])
+    #: Bridages DECLARES, dans le repere piece. Vide = aucun bridage declare,
+    #: ce qui n'est pas la meme chose qu'un montage sans bridage : voir
+    #: ``build_setup``.
+    fixtures: list = field(default_factory=list)
     messages: list[str] = field(default_factory=list)
     #: Champ d'obstacles mis en cache : son echantillonnage coute plusieurs
     #: dizaines de milliers de points et ne depend que du montage.
@@ -298,13 +302,23 @@ class BenchState:
     # ------------------------------------------------------- accessibilite
 
     def build_setup(self):
-        """Montage minimal, pour que le solveur dispose d'une scene.
+        """Le montage : machine, piece, brut, outil — et le BRIDAGE declare.
 
-        Le banc ne connait pas de bridage en V1 : le montage ne porte que la
-        machine, la piece, le brut et l'outil. C'est une hypothese ASSUMEE, et
-        elle est optimiste — un bridage reel retire des orientations. Le panneau
-        d'accessibilite le dit, pour qu'un resultat favorable ne soit pas lu
-        comme un feu vert.
+        ``fixtures`` etait vide et le restait : le montage ne portait aucun
+        bridage, et tous les verdicts d'accessibilite etaient donc optimistes.
+        La reserve etait dite, mais rien ne permettait de la lever.
+
+        Elle se leve maintenant en declarant le bridage (voir
+        ``machine_model.bridage``). Le champ reste VIDE par defaut, et c'est
+        voulu : un bridage suppose serait pire qu'un bridage absent, parce
+        qu'il ferait rejeter des orientations au nom d'un obstacle que
+        personne n'a pose. Ce qui est dit dans les deux cas, c'est lequel des
+        deux on est.
+
+        Rien d'autre a faire pour que cela porte : ``build_scene``
+        echantillonne les bridages depuis le jalon M1, donc le solveur
+        d'accessibilite, la porte d'entree en matiere et la verification de
+        finition en tiennent compte du seul fait de les declarer ici.
         """
         from ...machine_model import Setup
 
@@ -316,6 +330,7 @@ class BenchState:
             setup_id=f"banc-{self.part.path.stem}", machine=self.machine,
             part_step_path=str(self.part.path), stock=self.stock,
             tools=[self.tool],
+            fixtures=list(self.fixtures),
             part_to_table_mm=list(self.mount_offset_mm),
         )
 

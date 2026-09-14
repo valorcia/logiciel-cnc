@@ -39,8 +39,9 @@ from ..subtractive_slicer.slicer import (
     toolpath_points,
     with_approach_retract,
 )
-from ..tool_model.assembly import ToolAssembly
+from ..tool_model.assembly import CUTTING_ROLES, ToolAssembly
 from .interfaces import Kinematic, Operation, ProcessPlan, Toolpath
+from .travel import CourseLineaire, course_lineaire, enveloppe_indexation
 
 
 @dataclass
@@ -52,11 +53,80 @@ class DirectionCandidate:
     c_deg: float
     reachable_mm3: float
     label: str = ""
+    #: Ce que l'enveloppe de la piece demande aux axes LINEAIRES sous cette
+    #: indexation. ``None`` quand la question n'a pas ete posee.
+    #:
+    #: Resultat de boite englobante, donc asymetrique : « tient » prouve que la
+    #: trajectoire tiendra, « ne tient pas » ne prouve rien (voir
+    #: ``strategy_planner.travel``). Il sert a CLASSER, pas a ecarter.
+    course: "CourseLineaire | None" = None
+
+    @property
+    def tient_en_course(self) -> bool:
+        """Sait-on que les axes lineaires suffisent ?
+
+        Faux quand la question n'a pas ete posee : c'est un savoir, pas une
+        presomption favorable.
+        """
+        return self.course is not None and self.course.tient
 
     def describe(self) -> str:
+        t = ("" if self.course is None
+             else ("" if self.course.tient
+                   else f" — HORS course {self.course.axe_le_plus_court}"))
         return (f"{self.label or 'dir'} {np.round(self.direction, 3)} "
                 f"(A={self.a_deg:7.2f} C={self.c_deg:8.2f}) : "
-                f"{self.reachable_mm3:8.0f} mm3 atteignables")
+                f"{self.reachable_mm3:8.0f} mm3 atteignables{t}")
+
+
+@dataclass(frozen=True)
+class RefusEntree:
+    """Une indexation ecartee parce qu'on ne peut pas y entrer en matiere.
+
+    Le defaut que ce refus corrige : l'indexation d'ebauche etait choisie sur
+    le seul volume, puis filtree sur la cinematique et (depuis peu) sur les
+    courses — jamais sur la COLLISION. Sur la poche C02 avec une fraise de
+    45 mm de jauge, l'indexation laterale A = -90° fait traverser le brut par
+    le nez de broche pendant l'approche : 0,26 mm de penetration au premier
+    segment, 6,5 mm au suivant. Le plan la retenait.
+
+    Ce n'etait pas visible parce que l'indexation du DESSUS, plus riche,
+    passait toujours en premier — et le jour ou elle a ete ecartee pour 2 mm de
+    course, le defaut est apparu d'un coup.
+    """
+
+    candidate: "DirectionCandidate"
+    #: Motif rendu par ``SweepChecker`` : quel organe touche quoi, et de
+    #: combien.
+    motif: str
+    n_segments: int
+    n_touche: int
+
+    def consigne(self) -> str:
+        return (f"{self.n_touche} des {self.n_segments} segments d'entrée et "
+                f"de dégagement traversent la matière ou la machine : "
+                f"{self.motif}. Un outil plus long, une jauge plus grande ou "
+                f"une autre indexation le lèveraient.")
+
+    def describe(self) -> str:
+        return (f"{self.candidate.label or 'dir'} "
+                f"(A={self.candidate.a_deg:.1f} C={self.candidate.c_deg:.1f}, "
+                f"{self.candidate.reachable_mm3:.0f} mm3) ecartee : "
+                f"{self.consigne()}")
+
+
+@dataclass(frozen=True)
+class RefusCourse:
+    """Une indexation ecartee faute de course lineaire, et de combien."""
+
+    candidate: "DirectionCandidate"
+    course: "CourseLineaire"
+
+    def describe(self) -> str:
+        return (f"{self.candidate.label or 'dir'} "
+                f"(A={self.candidate.a_deg:.1f} C={self.candidate.c_deg:.1f}, "
+                f"{self.candidate.reachable_mm3:.0f} mm3) ecartee : "
+                f"{self.course.consigne()}")
 
 
 @dataclass
@@ -65,6 +135,26 @@ class PlanReport:
 
     candidates: list[DirectionCandidate] = field(default_factory=list)
     chosen: list[DirectionCandidate] = field(default_factory=list)
+    #: Une entree par operation retenue, dans le meme ordre que ``chosen`` :
+    #: ce que la trajectoire REELLE demande aux axes lineaires.
+    #:
+    #: Mesuree sur les sommets du programme, donc exacte et sans reserve — le
+    #: domaine des courses est une boite, donc convexe, et un segment dont les
+    #: deux bouts tiennent tient entierement. A ne pas confondre avec le test
+    #: d'enveloppe qui a servi a classer les candidates.
+    courses: list["CourseLineaire"] = field(default_factory=list)
+    #: Indexations ECARTEES parce que l'entree en matiere ou le degagement
+    #: traverse le brut, la piece ou un organe machine — avec le motif rendu
+    #: par le moteur de collision.
+    refuses_entree: list["RefusEntree"] = field(default_factory=list)
+    #: Indexations ECARTEES parce que leur trajectoire sort des courses
+    #: lineaires — avec la mesure qui les ecarte, donc avec le remede.
+    #:
+    #: Un rejet doit etre RAPPORTE : sans cette liste, une piece dont aucune
+    #: indexation ne tient rendait un plan vide, et « aucune trajectoire n'a pu
+    #: etre construite » se lisait comme une limite du logiciel alors que
+    #: c'etait une course trop courte de 6 mm.
+    refuses_course: list["RefusCourse"] = field(default_factory=list)
     removed_per_step: list[float] = field(default_factory=list)
     initial_removable_mm3: float = 0.0
     final_removable_mm3: float = 0.0
@@ -130,15 +220,43 @@ def candidate_directions(
 
 def evaluate_candidates(
     directions: list[np.ndarray], material: MaterialState, setup: Setup,
+    *, marge_course_mm: float | None = None,
 ) -> list[DirectionCandidate]:
-    """Filtre par la cinematique, puis classe par volume atteignable.
+    """Filtre par la cinematique, puis classe par course tenue et par volume.
 
     Une direction que le berceau n'atteint pas n'est pas une option, quelle que
     soit la matiere qu'elle verrait. Le filtre cinematique passe donc AVANT le
     classement, et non apres : classer d'abord donnerait un palmares dont la
     tete est irrealisable.
+
+    Le meme argument valait pour X, Y et Z, et personne ne le tenait. Mesure sur
+    C05 : le planner retenait A = -90°, C = -90° pour son volume, et la
+    trajectoire sortait de la course Y sur 3 974 de ses 18 249 points. La
+    hauteur de la piece se paie en course Y des que le berceau bascule — voir
+    ``strategy_planner.travel``.
+
+    Le test de course RENSEIGNE donc, mais ne classe pas — et c'est une
+    correction que la mesure a imposee contre ma premiere version. J'avais
+    classe les candidates dont l'enveloppe tient en tete : sur la poche C02,
+    cela retrogradait ``+Z`` — 36 028 mm3, l'indexation naturelle — pour **1 mm**
+    de depassement sur une boite englobante, et le plan tombait de 40 % a 31 %
+    de matiere enlevee. Or « la boite ne tient pas » ne prouve rien sur la
+    trajectoire, qui n'occupe pas les coins de la boite. Agir sur une
+    non-conclusion est une faute, meme quand elle va dans le sens de la
+    prudence.
+
+    Le classement reste donc volumique, et c'est la mesure EXACTE de la
+    trajectoire — apres tranchage, dans ``plan_roughing`` — qui ecarte une
+    indexation. Elle en a le droit : elle conclut dans les deux sens.
+
+    ``marge_course_mm`` couvre ce que la trajectoire ajoute a la piece — rayon
+    de l'outil, plan de degagement. ``None`` ne pose pas la question : les
+    candidates sortent alors sans course renseignee.
     """
     kin = KinematicsSolver(setup.machine)
+    g = material.grid
+    lo = np.asarray(g.origin, dtype=np.float64)
+    hi = lo + np.asarray(g.shape, dtype=np.float64) * float(g.pitch)
     out: list[DirectionCandidate] = []
     for d in directions:
         d = normalize(d)
@@ -147,10 +265,13 @@ def evaluate_candidates(
         sol = kin.ik_best(d, allow_singular=True)
         if sol is None:
             continue
+        course = (None if marge_course_mm is None else enveloppe_indexation(
+            setup.machine, lo, hi, setup.part_to_table_mm,
+            sol.a_deg, sol.c_deg, marge_mm=float(marge_course_mm)))
         out.append(DirectionCandidate(
             direction=d, a_deg=sol.a_deg, c_deg=sol.c_deg,
             reachable_mm3=material.reachable_volume_mm3(d),
-            label=_axis_label(d),
+            label=_axis_label(d), course=course,
         ))
     out.sort(key=lambda c: -c.reachable_mm3)
     return out
@@ -163,6 +284,71 @@ def _axis_label(d: np.ndarray) -> str:
         if float(d @ np.array(k, dtype=float)) > 0.999:
             return v
     return "oblique"
+
+
+#: Sommets d'entree et de degagement soumis au controle de collision.
+#:
+#: Trois de chaque bout : le plan de degagement, la descente, et le premier
+#: point de coupe — c'est-a-dire exactement les segments qui traversent le
+#: vide vers la matiere, ceux ou un contact est un CHOC et non une coupe.
+#:
+#: Ce que ce controle NE couvre PAS, et il faut le dire franchement : les
+#: segments de COUPE. Le balayage coûte 22 ms par sommet mesure sur C02, donc
+#: pres de huit minutes pour les 20 724 sommets d'une trajectoire d'ebauche —
+#: hors de portee d'un apercu. Une collision tige/piece en pleine coupe reste
+#: donc invisible ici, et c'est une limite declaree, pas une delegation : rien
+#: d'autre ne la verifie a ce jalon. C'est une des raisons pour lesquelles la
+#: porte de production refuse tout depot vers une machine reelle.
+SOMMETS_ENTREE = 3
+
+
+def _entree_degagee(setup, shape, tool, material, P, direction, a_deg, c_deg):
+    """L'entree en matiere et le degagement passent-ils, dans l'etat REEL ?
+
+    Rend ``(motif, n_segments, n_touche)`` ; ``motif`` vide quand tout passe.
+
+    L'etat reel du brut et non le brut intact : le brut intact est une borne
+    SUPERIEURE de la matiere presente, donc un refus fonde sur lui serait
+    parfois pessimiste — il ecarterait une deuxieme indexation dont l'approche
+    passe justement par ce que la premiere a enleve. Le planner connait l'etat
+    courant, il n'y a donc aucune raison de s'en priver.
+    """
+    from ..collision_engine.sweep import SweepChecker
+    from ..simulation_engine.scene import build_scene
+
+    n = min(SOMMETS_ENTREE, len(P))
+    if n < 2:
+        return "", 0, 0
+    idx = list(range(n)) + list(range(max(n, len(P) - n), len(P)))
+    if len(idx) < 2:
+        return "", 0, 0
+
+    # ``shape`` est passe : sans lui ``build_scene`` relit le STEP du disque a
+    # chaque candidate, pour un resultat identique.
+    scene = build_scene(setup, material=material, shape=shape)
+    tcps = np.asarray(P, dtype=float)[idx] + np.asarray(
+        setup.part_to_table_mm, dtype=float)
+    d = np.asarray(direction, dtype=float)
+    rapports = SweepChecker(setup.machine, tool, max_step_mm=0.5).check_path(
+        tcps, np.tile(d, (len(idx), 1)),
+        np.full(len(idx), a_deg), np.full(len(idx), c_deg),
+        scene.obstacles, cutting_allowance=1.0)
+    # Ne comptent que les contacts d'organes qui ne doivent JAMAIS toucher :
+    # tige, col, porte-outil, nez de broche. L'ARETE DE COUPE, elle, est faite
+    # pour toucher la matiere — la rejeter ici ecartait l'indexation du dessus
+    # de la poche C02 pour un contact « cutting / PART », c'est-a-dire pour
+    # avoir coupe. Combien l'ebauche entame la piece finie est une autre
+    # question, et elle a sa propre mesure : ``gouged_voxels``.
+    mauvais = []
+    for r in rapports:
+        if r.ok or r.detail is None:
+            continue
+        roles = {k for k, n in r.detail.violations_by_role.items() if n}
+        if roles - CUTTING_ROLES:
+            mauvais.append(r)
+    if not mauvais:
+        return "", len(rapports), 0
+    return mauvais[0].reason(), len(rapports), len(mauvais)
 
 
 def plan_roughing(
@@ -188,19 +374,37 @@ def plan_roughing(
     plan = ProcessPlan(plan_id=f"gamme-{setup.setup_id}", setup=setup)
 
     dirs = candidate_directions(shape, setup)
-    report.candidates = evaluate_candidates(dirs, material, setup)
+    # Ce que la trajectoire ajoute a la piece, et qui compte dans les courses :
+    # le rayon de l'outil sur les cotes, le plan de degagement au-dessus. La
+    # meme valeur que le trancheur emploie pour ce plan (voir
+    # ``slice_for_direction``), afin que le test d'enveloppe porte sur ce qui
+    # sera reellement parcouru.
+    marge = 0.5 * float(tool.diameter) + max(2.0, layer_thickness)
+    report.candidates = evaluate_candidates(dirs, material, setup,
+                                            marge_course_mm=marge)
     # Vivier de travail, distinct de la liste rapportee : celle-ci doit rester
     # l'ensemble des candidates EVALUEES, faute de quoi le calcul final de la
     # matiere « vue par aucune direction » ne porterait plus que sur les
     # directions retenues, et surestimerait grossierement l'inaccessible.
     pool = [c.direction for c in report.candidates]
 
-    for step in range(max_setups):
-        ranked = evaluate_candidates(pool, material, setup)
+    # ``max_setups`` borne les operations RETENUES, pas les tentatives, et la
+    # difference compte des qu'une tentative peut echouer : une indexation
+    # ecartee — outil sans position valide, gain trop faible, course trop
+    # courte — consommait auparavant une indexation autorisee, de sorte qu'un
+    # rejet reduisait silencieusement la gamme. Les tentatives ont donc leur
+    # propre plafond, assez large pour essayer chaque candidate une fois.
+    essais = 0
+    max_essais = max_setups + len(report.candidates)
+    while len(plan.operations) < max_setups and essais < max_essais:
+        essais += 1
+        ranked = evaluate_candidates(pool, material, setup,
+                                     marge_course_mm=marge)
         if not ranked or ranked[0].reachable_mm3 < min_gain_mm3:
             break
 
         best = ranked[0]
+        step = len(plan.operations)
         sl: SliceResult = slice_for_direction(
             material, best.direction, tool,
             layer_thickness=layer_thickness, stepover_ratio=stepover_ratio,
@@ -208,13 +412,6 @@ def plan_roughing(
         if not sl.layers:
             # La direction voyait de la matiere mais l'outil n'a pas de position
             # valide : on la retire pour ne pas boucler dessus.
-            pool = [d for d in pool if not np.allclose(d, best.direction)]
-            continue
-
-        stats = simulate_removal(material, sl, tool, point_spacing=point_spacing)
-        report.gouged_voxels += stats.gouged_voxels
-
-        if stats.removed_mm3 < min_gain_mm3:
             pool = [d for d in pool if not np.allclose(d, best.direction)]
             continue
 
@@ -238,7 +435,52 @@ def plan_roughing(
         P, rapid = with_approach_retract(P, rapid, best.direction,
                                          sl.clearance_z, sl.frame,
                                          standoff_mm=max(sl.safety_clearance, 1.0))
+
+        # LES COURSES LINEAIRES, mesurees sur les sommets du programme — donc
+        # exactement, et dans les deux sens : le domaine des courses est une
+        # boite, donc convexe, et un segment dont les deux bouts tiennent tient
+        # tout entier.
+        #
+        # Mesure AVANT ``simulate_removal`` : une indexation ecartee ne doit
+        # pas avoir consomme la matiere qu'elle ne coupera pas, sans quoi les
+        # suivantes verraient un brut deja entame par une operation qui
+        # n'existe pas.
+        #
+        # Et ECARTEE, non pas signalee : une position hors course ne s'arrete
+        # pas a la simulation, elle s'arrete a la machine, en pleine matiere.
+        # Le refus est rapporte avec son remede, et la candidate suivante est
+        # essayee.
+        course = course_lineaire(setup.machine, P, setup.part_to_table_mm,
+                                 best.a_deg, best.c_deg, exact=True)
+        if not course.tient:
+            report.refuses_course.append(RefusCourse(candidate=best,
+                                                     course=course))
+            pool = [d for d in pool if not np.allclose(d, best.direction)]
+            continue
+
+        # L'ENTREE EN MATIERE. Meme regle que pour les courses : on ecarte,
+        # on ne signale pas — et pour la meme raison, un contact hors coupe est
+        # un choc. Mesure avant ``simulate_removal``, sinon une indexation
+        # ecartee aurait consomme la matiere.
+        motif, n_seg, n_touche = _entree_degagee(
+            setup, shape, tool, material, P, best.direction,
+            best.a_deg, best.c_deg)
+        if motif:
+            report.refuses_entree.append(RefusEntree(
+                candidate=best, motif=motif, n_segments=n_seg,
+                n_touche=n_touche))
+            pool = [d for d in pool if not np.allclose(d, best.direction)]
+            continue
+
+        stats = simulate_removal(material, sl, tool, point_spacing=point_spacing)
+        report.gouged_voxels += stats.gouged_voxels
+        if stats.removed_mm3 < min_gain_mm3:
+            pool = [d for d in pool if not np.allclose(d, best.direction)]
+            continue
+
         nrm = np.tile(np.asarray(best.direction, dtype=float), (len(P), 1))
+        report.courses.append(course)
+
         plan.operations.append(Operation(
             op_id=f"ebauche-{step + 1}-{best.label}",
             kinematic=Kinematic.MILLING_3PLUS2,
@@ -255,7 +497,9 @@ def plan_roughing(
                    f"{len(sl.layers)} couches de {layer_thickness} mm ; "
                    f"{stats.removed_mm3:.0f} mm3 ; balayage {sl.balayage}"
                    + (f" ; {len(journal_entrees)} entrees en plongee faute de "
-                      f"segment ou ramper" if journal_entrees else "")),
+                      f"segment ou ramper" if journal_entrees else "")
+                   + f" ; courses tenues, Y[{course.lo[1]:.0f},"
+                     f"{course.hi[1]:.0f}]"),
         ))
         report.chosen.append(best)
         report.removed_per_step.append(stats.removed_mm3)

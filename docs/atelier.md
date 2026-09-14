@@ -315,6 +315,223 @@ encore simulé »* — plutôt que de laisser deux pages se contredire à l'écr
 Cette phrase est **calculée** depuis les deux comptes : elle disparaît d'elle
 même le jour où le remontage sera simulé.
 
+### 3bis-d. Les courses linéaires, et la pièce qu'on repose de 6 mm
+
+**Le défaut.** Le planner filtrait les indexations sur les courses A et C,
+avec ce commentaire : *« une direction que le berceau n'atteint pas n'est pas
+une option, quelle que soit la matière qu'elle verrait »*. L'argument est
+juste — et il valait tout autant pour X, Y et Z, où personne ne le tenait.
+Mesure sur `C05_ailettes_rapprochees` : le planner retenait A = −90°, C = −90°
+pour le volume qu'elle enlève, et la trajectoire sortait de la course Y sur
+**3 974 de ses 18 249 positions**, avec 6 mm de dépassement. Rien ne le disait.
+Un programme qui contient des positions hors course ne s'arrête pas à la
+simulation : il s'arrête à la machine, en pleine matière.
+
+**Le fait que personne ne peut deviner.** À A = −90° le berceau couche la
+pièce, et son pivot est 40 mm sous le plateau : un point à la hauteur `z` se
+retrouve en `Y = z + 40`. Les 53 mm de la pièce, plus 25 mm de cales, plus
+40 mm de pivot font 118 mm pour une course de 120 — et le plan de dégagement
+achève de sortir. **Sur une machine XYZAC, la hauteur de la pièce se paie en
+course Y dès que le berceau bascule.**
+
+**Un verdict exact, pour une fois dans les deux sens.** Le domaine des courses
+est une *boîte*, donc convexe : un segment dont les deux extrémités tiennent
+tient entièrement, et tester les sommets de la polyligne suffit. Rien n'est
+échantillonné, il n'y a donc aucune réserve à énoncer — c'est le seul test du
+projet dans ce cas. Le test d'*enveloppe* (les huit coins d'une boîte), lui,
+reste asymétrique et ne sert qu'à renseigner.
+
+**Ce que la mesure m'a fait défaire.** J'avais d'abord classé les indexations
+dont l'enveloppe tient en tête. Sur la poche C02, cela rétrogradait `+Z` —
+36 028 mm³, l'indexation naturelle — pour **1 mm** de dépassement sur une boîte
+englobante, et le plan tombait de 40 % à 31 % de matière. Or « la boîte ne
+tient pas » ne prouve rien sur la trajectoire. **Agir sur une non-conclusion
+est une faute, même quand elle va dans le sens de la prudence.** Le classement
+reste donc volumique, et c'est la mesure exacte — après tranchage — qui écarte.
+
+**Une indexation hors course est écartée, pas signalée.** Et son rejet est
+rapporté avec ce qu'il coûte : sur C02, `+Z` est écartée pour **0,2 mm**, et
+c'était la plus riche des cinq. Le planner mesure aussi la course *avant* de
+consommer la matière, sinon les indexations suivantes verraient un brut entamé
+par une opération qui n'existe pas. Et `max_setups` borne désormais les
+opérations **retenues** et non les tentatives : un rejet réduisait
+silencieusement la gamme.
+
+**Le remède est calculé, puis proposé en un bouton.** Un dépassement est une
+translation, donc il se corrige en décalant la pièce, et le décalage se
+calcule : `R_machine←pièce^T · t_machine`, arrondi au centième **par excès**
+(arrondi vers le bas, il laisserait la trajectoire à un centième de la butée).
+L'atelier l'offre :
+
+> Reposer la pièce −6.0 mm en Z rendrait utilisable une indexation qui voit
+> 163 224 mm³ — vérifiez qu'elle ne touche alors ni le plateau ni le berceau.
+> **[ Reposer la pièce ainsi ]**
+
+Mesuré sur la boucle réelle : C05 passe de **aucun programme du tout** à
+**2 opérations d'ébauche, 60 % de matière enlevée**, en **un clic**.
+
+**Et un remède impraticable est écarté.** La boucle proposait ensuite −24 mm,
+soit des cales à −30 mm pour une pièce posée sur 25 mm : la pièce enfoncée de
+5 mm *dans* le plateau. Le calcul de course ne regarde pas le plateau et le
+dit ; c'est donc à l'atelier, qui connaît la pose, de refuser — *« il n'est pas
+praticable : il faut une course plus longue, des cales plus hautes au départ,
+ou une pièce moins haute »*. Un remède impraticable est pire qu'un constat : il
+fait démonter un montage pour rien.
+
+Deux cas se distinguent, d'ailleurs, et ne se corrigent pas pareil : une pièce
+*décalée* sort par un bout, et la translation la rattrape ; une pièce plus
+*longue* que la course sort par les deux bouts, et translater ne fait que
+changer le bout qui dépasse.
+
+**La pose déclarée est un fait du montage**, affiché en permanence dans la
+fiche de la pièce (« pièce reposée de −6.0 mm en Z »), et non un message qui
+disparaît avant le calcul qu'il explique. Le décalage s'**ajoute** à la pose
+suggérée : le remettre à zéro retrouve exactement la pose de départ, et non une
+pose dérivée des essais successifs.
+
+**La finition passe le même examen.** Le solveur d'accessibilité connaît
+`MACHINE_TRAVEL` et le vérifie *aux points examinés* ; la trajectoire passe
+aussi ailleurs. Sans mesure des courses sur ses sommets, la finition était
+animée là où l'ébauche aurait été refusée — sur le même écran.
+
+### 3bis-e. « On ne peut pas entrer là » : la collision d'approche
+
+Le contrôle des courses a fait apparaître d'un coup un défaut plus ancien :
+**l'indexation d'ébauche était choisie sans aucun contrôle de collision.**
+Volume, puis cinématique, puis (depuis peu) courses — jamais collision. Ça ne
+se voyait pas parce que l'indexation du dessus, la plus riche, passait
+toujours en premier ; le jour où elle a été écartée pour 2 mm de course, les
+indexations latérales sont sorties, et avec elles le problème.
+
+Mesure sur la poche C02, fraise de 45 mm de jauge : à A = −90° le **nez de
+broche traverse le brut** pendant l'approche — 0,26 mm de pénétration au
+premier segment, 6,5 mm au suivant. Le plan la retenait.
+
+**La porte, et ce qu'elle contrôle exactement.** Les trois sommets de chaque
+bout du programme : le plan de dégagement, la descente, le premier point de
+coupe. Ce sont les segments qui traversent le vide vers la matière, ceux où un
+contact est un **choc** et non une coupe. Le contrôle se fait sur l'état
+**réel** du brut — le brut intact est une borne supérieure de la matière, donc
+un refus fondé sur lui serait parfois pessimiste.
+
+**Seuls comptent les organes qui ne doivent JAMAIS toucher** : tige, col,
+porte-outil, nez de broche. Ma première version comptait tout contact, y
+compris `cutting / PART`, et écartait donc l'indexation du dessus **pour avoir
+coupé**. L'arête de coupe est faite pour toucher la matière ; combien l'ébauche
+entame la pièce finie est une autre question, et elle a sa propre mesure
+(`gouged_voxels`).
+
+**Ce que cette porte ne couvre pas**, et il faut le dire franchement : les
+segments de **coupe**. Le balayage coûte 22 ms par sommet mesuré, soit près de
+huit minutes pour les 20 724 sommets d'une trajectoire d'ébauche — hors de
+portée d'un aperçu. Une collision tige/pièce en pleine coupe reste invisible
+ici. C'est une **limite déclarée**, pas une délégation : rien d'autre ne la
+vérifie à ce jalon, et c'est l'une des raisons pour lesquelles la porte de
+production refuse tout dépôt vers une machine réelle.
+
+**Le résultat, bout en bout, sur la poche C02** (ballnose Ø 6, jauge 45) :
+
+| pose | matière enlevée | ce que l'atelier dit |
+|---|---|---|
+| cales 25 mm (suggérées) | **2 %**, 1 opération | +Z écartée pour 2,0 mm de course Z ; 3 latérales écartées, l'outil ne peut pas y entrer |
+| cales 23 mm (**un clic**) | **30 %**, 2 opérations | 1 latérale encore écartée (porte-outil dans le brut) |
+
+Un clic sur « Reposer la pièce ainsi » fait passer la gamme de 2 % à 30 %, sans
+gouging. C'est ce que cette page cherche à être : pas un logiciel qui dit non,
+un logiciel qui dit **quoi changer**.
+
+**Ce qui a été retiré à l'affichage.** « 15 images sur 36 hors courses »
+comptait les 36 poses échantillonnées pour l'animation : un chiffre qui dépend
+du nombre d'images demandées, pas de la gamme. C'était encore la même famille
+de faute — *lire une grandeur voisine de celle qu'on veut*.
+
+### 3bis-f. Le temps de cycle, annoncé comme un plancher
+
+**« au moins », jamais « environ ».** Le calcul suppose que chaque axe atteint
+son avance dès le premier millimètre et la tient jusqu'au sommet suivant. Ce
+qui manque est nommé, et pèse : les **accélérations** et le ralentissement dans
+les angles — une ébauche en zigzag change de sens à chaque rangée —,
+l'anticipation, les **changements d'outil**, la mise en vitesse de broche, le
+**palpage** et les reprises entre montages. Le chiffre est donc
+systématiquement optimiste. C'est la même règle que pour ±0,02 mm : un objectif,
+pas un acquis.
+
+**L'avance n'est pas inventée.** Elle vient de `recipe_profiles.build_recipe`,
+c'est-à-dire de la matière déclarée, de l'outil et de la machine — déjà bridée
+par les courses d'avance des axes et déjà **réduite de moitié** faute de
+qualification (ADR-007). Quand la matière n'est pas dans la table, il n'y a
+**pas de temps affiché** : `recipe_profiles` refuse de deviner les paramètres
+d'une matière voisine, et un temps calculé sur une avance inventée serait la
+fausse valeur type.
+
+**L'avance de rapide dépend de la DIRECTION**, et le calcul se fait dans le
+repère machine. Une diagonale n'est pas plus rapide que son axe le plus lent :
+`min_i (V_i / |d_i|)`. Les longueurs, elles, sont les mêmes dans les deux
+repères (une rotation conserve les distances) — mais un déplacement selon X de
+la pièce, à A = −90° et C = −90°, est un déplacement selon **Y** de la machine,
+avec une autre avance maximale. Une réindexation compte le **maximum** de A et
+C, pas leur somme : les deux axes partent ensemble, et les additionner
+surestimerait — incohérent pour un minorant déclaré.
+
+**Ce que le chiffre a immédiatement révélé.** Sur la poche C02 en
+aluminium 6061 :
+
+| poste | longueur | temps |
+|---|---|---|
+| coupe | 8 735 mm à 517 mm/min | 17 min |
+| **déplacements rapides** | **140 838 mm** | **42 min** |
+| rotation (2 réindexations) | — | 2 s |
+
+**29 % du temps seulement est passé à couper.** 140 mètres de transport pour
+8,7 mètres de coupe. La cause est mesurée : la trajectoire remonte au plan de
+dégagement et redescend **1 197 fois**, parce que la région à évider d'une
+poche est annulaire et que chaque rangée y est coupée en deux tronçons par la
+paroi. Relier deux tronçons à la profondeur de coupe traverserait la pièce, donc
+le trancheur remonte — et il a raison. C'est le prochain levier, et il est
+gros : router la liaison *dans* la région valide, ou ne remonter qu'à la hauteur
+réellement nécessaire plutôt qu'au plan de dégagement global. Ce chantier n'est
+**pas** fait ; le décompte par poste est là pour qu'il ne se perde pas.
+
+### 3bis-g. Le bridage, enfin déclaré
+
+`Fixture` existe depuis le jalon M1 et `build_scene` échantillonne les bridages
+depuis toujours. **Personne n'en déclarait.** L'atelier construisait un montage
+sans bridage et le disait — *« les brides ne sont pas modélisées du tout »* —,
+donc tous les verdicts d'accessibilité étaient optimistes, et cette réserve
+revenait sous chaque résultat sans que rien ne permette de la lever.
+
+Ce qui manquait n'était pas le modèle mais le **chemin** : personne ne saisit
+huit coordonnées de boîte sur un écran de 10 pouces. L'atelier part donc de ce
+qu'un opérateur sait de son montage :
+
+- **étau** — la prise en mm (mesurée depuis le *dessous* de la pièce, comme on
+  serre) et l'axe de serrage ;
+- **brides sur plateau** — combien, leur hauteur, et ce qu'elles **recouvrent**
+  du bord : c'est la cote qui interdit d'usiner cette bande, et celle qu'on
+  oublie en posant ses brides ;
+- **aucun bridage déclaré** — le défaut, et il est assumé : supposer un bridage
+  serait pire, cela ferait rejeter des orientations au nom d'un obstacle que
+  personne n'a posé. Ce qui compte est de dire dans lequel des deux cas on est.
+
+**Le sens de l'erreur est FAVORABLE, et c'est à dire.** Une boîte surestime un
+bridage réel (un étau a des mors chanfreinés, une bride est une pièce mince sur
+entretoise). Surestimer ajoute de l'obstacle, donc **retire** des orientations :
+« cette orientation dégage avec le bridage déclaré » est fiable et même
+prudent ; « elle ne dégage pas » peut être pessimiste. C'est l'inverse du
+décalage de pièce (§ 3bis-d), dont l'erreur va dans le sens défavorable — et
+confondre les deux ferait prendre un refus prudent pour un refus définitif.
+
+**Rien d'autre à brancher.** Mesuré : déclarer un étau change le champ
+d'obstacles, donc le solveur d'accessibilité, la porte d'entrée en matière et
+la vérification de finition, qui le lisent tous. Le motif de refus passe de
+`holder / STOCK` à `spindle_nose / FIXTURE` — le mors est devenu un obstacle
+que le moteur voit.
+
+Et la réserve **disparaît d'elle-même** : « les brides ne sont pas déclarées »
+est calculée, remplacée quand un bridage existe par *« Bridage pris en compte —
+Étau, pièce prise sur 12 mm selon X »*. Une phrase qui décrit un manque survit
+à la disparition du manque si on ne la calcule pas.
+
 ### 3ter. Le bouton LANCER
 
 Il ne fait pas partir la machine, et **aucun bouton de ce logiciel ne le
@@ -463,7 +680,13 @@ réellement sur les boutons, attend les images, lit les verdicts, et laisse ses
 captures dans `out/atelier/`.
 
 La pièce s'impose par `PIECE=` — et il vaut la peine d'en éprouver **deux**,
-parce que la finition a deux issues, toutes deux à vérifier :
+parce que plusieurs choses y ont deux issues, toutes deux à vérifier : la
+finition (orientation trouvée ou refus nommé) et surtout la **simulation
+elle-même** (programme produit ou aucun programme). Ce second cas a été trouvé
+par cette épreuve : sur C05 aucune indexation ne tient dans les courses, donc
+le lecteur n'apparaît jamais — et l'épreuve attendait dix minutes un élément
+qui ne viendrait pas. C'est exactement le chemin où l'opérateur a le plus
+besoin qu'on lui parle, et il n'avait aucune couverture navigateur.
 
 ```bash
 PIECE=C01_bloc_simple.step           python tools/test_atelier_navigateur.py

@@ -239,126 +239,225 @@ with sync_playwright() as pw:
     page.wait_for_timeout(300)
     page.screenshot(path=SORTIE / "3b-surface.png", full_page=True)
 
+    # Le BRIDAGE : declare un etau et verifie que le verdict est jete — le
+    # bridage change ce qui est atteignable, contrairement a la matiere.
+    assert page.locator("#bloc-bridage").is_visible()
+    avant = page.inner_text("#bridage-resume")
+    assert "OPTIMISTES" in avant, avant
+    page.select_option("#b-forme", "etau")
+    page.wait_for_function("() => etat.bridage.forme === 'etau'", timeout=30000)
+    assert page.evaluate("() => (etat.surfaces || []).length") == 0, \
+        "declarer un bridage doit jeter le verdict : il change l'accessibilite"
+    assert "Étau" in page.inner_text("#bridage-resume")
+    print("6bis-b. bridage déclaré :", page.inner_text("#bridage-resume"))
+    page.locator("#bloc-bridage").screenshot(path=SORTIE / "3d-bridage.png")
+    page.select_option("#b-forme", "aucun")   # on repart sans bridage
+    page.wait_for_function("() => etat.bridage.forme === 'aucun'", timeout=30000)
+    page.click("#verifier")
+    page.wait_for_function("() => etat && !etat.occupe && "
+                           "(etat.surfaces || []).length > 0", timeout=600000)
+    print("        verdict refait apres retour sans bridage :",
+          page.evaluate("() => etat.surfaces.length"), "surfaces")
+
     page.get_by_text("Ma machine n'a pas ces cotes").click()   # refermer
     page.click("#suivant")                    # vers l'etape 4
     tient_dans_l_ecran("usinage")
+
+    # La MATIERE : elle change le temps, pas la faisabilite, et elle a donc sa
+    # place ici plutot que dans les cotes de machine. Le verdict ne doit PAS
+    # etre invalide par ce changement — le relancer pour un alliage ferait
+    # attendre quarante secondes pour rien.
+    n_surf = page.evaluate("() => (etat.surfaces || []).length")
+    page.select_option("#matiere", "aluminium-6061")
+    page.wait_for_function(
+        "() => etat.matiere === 'aluminium-6061'", timeout=30000)
+    assert page.evaluate("() => (etat.surfaces || []).length") == n_surf, \
+        "changer de matiere ne doit pas jeter le verdict"
+    print("6quater. matière :", page.evaluate("() => etat.matiere"),
+          f"(verdict conservé : {n_surf} surfaces)")
+
     page.click("#simuler")
-    page.wait_for_selector("#bloc-simu:not([hidden])", timeout=600000)
+    # DEUX issues possibles, et l'epreuve doit accepter les deux. Trouve par
+    # cette epreuve elle-meme : sur C05 aucune indexation ne tient dans les
+    # courses, donc aucun programme n'est produit et le lecteur n'apparait
+    # jamais — l'epreuve attendait dix minutes un element qui ne viendrait pas.
+    # Le chemin « aucun programme » n'avait aucune couverture navigateur,
+    # c'est-a-dire exactement le chemin ou l'operateur a le plus besoin qu'on
+    # lui parle.
     page.wait_for_function(
-        "document.querySelector('#film').complete && "
-        "document.querySelector('#film').naturalWidth > 0", timeout=60000)
-    n_images = int(page.get_attribute("#curseur", "max")) + 1
-    print("7. simulation :", n_images, "images")
-    # EXIGENCE du 10 pouces : la vue 3D doit etre ENTIEREMENT visible sans
-    # defiler. Le premier jet tenait dans l'ecran mais coupait le haut de la
-    # scene — « la page ne debord pas » n'est pas « on voit ce qu'on vient
-    # regarder ».
-    b = page.locator("#bloc-simu .scene img").bounding_box()
-    h = page.viewport_size["height"]
-    assert b and b["y"] >= 0 and b["y"] + b["height"] <= h + 1, (
-        "la vue 3D est coupee", b, h)
-    print(f"   vue 3D entierement visible : {b['width']:.0f}x{b['height']:.0f} "
-          f"a y={b['y']:.0f} (ecran {h})")
-    # et les commandes doivent etre a l'ecran elles aussi : une vue entiere
-    # dont le curseur est sous la ligne de flottaison ne se regarde pas.
-    for sel in ("#jouer", "#curseur", "#axes", "#simu-resume"):
-        bb = page.locator(sel).bounding_box()
-        assert bb and bb["y"] + bb["height"] <= h + 1, (sel, bb, h)
-    print("   lecteur, axes et reserves a l'ecran : oui")
-    print("   pose affichee :", page.inner_text("#film-titre"))
-    print("   axes           :", page.inner_text("#axes").replace("\n", " | "))
-    page.click("#jouer")
-    page.wait_for_timeout(1600)
-    print("   lecture :", page.inner_text("#compteur").strip(),
-          "| bouton", page.inner_text("#jouer"))
-    apres = page.inner_text("#film-titre")
-    page.click("#jouer")                          # pause
-    print("   la pose suit le film :", apres)
-    # La reserve longue est REPLIEE sur un petit ecran : il faut l'ouvrir pour
-    # la lire. Sans cela l'epreuve imprimait une ligne vide et n'aurait pas vu
-    # une reserve disparue.
-    print("   ce qui reste a l'ecran :", page.inner_text("#simu-resume"))
-    page.locator("#bloc-note summary").click()
-    texte_note = page.inner_text("#simu-note")
-    assert texte_note.strip(), "la reserve longue doit rester lisible"
-    print("   ce que la simulation NE montre PAS :")
-    print("     ", texte_note)
-    page.locator("#bloc-note summary").click()
+        "() => !document.querySelector('#bloc-simu').hidden"
+        " || !document.querySelector('#sans-simu').hidden", timeout=600000)
+    programme = page.locator("#bloc-simu").is_visible()
+    if not programme:
+        texte = page.inner_text("#sans-simu")
+        print("7. AUCUN programme, et la page le dit :")
+        print("     ", texte)
+        assert texte.strip(), "une absence muette serait pire qu'une absence"
+        page.screenshot(path=SORTIE / "4d-sans-programme.png", full_page=True)
+        tient_dans_l_ecran("usinage sans programme")
 
-    # On s'arrete EN PLEINE COUPE, et non sur la premiere image : une capture
-    # prise a l'image 0 montre l'outil au point de depart, c'est-a-dire la
-    # seule image ou il ne se passe rien. La page connait, pour chaque image,
-    # si l'outil coupe ou se deplace en rapide — on lui demande.
-    milieu = page.evaluate("""() => {
-        const coupe = film.images.map((f, i) => [i, f]).filter(([, f]) => f.coupe);
-        if (!coupe.length) return Math.floor(film.n / 2);
-        return coupe[Math.floor(coupe.length * 0.6)][0];
-    }""")
-    page.fill("#curseur", str(milieu))
-    page.dispatch_event("#curseur", "input")
-    page.wait_for_function(
-        "document.querySelector('#film').complete && "
-        "document.querySelector('#film').naturalWidth > 0", timeout=60000)
-    page.wait_for_timeout(400)
-    print(f"   capture en pleine coupe : image {milieu} sur {n_images}")
-    print("     ", page.inner_text("#film-titre"))
-    print("     ", page.inner_text("#axes").replace("\n", " | "))
-    page.screenshot(path=SORTIE / "4-simulation.png", full_page=True)
-    # ET un gros plan du seul bloc de simulation : sur une page longue, la
-    # vignette de la trajectoire est illisible.
-    # Le fil d'etapes est ``sticky`` : il se superpose au haut de l'element si
-    # l'on capture sans avoir degage la place. La capture montrait alors une
-    # barre de navigation en travers de la trajectoire.
-    page.locator("#bloc-simu").scroll_into_view_if_needed()
-    page.evaluate("window.scrollBy(0, -90)")
-    page.wait_for_timeout(300)
-    page.locator("#bloc-simu").screenshot(path=SORTIE / "4b-trajectoire.png")
+    if programme:
+        n_images = int(page.get_attribute("#curseur", "max")) + 1
+        print("7. simulation :", n_images, "images")
+        # EXIGENCE du 10 pouces : la vue 3D doit etre ENTIEREMENT visible sans
+        # defiler. Le premier jet tenait dans l'ecran mais coupait le haut de la
+        # scene — « la page ne debord pas » n'est pas « on voit ce qu'on vient
+        # regarder ».
+        b = page.locator("#bloc-simu .scene img").bounding_box()
+        h = page.viewport_size["height"]
+        assert b and b["y"] >= 0 and b["y"] + b["height"] <= h + 1, (
+            "la vue 3D est coupee", b, h)
+        print(f"   vue 3D entierement visible : {b['width']:.0f}x{b['height']:.0f} "
+              f"a y={b['y']:.0f} (ecran {h})")
+        # et les commandes doivent etre a l'ecran elles aussi : une vue entiere
+        # dont le curseur est sous la ligne de flottaison ne se regarde pas.
+        for sel in ("#jouer", "#curseur", "#axes", "#simu-resume"):
+            bb = page.locator(sel).bounding_box()
+            assert bb and bb["y"] + bb["height"] <= h + 1, (sel, bb, h)
+        print("   lecteur, axes et reserves a l'ecran : oui")
+        print("   pose affichee :", page.inner_text("#film-titre"))
+        print("   axes           :", page.inner_text("#axes").replace("\n", " | "))
+        page.click("#jouer")
+        page.wait_for_timeout(1600)
+        print("   lecture :", page.inner_text("#compteur").strip(),
+              "| bouton", page.inner_text("#jouer"))
+        apres = page.inner_text("#film-titre")
+        page.click("#jouer")                          # pause
+        print("   la pose suit le film :", apres)
+        # La reserve longue est REPLIEE sur un petit ecran : il faut l'ouvrir pour
+        # la lire. Sans cela l'epreuve imprimait une ligne vide et n'aurait pas vu
+        # une reserve disparue.
+        print("   ce qui reste a l'ecran :", page.inner_text("#simu-resume"))
+        # Le TEMPS, et sa reserve dans le meme souffle. « au moins » fait
+        # partie du chiffre : sans lui, quelqu'un organise sa journee sur un
+        # minorant.
+        assert page.locator("#bloc-duree").is_visible(), \
+            "un temps de cycle doit etre affiche quand la matiere est connue"
+        t = page.inner_text("#duree-texte")
+        print("   temps de cycle :", t, "|", page.inner_text("#duree-part"))
+        assert "au moins" in t, t
+        note_t = page.evaluate(
+            "() => document.querySelector('#duree-note').textContent")
+        assert "accélérations" in note_t, note_t
+        assert "environ" not in note_t.lower(), note_t
+        page.locator("#bloc-note summary").click()
+        texte_note = page.inner_text("#simu-note")
+        assert texte_note.strip(), "la reserve longue doit rester lisible"
+        print("   ce que la simulation NE montre PAS :")
+        print("     ", texte_note)
+        page.locator("#bloc-note summary").click()
 
-    # La FINITION : c'est elle qui fait la piece. Deux issues possibles, et
-    # l'epreuve exige l'une ou l'autre — jamais le silence.
-    #
-    #   * une orientation VERIFIEE existe : l'image de finition doit dire sur
-    #     combien de points la verification porte, parce qu'un echantillon
-    #     annonce comme une preuve serait une fausse valeur ;
-    #   * aucune ne degage dans le montage de depart (cas de C05) : le refus
-    #     doit etre NOMME. Une absence muette se lirait comme une simulation
-    #     complete, et c'est exactement ce que l'ancienne version faisait — en
-    #     animant une orientation qui degageait sur 1 % des points.
-    finitions = page.evaluate(
-        "() => film.images.map((f, i) => [i, f])"
-        ".filter(([, f]) => f.finition).map(([i]) => i)")
-    if finitions:
-        page.fill("#curseur", str(finitions[len(finitions) // 2]))
+        # On s'arrete EN PLEINE COUPE, et non sur la premiere image : une capture
+        # prise a l'image 0 montre l'outil au point de depart, c'est-a-dire la
+        # seule image ou il ne se passe rien. La page connait, pour chaque image,
+        # si l'outil coupe ou se deplace en rapide — on lui demande.
+        milieu = page.evaluate("""() => {
+            const coupe = film.images.map((f, i) => [i, f]).filter(([, f]) => f.coupe);
+            if (!coupe.length) return Math.floor(film.n / 2);
+            return coupe[Math.floor(coupe.length * 0.6)][0];
+        }""")
+        page.fill("#curseur", str(milieu))
         page.dispatch_event("#curseur", "input")
         page.wait_for_function(
             "document.querySelector('#film').complete && "
             "document.querySelector('#film').naturalWidth > 0", timeout=60000)
         page.wait_for_timeout(400)
-        titre = page.inner_text("#film-titre")
-        print(f"   finition animee ({len(finitions)} images) :", titre)
-        assert "Finition" in titre, titre
-        assert "vérifiée en" in titre and "répartis sur" in titre, (
-            "le titre doit dire la PORTEE de la verification", titre)
-        page.locator("#bloc-simu").screenshot(path=SORTIE / "4c-finition.png")
-    else:
-        court = page.inner_text("#simu-resume")
-        page.locator("#bloc-note summary").click()
-        longue = page.inner_text("#simu-note")
-        page.locator("#bloc-note summary").click()
-        assert "sans orientation qui dégage" in court, court
-        assert "n'ont pas de finition simulée" in longue, longue
-        print("   aucune finition animee, et le refus est nomme :")
-        print("     ", court)
+        print(f"   capture en pleine coupe : image {milieu} sur {n_images}")
+        print("     ", page.inner_text("#film-titre"))
+        print("     ", page.inner_text("#axes").replace("\n", " | "))
+        page.screenshot(path=SORTIE / "4-simulation.png", full_page=True)
+        # ET un gros plan du seul bloc de simulation : sur une page longue, la
+        # vignette de la trajectoire est illisible.
+        # Le fil d'etapes est ``sticky`` : il se superpose au haut de l'element si
+        # l'on capture sans avoir degage la place. La capture montrait alors une
+        # barre de navigation en travers de la trajectoire.
+        page.locator("#bloc-simu").scroll_into_view_if_needed()
+        page.evaluate("window.scrollBy(0, -90)")
+        page.wait_for_timeout(300)
+        page.locator("#bloc-simu").screenshot(path=SORTIE / "4b-trajectoire.png")
 
-    # --- 8. le bouton LANCER -----------------------------------------------
-    page.click("#suivant")                    # vers l'etape 5
-    tient_dans_l_ecran("lancement")
-    page.click("#lancer")
-    page.wait_for_selector("#lancement:not([hidden])", timeout=30000)
+        # La FINITION : c'est elle qui fait la piece. Deux issues possibles, et
+        # l'epreuve exige l'une ou l'autre — jamais le silence.
+        #
+        #   * une orientation VERIFIEE existe : l'image de finition doit dire sur
+        #     combien de points la verification porte, parce qu'un echantillon
+        #     annonce comme une preuve serait une fausse valeur ;
+        #   * aucune ne degage dans le montage de depart (cas de C05) : le refus
+        #     doit etre NOMME. Une absence muette se lirait comme une simulation
+        #     complete, et c'est exactement ce que l'ancienne version faisait — en
+        #     animant une orientation qui degageait sur 1 % des points.
+        finitions = page.evaluate(
+            "() => film.images.map((f, i) => [i, f])"
+            ".filter(([, f]) => f.finition).map(([i]) => i)")
+        if finitions:
+            page.fill("#curseur", str(finitions[len(finitions) // 2]))
+            page.dispatch_event("#curseur", "input")
+            page.wait_for_function(
+                "document.querySelector('#film').complete && "
+                "document.querySelector('#film').naturalWidth > 0", timeout=60000)
+            page.wait_for_timeout(400)
+            titre = page.inner_text("#film-titre")
+            print(f"   finition animee ({len(finitions)} images) :", titre)
+            assert "Finition" in titre, titre
+            assert "vérifiée en" in titre and "répartis sur" in titre, (
+                "le titre doit dire la PORTEE de la verification", titre)
+            page.locator("#bloc-simu").screenshot(path=SORTIE / "4c-finition.png")
+        else:
+            court = page.inner_text("#simu-resume")
+            page.locator("#bloc-note summary").click()
+            longue = page.inner_text("#simu-note")
+            page.locator("#bloc-note summary").click()
+            assert "sans orientation qui dégage" in court, court
+            assert "n'ont pas de finition simulée" in longue, longue
+            print("   aucune finition animee, et le refus est nomme :")
+            print("     ", court)
+
+        # --- 8. le bouton LANCER -----------------------------------------------
+        page.click("#suivant")                    # vers l'etape 5
+        tient_dans_l_ecran("lancement")
+        page.click("#lancer")
+        page.wait_for_selector("#lancement:not([hidden])", timeout=30000)
     print("8. LANCER :", page.inner_text("#lancement-resume"))
     for li in page.query_selector_all("#conditions li"):
         print("     ", li.inner_text().replace("\n", " — ")[:110])
     page.screenshot(path=SORTIE / "5-lancer.png", full_page=True)
+
+    # --- 8bis. la CORRECTION de pose, quand le moteur en propose une --------
+    #
+    # Le cas mesure : sur C05 aucune indexation ne tient dans les courses — la
+    # hauteur de la piece se paie en course Y des que le berceau bascule — et
+    # aucun programme n'est produit. Le moteur calcule le decalage qui
+    # rattraperait ça (-6,0 mm en Z), et l'atelier doit l'OFFRIR : un decalage
+    # au dixieme de millimetre que l'operateur devrait retrouver lui-meme
+    # serait le travail qu'on pretend lui enlever.
+    #
+    # Les deux issues sont eprouvees : bouton present et efficace, ou bloc
+    # absent parce qu'il n'y a rien a corriger.
+    page.click('[data-fil="etape-simu"]')
+    cor = page.evaluate("() => etat.correction && etat.correction.texte")
+    if cor:
+        print("8bis. correction proposée :", cor)
+        assert page.locator("#bloc-correction").is_visible(), \
+            "une correction calculée doit être offerte, pas seulement écrite"
+        page.locator("#bloc-correction").screenshot(
+            path=SORTIE / "5b-correction.png")
+        page.click("#corriger")
+        page.wait_for_function(
+            "() => etat && (etat.decalage_piece || []).some("
+            "(v) => Math.abs(v) >= 0.005)", timeout=30000)
+        d = page.evaluate("() => etat.decalage_piece")
+        print("      pièce reposée de", d)
+        # la pose est un fait PERMANENT du montage : elle s'affiche dans la
+        # fiche de la piece, pas dans un message qui disparait
+        fiche = page.inner_text("#piece-info")
+        assert "reposée" in fiche, fiche
+        # et le verdict precedent est parti : il portait sur l'ancienne pose
+        assert page.evaluate("() => (etat.surfaces || []).length") == 0
+        page.screenshot(path=SORTIE / "5c-reposee.png", full_page=True)
+    else:
+        print("8bis. aucune correction à proposer (toutes les indexations "
+              "retenues tiennent dans les courses)")
+        assert not page.locator("#bloc-correction").is_visible()
 
     # --- 9. l'atelier s'arrete : la page doit le DIRE -----------------------
     # Le defaut que ce pas couvre : une page qui reste affichee, boutons
