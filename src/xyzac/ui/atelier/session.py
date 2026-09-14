@@ -1774,32 +1774,42 @@ class Session:
                          + ", ".join(manques) + ".")
         self.simulation_note = " ".join(bouts)
 
-        # La ligne courte : seulement ce qui change une decision.
-        courts = [f"{n_eb} ébauche(s) + {n_fin} finition(s)",
-                  f"{rapport.removed_fraction * 100:.0f} % de matière enlevée"]
-        if self.duree:
-            # Le temps a sa place sur la ligne courte : c'est le chiffre que
-            # l'operateur regarde avant de lancer. « au moins » en fait partie
-            # et n'est pas une precaution de style — sans lui, quelqu'un
-            # organise sa journee sur un minorant.
-            courts.append(f"au moins {self.duree['texte']}")
+        # La ligne COURTE, et elle doit le rester. Defaut trouve au
+        # navigateur sur l'ecran de 10 pouces : en y ajoutant le temps puis
+        # les refus, je l'avais portee a 172 px de haut — quatre lignes de
+        # texte, qui poussaient tout le reste de la colonne hors de l'ecran.
+        # Une ligne courte qui fait quatre lignes n'est plus une ligne courte,
+        # et le detail a deja sa place dans la note repliee.
+        #
+        # Trois faits au plus, sans « (s) » : l'accord se calcule, et les
+        # parentheses coûtent de la place sans rien dire.
+        def _p(n, singulier, pluriel=None):
+            """L'accord se CALCULE, et pas en collant un « s » au dernier mot.
+
+            Premiere version : ``f"{n} {mot}{'s' if n > 1 else ''}"``, qui
+            affichait « 4 indexation écartées » — le s sur l'adjectif, pas sur
+            le nom. En français l'accord porte sur le groupe, donc le pluriel
+            se donne en entier.
+            """
+            return f"{n} {singulier if n <= 1 else (pluriel or singulier + 's')}"
+
+        courts = [f"{_p(n_eb, 'ébauche')} + {_p(n_fin, 'finition')}",
+                  f"{rapport.removed_fraction * 100:.0f} % de matière"]
+        n_ecartees = len(refus_course) + len(refus_entree)
+        if n_ecartees:
+            courts.append(_p(n_ecartees, "indexation écartée",
+                             "indexations écartées"))
         if refus_fin:
-            # Un refus compte autant qu'une operation montree : sans ce
-            # chiffre sur la ligne courte, « 0 finition(s) » se lirait comme
-            # un calcul qui n'a pas eu lieu.
-            courts.append(f"{len(refus_fin)} surface(s) sans orientation qui "
-                          f"dégage")
+            # La finition manquante a sa place ici MEME quand des indexations
+            # ont ete ecartees : ce sont deux manques distincts, et n'en dire
+            # qu'un laisserait croire que l'autre n'existe pas.
+            courts.append(_p(len(refus_fin), "surface sans finition",
+                             "surfaces sans finition"))
         if rapport.gouged_voxels:
-            courts.append(f"{rapport.gouged_voxels} points de la pièce touchés")
-        if refus_entree:
-            courts.append(f"{len(refus_entree)} indexation(s) où l'outil ne "
-                          f"peut pas entrer")
-        if refus_course:
-            courts.append(f"{len(refus_course)} indexation(s) écartée(s) faute de "
-                          f"{max(pire.course.exces_mm):.1f} mm de course "
-                          f"{pire.course.axe_le_plus_court}")
+            courts.append(_p(rapport.gouged_voxels, "point touché",
+                             "points touchés"))
         if hors:
-            courts.append(f"{hors} image(s) sur {self.n_images} HORS courses")
+            courts.append(f"{hors} images hors courses")
         self.simulation_resume = " · ".join(courts)
 
     # ------------------------------------------------------------ le lancement
@@ -1900,7 +1910,14 @@ class Session:
         self.correction = {
             "dx": float(d[0]), "dy": float(d[1]), "dz": float(d[2]),
             "gain_mm3": float(meilleur.candidate.reachable_mm3),
-            "texte": ("Reposer la pièce " + ", ".join(axes)
+            # Deux longueurs pour la meme proposition : la longue explique,
+            # la courte tient dans la colonne du lecteur. Ce n'est pas un
+            # doublon de donnee — les deux sortent du meme calcul, au meme
+            # instant.
+            "court": ("Reposer la pièce de " + ", ".join(axes)
+                      + f" → {meilleur.candidate.reachable_mm3:.0f} mm³ "
+                        f"de plus"),
+            "texte": ("Reposer la pièce de " + ", ".join(axes)
                       + f" rendrait utilisable une indexation qui voit "
                         f"{meilleur.candidate.reachable_mm3:.0f} mm³ — "
                         f"vérifiez qu'elle ne touche alors ni le plateau ni le "

@@ -356,6 +356,14 @@ h2{margin:0;font-size:19.5px;font-weight:650;letter-spacing:-.012em}
 .champ--large select{max-width:340px}
 .champ--large .doux{margin:2px 0 0}
 
+/* Dans la colonne du lecteur, ces blocs se resserrent : la place y est
+   comptee, et le texte long a deja sa place dans le volet replie. */
+.dans-la-cote{margin-top:10px}
+.dans-la-cote.champ--large select{max-width:100%}
+.dans-la-cote .doux{display:none}
+.dans-la-cote.avis-action{padding:11px 13px;gap:9px}
+.dans-la-cote.avis-action p{font-size:12.5px}
+
 /* Le TEMPS. Gros, parce que c'est le chiffre qu'on vient chercher — et
    « au moins » dans le meme souffle, parce que sans lui le chiffre ment. */
 .duree{margin:12px 0 6px;font-size:17px;font-weight:650;color:var(--texte);

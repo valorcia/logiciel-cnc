@@ -331,7 +331,12 @@ function appliquer() {
 
   const cor = etat.correction;
   $("#bloc-correction").hidden = !cor;
-  $("#correction-texte").textContent = cor ? cor.texte : "";
+  // Dans la colonne, la forme COURTE : la longue y prenait 110 px, et la
+  // colonne d'un ecran de 10 pouces n'en a pas 110 a donner. La phrase
+  // entiere reste dans la note.
+  $("#correction-texte").textContent =
+    !cor ? "" : (fait && cor.court ? cor.court : cor.texte);
+  ranger(fait);
 
   dessinerLegende();
   dessinerFil();
@@ -444,6 +449,38 @@ async function sonder() {
 }
 
 // ------------------------------------------- matiere, temps et bridage
+
+// Le choix de la matiere et le bloc de correction DEMENAGENT selon qu'un
+// programme existe.
+//
+// Defaut trouve par l'epreuve au navigateur, sur un ecran de 10 pouces : ces
+// deux blocs etaient dans le flux, au-dessus du lecteur, et repoussaient la
+// vue 3D a y = 535 pour une hauteur d'ecran de 740 — donc coupee. Or « la page
+// ne deborde pas » n'est pas « on voit ce qu'on vient regarder », et c'est
+// toute la raison d'etre de cette pagination.
+//
+// Un SEUL noeud, deplace, et non deux copies synchronisees : deux copies d'un
+// meme etat finissent par differer, et celle qui differerait serait celle
+// qu'on lit a l'ecran.
+function ranger(fait) {
+  // Le choix de la matiere reste dans le FLUX et s'efface quand un programme
+  // existe : la colonne du lecteur n'a pas la place des deux, et « recalculer
+  // la simulation » ramene le choix — c'est le meme geste que pour relancer.
+  $("#champ-matiere").hidden = fait;
+  const cible = fait ? $("#accueil-cote") : null;
+  for (const id of ["#bloc-correction"]) {
+    const n = $(id);
+    if (!n) continue;
+    if (fait && n.parentElement !== cible) {
+      cible.appendChild(n);
+      n.classList.add("dans-la-cote");
+    } else if (!fait && n.parentElement === cible) {
+      // retour dans le flux, a leur place d'origine : avant le lecteur
+      $("#bloc-simu").parentElement.insertBefore(n, $("#bloc-simu"));
+      n.classList.remove("dans-la-cote");
+    }
+  }
+}
 
 // La matiere est un choix FERME : la liste vient du moteur, qui refuse de
 // deviner les parametres d'une matiere voisine. Un champ libre aurait laisse

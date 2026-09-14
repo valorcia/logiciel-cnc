@@ -1152,7 +1152,11 @@ def test_the_long_caveat_keeps_a_visible_short_form():
     assert s.simulation_resume, "il faut une forme courte"
     assert len(s.simulation_resume) < len(s.simulation_note) / 2
     assert "60 %" in s.simulation_resume
-    assert "16 image(s) sur 36" in s.simulation_resume
+    # Sans « (s) » : l'accord se calcule, et les parentheses coûtaient de la
+    # place sans rien dire. La ligne courte est passee a 172 px de haut sur
+    # l'ecran de 10 pouces avant d'etre resserree — voir le commentaire de
+    # ``_noter_simulation``.
+    assert "16 images hors courses" in s.simulation_resume
     # Ce que la courte laisse tomber, c'est la RESERVE — ce que la simulation
     # ne montre pas. Le partage se fait sur ce critere et non sur un mot :
     # « 1 ébauche + 3 finitions » a sa place sur la ligne courte, parce que ce
@@ -1622,7 +1626,7 @@ def test_the_note_names_every_surface_left_without_finishing():
     assert "Le dessous" in s.simulation_note
     assert "Le flanc avant" in s.simulation_note
     assert "allonger la jauge" in s.simulation_note
-    assert "2 surface(s) sans orientation" in s.simulation_resume
+    assert "2 surfaces sans finition" in s.simulation_resume
 
 
 def test_the_mount_gap_is_stated_and_not_left_as_a_contradiction():

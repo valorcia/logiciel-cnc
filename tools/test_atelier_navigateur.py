@@ -407,17 +407,31 @@ with sync_playwright() as pw:
             page.locator("#bloc-note summary").click()
             longue = page.inner_text("#simu-note")
             page.locator("#bloc-note summary").click()
-            assert "sans orientation qui dégage" in court, court
+            # La ligne COURTE doit nommer le manque, mais elle en porte plusieurs
+            # et doit rester courte : c'est la NOTE qui detaille. Exiger une
+            # formule precise sur la ligne courte revenait a interdire de la
+            # raccourcir.
+            assert "sans finition" in court, court
             assert "n'ont pas de finition simulée" in longue, longue
             print("   aucune finition animee, et le refus est nomme :")
             print("     ", court)
 
-        # --- 8. le bouton LANCER -----------------------------------------------
-        page.click("#suivant")                    # vers l'etape 5
-        tient_dans_l_ecran("lancement")
-        page.click("#lancer")
-        page.wait_for_selector("#lancement:not([hidden])", timeout=30000)
-    print("8. LANCER :", page.inner_text("#lancement-resume"))
+    # --- 8. le bouton LANCER ---------------------------------------------
+    #
+    # HORS de la branche precedente, et c'est un defaut que l'epreuve a
+    # trouve sur elle-meme : la navigation vers l'etape 5 etait restee dans le
+    # cas « programme produit », de sorte que sur C05 l'epreuve lisait un
+    # panneau qu'elle n'avait pas ouvert — et affichait une ligne vide sans
+    # echouer. Les conditions de lancement doivent etre eprouvees dans les
+    # deux cas : elles ne dependent pas de la simulation, et c'est justement
+    # ce qu'il faut verifier.
+    page.click('[data-fil="etape-lancer"]')
+    tient_dans_l_ecran("lancement")
+    page.click("#lancer")
+    page.wait_for_selector("#lancement:not([hidden])", timeout=30000)
+    resume_lancement = page.inner_text("#lancement-resume")
+    assert resume_lancement.strip(), "le panneau de lancement doit etre rempli"
+    print("8. LANCER :", resume_lancement)
     for li in page.query_selector_all("#conditions li"):
         print("     ", li.inner_text().replace("\n", " — ")[:110])
     page.screenshot(path=SORTIE / "5-lancer.png", full_page=True)
