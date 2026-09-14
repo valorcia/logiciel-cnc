@@ -119,6 +119,28 @@ class MachineKinematics(BaseModel):
 
     c_mode: CAxisMode = CAxisMode.INDEXED
 
+    #: Cinematique des trois axes LINEAIRES, quand elle n'est pas cartesienne.
+    #:
+    #: ``None`` = portique ou table/table : les butees portent sur X, Y et Z
+    #: eux-memes, le domaine est un pave, et tout ce qui s'appuie sur sa
+    #: convexite est exact.
+    #:
+    #: Un ``DeltaLineaire`` = trois chariots et six bras : les butees portent
+    #: sur les CHARIOTS, le domaine cartesien n'est plus un pave et n'est pas
+    #: convexe. Les deux cas coexistent parce que la partie ROTATIVE est la
+    #: meme — une table A/C sous une broche qui ne fait que translater —, et
+    #: c'est elle qui porte tout le raisonnement 3+2.
+    delta: object | None = None
+
+    @property
+    def lineaire_parallele(self) -> bool:
+        """La partie lineaire est-elle une cinematique PARALLELE ?
+
+        A interroger plutot qu'a deviner : plusieurs modules ont le droit de
+        supposer un pave, et aucun n'a le droit de le supposer en silence.
+        """
+        return self.delta is not None
+
     pivot_a: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
     pivot_c: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
 

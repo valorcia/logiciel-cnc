@@ -221,3 +221,164 @@ def test_the_fixture_reserve_disappears_when_a_fixture_is_declared():
 
     brides = Bridage(forme="brides", n_brides=3.0)
     assert len(brides.fixtures((0, 0, 0), (40, 20, 10))) == 3
+
+
+# ------------------------------------------- la delta lineaire (M14)
+
+def _delta():
+    from xyzac.machine_model.delta import DeltaLineaire
+
+    return DeltaLineaire(rayon_base_mm=150.0, rayon_plateforme_mm=40.0,
+                         longueur_bras_mm=250.0,
+                         chariot_min_mm=0.0, chariot_max_mm=300.0)
+
+
+def _machine_delta():
+    m = default_xyzac_kit().model_copy(deep=True)
+    m.delta = _delta()
+    return m
+
+
+def test_the_inverse_kinematics_puts_the_ball_joints_exactly_one_arm_apart():
+    """La verification qui ne ment pas : reconstruire la longueur du bras.
+
+    Une cinematique inverse se trompe silencieusement — elle rend toujours un
+    nombre. Le seul controle qui vaille est de remonter a la grandeur physique
+    qu'elle est censee respecter : l'entraxe des rotules doit valoir L, et pas
+    « a peu pres ».
+    """
+    d = _delta()
+    rng = np.random.default_rng(7)
+    P = rng.uniform([-60, -60, 40], [60, 60, 160], size=(500, 3))
+    q = d.chariots(P)
+    assert np.isfinite(q).all()
+    th = np.radians(np.asarray(d.angles_deg))
+    for i in range(3):
+        base = np.stack([np.full(len(P), d.rayon_base_mm * np.cos(th[i])),
+                         np.full(len(P), d.rayon_base_mm * np.sin(th[i])),
+                         q[:, i]], axis=1)
+        plat = P + np.array([d.rayon_plateforme_mm * np.cos(th[i]),
+                             d.rayon_plateforme_mm * np.sin(th[i]), 0.0])
+        ecart = np.abs(np.linalg.norm(base - plat, axis=1) - d.longueur_bras_mm)
+        assert ecart.max() < 1e-9, ecart.max()
+
+
+def test_the_reach_does_not_depend_on_height():
+    """Ce qui rend le volume analysable : la portee des bras est HORIZONTALE.
+
+    ``a² + b²`` ne contient pas z. La contrainte de longueur de bras est donc
+    un disque par colonne, et leur intersection — convexe — est l'empreinte
+    atteignable. Monter ou descendre ne change que la butee de chariot.
+    """
+    d = _delta()
+    p = np.array([[17.0, -23.0, 0.0]])
+    portees = [d.portee(p + np.array([0.0, 0.0, z])) for z in (0.0, 50.0, 130.0)]
+    for autre in portees[1:]:
+        assert np.allclose(portees[0], autre)
+
+
+def test_a_straight_segment_is_decided_exactly_not_sampled():
+    """LA propriete a laquelle ce projet tient, et elle survit au parallele.
+
+    Sur un portique, le domaine des courses est un pave : convexe, donc tester
+    les deux bouts suffit. Ici le volume n'est pas convexe, et un segment peut
+    SORTIR entre deux sommets qui tiennent. L'exactitude se demontre au lieu de
+    se lire :
+
+      * la portee des bras est une parabole convexe en t, maximum aux bouts ;
+      * la position de chariot est concave en t, minimum aux bouts ;
+      * son maximum interieur est la racine d'une equation du second degre.
+
+    Le test compare le verdict exact a un echantillonnage a 401 points sur
+    2 000 segments tires au hasard. Zero faux positif est la seule valeur
+    acceptable : un faux positif est une machine qui part en butee.
+    """
+    d = _delta()
+    rng = np.random.default_rng(11)
+    faux_positifs = desaccords = 0
+    for _ in range(2000):
+        p0 = rng.uniform([-120, -120, -20], [120, 120, 260], size=3)
+        p1 = p0 + rng.uniform(-90, 90, size=3)
+        exact = d.segment_tient(p0, p1)
+        t = np.linspace(0.0, 1.0, 401)[:, None]
+        echantillon = bool(d.atteignable(p0 + t * (p1 - p0)).all())
+        if exact and not echantillon:
+            faux_positifs += 1
+        if exact != echantillon:
+            desaccords += 1
+    assert faux_positifs == 0, f"{faux_positifs} segments declares bons a tort"
+    assert desaccords == 0, desaccords
+
+
+def test_a_segment_can_leave_the_volume_between_two_good_ends():
+    """La non-convexite, montree plutot qu'affirmee.
+
+    Si ce test ne trouvait aucun cas, c'est que le volume serait convexe et que
+    tout le raisonnement precedent serait inutile. Il en existe, et c'est
+    exactement pourquoi tester les sommets d'une polyligne ne suffit plus.
+    """
+    d = _delta()
+    rng = np.random.default_rng(3)
+    trouve = 0
+    for _ in range(4000):
+        p0 = rng.uniform([-100, -100, 0], [100, 100, 240], size=3)
+        p1 = rng.uniform([-100, -100, 0], [100, 100, 240], size=3)
+        if not (d.atteignable(p0[None, :])[0] and d.atteignable(p1[None, :])[0]):
+            continue
+        t = np.linspace(0.0, 1.0, 201)[:, None]
+        if not d.atteignable(p0 + t * (p1 - p0)).all():
+            trouve += 1
+            assert not d.segment_tient(p0, p1), \
+                "le test exact doit refuser ce segment"
+    assert trouve > 0, "aucun contre-exemple : le volume serait convexe ?"
+
+
+def test_the_travel_verdict_asks_the_machine_instead_of_assuming_a_box():
+    """Le depassement d'une delta se mesure en millimetres de RAIL.
+
+    Nommer un axe X, Y ou Z n'aurait aucun sens : les trois chariots melangent
+    les trois coordonnees. Et « aucun remede » y recouvre deux causes tres
+    differentes — hors de portee des bras, ou aucun decalage essaye ne suffit —
+    que la version cartesienne confondait en une phrase absurde (« il manque
+    0 mm de plus que toute la course X »).
+    """
+    from xyzac.strategy_planner.travel import course_lineaire
+
+    m = _machine_delta()
+    P = np.array([[0.0, 0.0, 0.0], [20.0, 0.0, 0.0], [20.0, 20.0, 0.0]])
+
+    trop_haut = course_lineaire(m, P, (0, 0, 120), 0.0, 0.0, exact=True)
+    assert trop_haut.parallele and not trop_haut.tient
+    assert trop_haut.axe_le_plus_court == "chariot"
+    assert "course de chariot" in trop_haut.consigne()
+
+    # le remede propose doit AVOIR ETE VERIFIE : on le rejoue.
+    assert trop_haut.correction_piece_mm is not None
+    corrige = course_lineaire(
+        m, P, np.array([0.0, 0.0, 120.0]) + np.asarray(
+            trop_haut.correction_piece_mm), 0.0, 0.0, exact=True)
+    assert corrige.tient, corrige.describe()
+
+    # hors de PORTEE des bras : aucune longueur de rail n'y changerait rien
+    loin = course_lineaire(m, np.array([[0.0, 0.0, 100.0], [400.0, 0.0, 100.0]]),
+                           (0, 0, 0), 0.0, 0.0, exact=True)
+    assert loin.correction_piece_mm is None
+    assert "PORTÉE des bras" in loin.consigne()
+    assert "course X" not in loin.consigne()
+
+
+def test_the_cartesian_machine_is_untouched_by_the_delta_branch():
+    """Les deux cinematiques coexistent, et la cartesienne garde son exactitude.
+
+    La partie ROTATIVE est la meme — une table A/C sous une broche qui ne fait
+    que translater —, et c'est elle qui porte tout le raisonnement 3+2. Seule
+    la moitie lineaire change.
+    """
+    from xyzac.strategy_planner.travel import course_lineaire
+
+    m = default_xyzac_kit()
+    assert not m.lineaire_parallele
+    c = course_lineaire(m, np.array([[0.0, 0.0, 0.0], [10.0, 10.0, 10.0]]),
+                        (0, 0, 25), 0.0, 0.0, exact=True)
+    assert not c.parallele and c.tient
+    assert _machine_delta().lineaire_parallele

@@ -32,6 +32,21 @@ Les deux questions, et leurs deux portees
    extremites tiennent tient donc entierement, et tester les sommets de la
    polyligne suffit. Rien n'est echantillonne ici.
 
+   **CETTE EXACTITUDE REPOSE SUR UNE HYPOTHESE DE MACHINE**, et il faut la
+   nommer : trois axes lineaires INDEPENDANTS et orthogonaux, chacun avec sa
+   butee. C'est le cas d'un portique ou d'une table/table comme la XYZAC de
+   reference — et ce n'est PAS le cas d'une cinematique PARALLELE (delta,
+   tripode, hexapode), ou les grandeurs butees sont les positions des chariots
+   et non les coordonnees cartesiennes.
+
+   Sur une telle machine, le domaine atteignable en cartesien n'est ni une
+   boite ni necessairement convexe, et une DROITE cartesienne devient une
+   COURBE dans l'espace des chariots : tester ses deux extremites ne prouve
+   plus rien sur ce qu'il y a entre les deux. Ce module serait alors a refaire
+   — les positions de chariots seraient calculees par la cinematique inverse,
+   et le segment devrait etre echantillonne, avec la reserve que cela
+   introduit.
+
 2. **Cette indexation peut-elle tenir ?** Reponse par une boite englobante,
    donc ASYMETRIQUE, et la distinction est celle de tout le projet (ADR-001 /
    D2) : les huit coins d'une boite donnent exactement l'enveloppe machine de
@@ -54,6 +69,8 @@ petite — y ferait quelque chose.
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+import math
 
 import numpy as np
 
@@ -107,6 +124,17 @@ class CourseLineaire:
     #: Decalage a appliquer aux cales, dans le repere PIECE, qui ramenerait
     #: tout dans les courses. ``None`` quand aucun decalage n'y suffit.
     correction_piece_mm: tuple[float, float, float] | None
+    #: Pourquoi aucun decalage n'est propose, quand c'est le cas. Nomme plutot
+    #: que deduit : sur une delta, « aucun remede » recouvre deux causes tres
+    #: differentes — la piece est hors de PORTEE des bras, ou aucun decalage
+    #: essaye ne suffit — et les deduire d'un champ cartesien produisait la
+    #: phrase « il manque 0 mm de plus que toute la course X », qui ne veut
+    #: rien dire sur une machine sans course X.
+    motif_sans_remede: str = ""
+    #: Vrai quand les butees portent sur des CHARIOTS et non sur X, Y, Z. Le
+    #: depassement est alors en millimetres de RAIL, et l'axe nomme n'aurait
+    #: aucun sens — les trois chariots melangent les trois coordonnees.
+    parallele: bool = False
 
     @property
     def tient(self) -> bool:
@@ -128,6 +156,8 @@ class CourseLineaire:
         """L'axe qui manque le plus. Un depassement sans axe nomme n'aide pas."""
         if self.tient:
             return None
+        if self.parallele:
+            return "chariot"
         i = int(np.argmax(self.exces_mm))
         return AXES[i]
 
@@ -147,9 +177,19 @@ class CourseLineaire:
         """
         if self.tient:
             return "La trajectoire tient dans les courses de la machine."
-        bouts = [f"{_mm(self.exces_mm[i])} de course {nom}"
-                 for i, nom in enumerate(AXES) if self.exces_mm[i] > 0.0]
-        manque = ", ".join(bouts)
+        if self.parallele and self.correction_piece_mm is None \
+                and "PORTÉE" in self.motif_sans_remede:
+            # Annoncer « il manque 24 mm de course » devant un point hors de
+            # portee des bras ferait chercher du rail la ou il faut des bras.
+            return (f"{self.n_hors} des {self.n_points} positions du programme "
+                    f"sont hors du volume de travail. "
+                    + self.motif_sans_remede)
+        if self.parallele:
+            manque = f"{_mm(self.exces_mm[0])} de course de chariot"
+        else:
+            manque = ", ".join(f"{_mm(self.exces_mm[i])} de course {nom}"
+                               for i, nom in enumerate(AXES)
+                               if self.exces_mm[i] > 0.0)
         if self.exact:
             tete = (f"{self.n_hors} des {self.n_points} positions du programme "
                     f"sortent des courses : il manque {manque}.")
@@ -159,6 +199,8 @@ class CourseLineaire:
                     f"pièce.")
         if not remede:
             return tete
+        if self.correction_piece_mm is None and self.motif_sans_remede:
+            return tete + " " + self.motif_sans_remede
         if self.correction_piece_mm is None:
             i = int(np.argmax(self.etendue_excedentaire_mm))
             return (tete + f" Aucun décalage de la pièce n'y suffirait : elle "
@@ -195,6 +237,118 @@ def _bornes(machine) -> tuple[np.ndarray, np.ndarray]:
                      dtype=np.float64))
 
 
+def _course_delta(machine, M: np.ndarray, a_deg: float, c_deg: float,
+                  exact: bool) -> "CourseLineaire":
+    """Le meme verdict, pour une cinematique PARALLELE.
+
+    Les butees portent sur les CHARIOTS, pas sur X, Y, Z : le depassement se
+    mesure donc en millimetres de rail, et l'enveloppe cartesienne ne sert plus
+    qu'a decrire ou la trajectoire est passee.
+
+    L'exactitude survit — voir ``DeltaLineaire.segment_tient`` : le long d'un
+    segment droit, la portee des bras est une parabole convexe (maximum aux
+    bouts) et la position de chariot est concave (minimum aux bouts, maximum
+    interieur resolu par une equation du second degre). Verifie sur 4 000
+    segments contre un echantillonnage a 401 points : zero faux positif.
+
+    Ce qui ne survit PAS, c'est le remede en forme close : le decalage qui
+    ramenerait tout dans les courses ne se lit plus sur une difference de
+    bornes, parce que la relation entre une translation et une position de
+    chariot n'est pas lineaire. Il est donc CHERCHE puis VERIFIE — on ne
+    propose que ce qu'on a re-teste.
+    """
+    d = machine.delta
+    lo = M.min(axis=0) if len(M) else np.zeros(3)
+    hi = M.max(axis=0) if len(M) else np.zeros(3)
+
+    if len(M):
+        dep = d.depassement(M)                     # (N, 3) mm de rail
+        dehors = (dep > 0.0).any(axis=1)
+        n_hors = int(dehors.sum())
+        fini = dep[np.isfinite(dep)]
+        pire = float(fini.max()) if len(fini) else 0.0
+        # Un point que les bras n'atteignent pas n'est pas « un peu dehors » :
+        # aucune longueur de rail ne le rattrape. Il est compte a part.
+        n_hors_portee = int((~np.isfinite(dep)).any(axis=1).sum())
+    else:
+        n_hors = n_hors_portee = 0
+        pire = 0.0
+
+    # Les segments, exactement. Un point de passage peut sortir entre deux
+    # sommets : c'est precisement ce que la non-convexite du volume autorise,
+    # et ce qu'un portique interdisait.
+    if exact and len(M) > 1:
+        for k in range(len(M) - 1):
+            if not d.segment_tient(M[k], M[k + 1]):
+                n_hors = max(n_hors, 1)
+                break
+
+    correction = None
+    motif = ""
+    if n_hors_portee:
+        motif = (f"{n_hors_portee} position(s) sont hors de PORTÉE des bras : "
+                 f"aucune longueur de rail n'y changerait rien, seuls des bras "
+                 f"plus longs ou une pièce plus proche de l'axe le feraient.")
+    elif n_hors:
+        correction = _chercher_decalage(machine, M, a_deg, c_deg)
+        if correction is None:
+            motif = ("Aucun décalage de la pièce jusqu'à 200 mm, dans les six "
+                     "directions essayées, ne ramène la trajectoire dans le "
+                     "volume de travail.")
+
+    # L'exces est porte par le premier axe, faute de pouvoir l'attribuer a X, Y
+    # ou Z : sur une delta les trois chariots melangent les trois coordonnees.
+    exces = (float(pire), 0.0, 0.0)
+    return CourseLineaire(
+        a_deg=float(a_deg), c_deg=float(c_deg),
+        lo=tuple(float(v) for v in lo), hi=tuple(float(v) for v in hi),
+        exces_mm=exces,
+        etendue_excedentaire_mm=(0.0, 0.0, 0.0),
+        n_points=int(len(M)), n_hors=n_hors, exact=bool(exact),
+        correction_piece_mm=correction, motif_sans_remede=motif,
+        parallele=True)
+
+
+def _chercher_decalage(machine, M: np.ndarray, a_deg: float, c_deg: float):
+    """Un decalage de piece qui ramene TOUT dans les courses, ou ``None``.
+
+    Cherche puis VERIFIE : chaque candidat est re-teste sur l'ensemble des
+    positions, et rien n'est propose qui n'ait passe ce test. C'est la seule
+    facon honnete de rendre un remede quand la forme close n'existe pas — et
+    c'est plus sûr que la forme close, qui elle n'est jamais re-testee.
+
+    La recherche est volontairement pauvre : les trois directions d'axe et
+    leurs combinaisons a une dimension, par dichotomie sur l'amplitude. Une
+    delta a un volume non convexe, donc une recherche riche trouverait parfois
+    un decalage exotique qu'aucun operateur ne saurait realiser sur ses cales.
+    """
+    d = machine.delta
+    R = machine.rotation_machine_from_part(a_deg, c_deg)
+    directions = [np.array(v, dtype=float) for v in
+                  ((0, 0, -1), (0, 0, 1), (1, 0, 0), (-1, 0, 0),
+                   (0, 1, 0), (0, -1, 0))]
+    meilleur = None
+    for u in directions:
+        bas, haut = 0.0, 200.0
+        if not bool(d.atteignable(M + haut * u).all()):
+            continue      # cette direction ne rattrape rien, meme au maximum
+        for _ in range(24):                       # dichotomie au centieme
+            mid = 0.5 * (bas + haut)
+            if bool(d.atteignable(M + mid * u).all()):
+                haut = mid
+            else:
+                bas = mid
+        t = math.ceil(haut * 100.0) / 100.0       # par exces, comme ailleurs
+        if not bool(d.atteignable(M + t * u).all()):
+            continue
+        if meilleur is None or t < meilleur[0]:
+            meilleur = (t, u)
+    if meilleur is None:
+        return None
+    t, u = meilleur
+    return tuple(float(v) for v in (R.T @ (t * u)))
+
+
 def course_lineaire(machine, points_piece: np.ndarray, mount_offset_mm,
                     a_deg: float, c_deg: float, *,
                     exact: bool) -> CourseLineaire:
@@ -217,6 +371,10 @@ def course_lineaire(machine, points_piece: np.ndarray, mount_offset_mm,
     off = np.asarray(mount_offset_mm, dtype=np.float64).reshape(3)
     M = np.array([kin.part_to_machine_point(p + off, a_deg, c_deg) for p in P]) \
         if len(P) else np.zeros((0, 3))
+
+    # La question n'est pas la meme selon la machine, et elle se DEMANDE.
+    if getattr(machine, "lineaire_parallele", False):
+        return _course_delta(machine, M, a_deg, c_deg, exact)
 
     mn, mx = _bornes(machine)
     if len(M):

@@ -36,6 +36,15 @@ serait pessimiste sur un mouvement selon un seul axe, et prendre la plus
 grande serait faux. Le calcul se fait donc segment par segment, dans le repere
 MACHINE — c'est la que les axes existent.
 
+La meme hypothese de machine
+----------------------------
+``min_i (V_i / |d_i|)`` suppose trois axes lineaires INDEPENDANTS, chacun avec
+sa vitesse maximale. Sur une cinematique PARALLELE (delta, tripode), la vitesse
+de chaque chariot est une fonction non lineaire de la position ET de la
+direction : le meme deplacement cartesien coûte des vitesses de chariot
+differentes selon l'endroit du volume ou il a lieu. La formule ci-dessous
+serait alors fausse, et pas seulement imprecise.
+
 Pourquoi le repere machine
 --------------------------
 Les longueurs, elles, sont les memes dans les deux reperes : une operation
