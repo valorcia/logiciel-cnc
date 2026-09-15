@@ -809,6 +809,10 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
     A LA CONSTRUCTION, ce qui est plus sur qu'un acteur rendu invisible : un
     calque absent ne peut pas reapparaitre par un rendu qui ignore la
     visibilite.
+
+    ``fit`` vaut ``"part"`` (piece + brut + OUTIL ENTIER, le cadrage du banc),
+    ``"piece"`` (piece + brut seulement, l'outil deborde) ou autre chose pour
+    laisser le cadrage automatique de VTK.
     """
     pv = _pv()
     hide = set(hidden)
@@ -919,6 +923,13 @@ def capture(state, path: str | Path, *, hidden=(), azimuth_deg: float = 0.0,
     else:
         if fit == "part":
             scene.fit_layers("part", "stock", "tool")
+        elif fit == "piece":
+            # Cadrage sur la PIECE seule, l'outil deborde. Le cadrage « part »
+            # englobe le nez de broche, qui fait 50 mm de diametre : sur une
+            # image ou l'outil plonge dans un creux, il occupait la moitie
+            # haute et la piece un quart. Quand le sujet est l'endroit ou
+            # l'outil entre, c'est la piece qu'il faut voir en grand.
+            scene.fit_layers("part", "stock")
         else:
             scene.reset_view()
         if azimuth_deg:

@@ -172,6 +172,37 @@ class Atelier(BaseHTTPRequestHandler):
                         500)
             return self._fichier(out)
 
+        if u.path == "/api/creux":
+            # Les CREUX de la piece, et pour chacun : quel outil, depuis quelle
+            # orientation, ou laquelle des trois etapes bloque. Synchrone comme
+            # le reste de cette page : 3 a 10 s mesurees sur le corpus, et
+            # l'operateur vient de cliquer sur l'onglet.
+            if not s.piece_chargee:
+                return self._json({"erreur": "aucune pièce"}, 404)
+            try:
+                return self._json({"creux": s.creux()})
+            except Exception as e:                 # noqa: BLE001
+                return self._json({"erreur": f"{type(e).__name__} : {e}"}, 500)
+
+        if u.path == "/api/vue-creux":
+            i = int(q.get("i", ["0"])[0])
+            if not s.piece_chargee:
+                return self._json({"erreur": "aucune pièce"}, 404)
+            az = float(q.get("a", ["25"])[0])
+            el = float(q.get("e", ["15"])[0])
+            out = (type(self).travail /
+                   f"creux_{s.revision}_{i}_{az:.0f}_{el:.0f}.png")
+            if not out.exists():
+                try:
+                    s.vue_creux(i, out, azimut=az, elevation=el)
+                except ValueError as e:            # creux non usinable
+                    return self._json({"erreur": str(e)}, 409)
+                except Exception as e:             # noqa: BLE001
+                    return self._json(
+                        {"erreur": rendu_3d() or f"{type(e).__name__} : {e}"},
+                        500)
+            return self._fichier(out)
+
         if u.path == "/api/image":
             i = int(q.get("i", ["0"])[0])
             return self._fichier(type(self).travail / "sim" / f"f{i:03d}.png")

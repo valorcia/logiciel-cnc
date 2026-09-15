@@ -99,6 +99,30 @@ BUDGET_FINITION = 90.0
 #: change, et il change ici.
 FOND_3D = "#eef1f6"
 
+#: Rayons d'outil essayes sur chaque creux, en mm.
+#:
+#: Trois, et le plus fin vaut le pas de grille : sous 1 mm de rayon a 1 mm de
+#: pas, ``feature_engine`` refuse de repondre plutot que de rendre 100 %, et
+#: l'ecran afficherait « non discrimine » sur toute la colonne. Les trois
+#: correspondent aux fraises Ø 10, Ø 6 et Ø 3 mm, qui sont les trois que
+#: tout le monde a dans son tiroir.
+RAYONS_CREUX = (5.0, 3.0, 1.5)
+
+#: Pas de la grille de matiere, en mm, pour la recherche de creux.
+#:
+#: 1 mm : une poche de 30 mm se compte alors a 3 % pres, et le calcul complet
+#: tient en deux secondes. A 0,5 mm il durerait huit fois plus longtemps pour
+#: un chiffre dont la troisieme decimale ne changera aucune decision.
+#:
+#: La consequence a dire : un detail plus fin que le pas est INVISIBLE. Mesure
+#: sur C20, dont la gravure disparait entierement a 1 mm — la piece s'y
+#: voxelise en bloc plein, et le module rend donc « aucun creux », ce qui est
+#: la bonne reponse a cette resolution et non une reponse a la piece.
+PAS_CREUX = 1.0
+
+#: Points de bord verifies par creux.
+ECHANTILLON_CREUX = 80
+
 #: Resserrage du cadrage des vues de l'atelier.
 #:
 #: Le cadrage porte sur « piece + brut + organes machine », ce qui le rend
@@ -592,6 +616,10 @@ class Session:
     #: d'un refus se connait a l'instant du refus, et la reconstituer apres
     #: coup demanderait de refaire le calcul qui vient de refuser.
     _refus_finition: list = field(default_factory=list, repr=False)
+    #: Les creux trouves dans la matiere a enlever, et leur verdict complet
+    #: (volume, outil, orientation). Calcules a la demande, invalides par la
+    #: revision comme tout le reste.
+    _creux: dict = field(default_factory=dict, repr=False)
     _blocages: list = field(default_factory=list, repr=False)
     #: Ceux que MEME une machine ideale refuse : aucun montage ne les leve, et
     #: ce sont donc eux que la recherche d'outil doit franchir.
@@ -1637,6 +1665,171 @@ class Session:
                 continue
             out.append(u)
         return out
+
+    def creux(self) -> list[dict]:
+        """Les creux de la piece : volume, outil, orientation — ou ce qui bloque.
+
+        C'est le renversement du point de vue demande : on ne liste plus les
+        FACES du dessin mais les CREUX a vider, et pour chacun on repond aux
+        trois questions dans l'ordre ou elles se posent. Le refus, quand il y
+        en a un, nomme laquelle des trois bloque — donc ce qu'il faut changer.
+
+        Calcule a la demande et mis en cache sur la revision, comme
+        ``usinage_surface`` : l'operateur vient de cliquer, il attend, et la
+        reponse ne doit pas changer tant que rien n'a bouge.
+        """
+        import time
+
+        from ...accessibility_solver.solver import (AccessibilityConfig,
+                                                    AccessibilitySolver)
+        from ...feature_engine.volumes import CAVITE, decomposer
+        from ...geometry_core import brep
+        from ...stock_engine.material import MaterialState
+        from ...stock_engine.stock import stock_from_part
+        from ...strategy_planner.creux import (decider_creux,
+                                               directions_candidates,
+                                               vues_par_direction)
+        from ...tool_model import build_endmill
+
+        if self._creux.get("cle") == self.revision:
+            return self._creux["liste"]
+        banc = self._banc
+        if banc is None or not self._passes_finition:
+            return []
+
+        t0 = time.time()
+        verts, tris, _ = brep.tessellate(banc.part_shape, deflection=0.3)
+        bb = brep.bounding_box(banc.part_shape)
+        # Le brut du BANC, pas un brut refait ici : deux bruts differents pour
+        # la meme piece donneraient deux comptes de matiere, et celui qu'on
+        # croirait serait celui qu'on voit.
+        stock = getattr(banc, "stock", None)
+        if stock is None:
+            stock = stock_from_part(bb, margin_xy=2.0, margin_z_top=2.0,
+                                    margin_z_bottom=2.0)
+        matiere = MaterialState.from_setup(stock, verts, tris, pitch=PAS_CREUX)
+        volumes = decomposer(matiere, rayons_mm=list(RAYONS_CREUX),
+                             separer_peau=True)
+        cavites = [v for v in volumes if v.nature == CAVITE]
+
+        cfg = AccessibilityConfig(subdivisions=3, max_lead_deg=45.0,
+                                  cutting_depth=0.0)
+        champ = banc.obstacle_field()
+
+        def fabrique(rayon_mm):
+            outil = build_endmill("creux", 2.0 * rayon_mm, 30.0,
+                                  stickout=self.reglages.jauge_outil,
+                                  holder_type="ER16")
+            return (AccessibilitySolver(outil, banc.machine, champ, cfg,
+                                        mount_offset_mm=banc.mount_offset),
+                    outil)
+
+        # Les lancers de rayons NE dependent pas du creux : les calculer une
+        # fois par direction, et non une fois par couple (creux, direction),
+        # est ce qui fait tenir l'ensemble en quelques secondes.
+        vues = vues_par_direction(
+            matiere, directions_candidates(self._passes_finition))
+
+        liste = []
+        for v in cavites:
+            vc = decider_creux(v, self._passes_finition, matiere,
+                               fabrique_solveur=fabrique,
+                               machine=banc.machine,
+                               mount_offset=banc.mount_offset, vues=vues,
+                               echantillon=ECHANTILLON_CREUX)
+            liste.append({
+                "creux": len(liste),
+                "titre": f"Creux {len(liste) + 1} — {v.cotes_mm}",
+                "volume_mm3": round(v.volume_mm3),
+                "cotes": v.cotes_mm,
+                "etape": vc.etape,
+                "usinable": vc.usinable,
+                "outil": vc.outil,
+                "rayon_mm": vc.rayon_mm,
+                "fraction": round(vc.fraction, 3),
+                "reprise_mm": vc.reprise_mm,
+                "visibilite": round(vc.visibilite, 3),
+                "surfaces": list(vc.surfaces),
+                # Arrondis a l'affichage : la cinematique inverse rend
+                # -34,99999999998599 pour un angle de -35, et un tel nombre
+                # dans une phrase donne l'air d'une precision qui n'existe pas.
+                "a_deg": None if vc.a_deg is None else round(vc.a_deg, 2),
+                "c_deg": None if vc.c_deg is None else round(vc.c_deg, 2),
+                "degagement": (None if vc.degagement_mm is None
+                               else round(vc.degagement_mm, 2)),
+                "phrase": vc.consigne(),
+                "par_outil": [o.describe() for o in v.par_outil],
+            })
+        self._creux = {"cle": self.revision, "liste": liste,
+                       "duree_s": round(time.time() - t0, 1),
+                       "_volumes": cavites, "_matiere": matiere}
+        return liste
+
+    def vue_creux(self, i: int, chemin: Path, *, azimut: float = 25.0,
+                  elevation: float = 15.0) -> Path:
+        """Le creux selectionne, vu depuis sa bouche, la piece basculee.
+
+        La meme image que « son usinage » pour une surface, mais pour un creux :
+        la piece a l'orientation trouvee, l'outil retenu pose a l'entree, et
+        les points de bord du creux dessines derriere lui.
+
+        Un creux dont l'orientation n'a pas ete trouvee n'a pas d'image : la
+        methode leve, elle ne rend pas une vue de la pose de depart qui
+        laisserait croire que ça passe.
+        """
+        from ...tool_model import build_endmill
+        from ..debug import scene as sc
+
+        liste = self.creux()
+        if not (0 <= i < len(liste)):
+            raise ValueError("Ce creux n'existe pas.")
+        c = liste[i]
+        if not c["usinable"]:
+            raise ValueError(c["phrase"])
+        vol = self._creux["_volumes"][i]
+
+        # L'outil descend par la bouche jusqu'au milieu du creux : au ras de
+        # l'entree il ne montre rien de l'usinage, et tout en haut il eloigne
+        # le nez de broche au point qu'il remplit l'image a lui seul.
+        grille = self._creux["_matiere"].grid
+        idx = np.argwhere(vol.masque)
+        pts = (np.asarray(grille.origin, dtype=float)
+               + (idx + 0.5) * float(grille.pitch))
+        centre = pts.mean(axis=0)
+        axe = self._banc.machine.tool_axis_in_part(c["a_deg"], c["c_deg"])
+        # La bouche : le point du creux le plus AVANCE le long de l'axe outil.
+        bouche = centre + axe * float((pts @ axe).max() - (centre @ axe))
+        chemin_outil = np.array([bouche, centre])
+
+        banc = self._banc
+        # L'outil MONTRE doit etre celui que la phrase nomme. Le banc porte
+        # l'outil par defaut — ici une Ø 6 mm hemispherique — et le laisser
+        # ferait lire « on ebauche a la fraise de Ø 10 mm » sous l'image d'une
+        # Ø 6. Une image qui contredit sa legende est pire que pas d'image.
+        outil_creux = build_endmill(f"creux{2 * c['rayon_mm']:.0f}",
+                                    diameter=2.0 * float(c["rayon_mm"]),
+                                    flute_length=30.0,
+                                    stickout=self.reglages.jauge_outil,
+                                    holder_type="ER16")
+        with self._verrou:
+            a0, c0, t0 = banc.inspect_a_deg, banc.inspect_c_deg, banc.inspect_tcp
+            outil0 = banc.tool
+            try:
+                banc.tool = outil_creux
+                banc.inspect_a_deg = float(c["a_deg"])
+                banc.inspect_c_deg = float(c["c_deg"])
+                banc.inspect_tcp = chemin_outil[-1]
+                return sc.capture(banc, chemin, fit="piece",
+                                  azimuth_deg=azimut, elevation_deg=elevation,
+                                  zoom=1.0,
+                                  window_size=(900, 620), background=FOND_3D,
+                                  hidden=("limits", "machine_axes", "machine",
+                                          "stock"),
+                                  toolpath=(chemin_outil, None))
+            finally:
+                banc.inspect_a_deg, banc.inspect_c_deg = a0, c0
+                banc.inspect_tcp = t0
+                banc.tool = outil0
 
     def usinage_surface(self, i: int) -> dict:
         """Comment CETTE surface sera usinee. Calcule a la demande, mis en cache.

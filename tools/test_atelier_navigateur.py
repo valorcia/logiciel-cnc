@@ -471,6 +471,52 @@ with sync_playwright() as pw:
             print("   aucune finition animee, et le refus est nomme :")
             print("     ", court)
 
+    # --- 7ter. LES CREUX : la matiere a sortir, et ce qui bloque ----------
+    #
+    # Le renversement du point de vue : on ne lit plus des faces mais des
+    # creux, avec pour chacun un outil et une orientation — ou le nom de
+    # l'etape qui bloque. Ce pas verifie que le bouton rend quelque chose, que
+    # la phrase de chaque creux nomme un outil, et qu'un creux annonce usinable
+    # porte VRAIMENT une image : une liste sans image laisserait croire au
+    # calcul sans jamais le montrer.
+    page.click('[data-fil="etape-verif"]')
+    page.click("#chercher-creux")
+    page.wait_for_function(
+        "() => { const t = document.querySelector('#creux-resume').textContent;"
+        " return t && !t.startsWith('Recherche'); }", timeout=120000)
+    resume_creux = page.inner_text("#creux-resume")
+    print("7ter. creux :", resume_creux)
+    assert "Recherche impossible" not in resume_creux, resume_creux
+    n_creux = page.evaluate("() => (creuxListe || []).length")
+    if n_creux:
+        for li in page.query_selector_all("#creux li"):
+            print("     ", li.inner_text().replace("\n", " — ")[:120])
+        phrase = page.inner_text("#creux-phrase")
+        assert phrase.strip(), "un creux selectionne doit porter sa phrase"
+        assert "mm\u00b3" in phrase, phrase
+        print("      phrase :", phrase[:160])
+        outils = page.inner_text("#creux-outils")
+        assert "\u00d8" in outils, outils
+        print("      outils :", outils[:140])
+        # Un creux usinable doit MONTRER son usinage, pas seulement l'annoncer.
+        k = page.evaluate("() => (creuxListe || []).findIndex(c => c.usinable)")
+        if k >= 0:
+            page.query_selector_all("#creux li")[k].click()
+            page.wait_for_function(
+                "() => { const i = document.querySelector('#image-creux');"
+                " return i && i.complete && i.naturalWidth > 100; }",
+                timeout=120000)
+            larg = page.evaluate(
+                "() => document.querySelector('#image-creux').naturalWidth")
+            print(f"      vue du creux {k + 1} : {larg} px de large")
+        else:
+            print("      aucun creux usinable : pas d'image, et c'est voulu")
+            assert not page.locator("#image-creux").is_visible()
+    else:
+        assert "Aucun creux" in resume_creux, resume_creux
+    page.locator("#bloc-creux").screenshot(path=SORTIE / "4d-creux.png")
+    tient_dans_l_ecran("creux")
+
     # --- 8. le bouton LANCER ---------------------------------------------
     #
     # HORS de la branche precedente, et c'est un defaut que l'epreuve a

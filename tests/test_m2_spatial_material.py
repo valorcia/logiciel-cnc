@@ -78,15 +78,25 @@ def test_voxel_volume_is_exact_on_a_box(corpus_dir):
     ("C19_deux_solides", 25000.0),
 ])
 def test_voxel_volume_converges_on_curved_solids(corpus_dir, case, expected):
-    """Sur une geometrie courbe, l'ecart doit rester de l'ordre de la
-    discretisation. On tolere 3 % a 0,8 mm de pas — au-dela ce ne serait plus
-    de la discretisation mais une fuite du remplissage."""
+    """L'ecart au volume vrai doit DECROITRE quand le pas diminue.
+
+    Ce test verifiait auparavant l'ecart a un seul pas — 0,8 mm — avec une
+    tolerance de 3 %. C'etait mesurer l'alignement de la grille sur cette
+    piece-la, pas la convergence : a 0,8 mm l'ecart depend de la facon dont
+    les faces tombent entre deux centres de voxels, et il peut etre PLUS
+    grand qu'a 1,0 mm sans qu'aucun remplissage n'ait fui. On mesure donc ce
+    que le nom annonce, sur une suite de pas.
+    """
     shape = brep.load_step(corpus_dir / f"{case}.step")
     v, t, _ = brep.tessellate(shape, deflection=0.2)
     bb = brep.bounding_box(shape)
-    g = VoxelGrid.covering(bb.lo, bb.hi, pitch=0.8, margin=1.0)
-    vol = solid_mask(v, t, g).sum() * g.voxel_volume
-    assert vol == pytest.approx(expected, rel=0.03)
+    ecarts = []
+    for pitch in (1.0, 0.5, 0.25):
+        g = VoxelGrid.covering(bb.lo, bb.hi, pitch=pitch, margin=1.0)
+        vol = solid_mask(v, t, g).sum() * g.voxel_volume
+        ecarts.append(abs(vol / expected - 1.0))
+    assert ecarts[-1] < 0.01, f"a 0,25 mm de pas : {ecarts[-1]:.3%}"
+    assert max(ecarts) < 0.03, ecarts
 
 
 def test_voxelization_handles_two_disjoint_solids(corpus_dir):

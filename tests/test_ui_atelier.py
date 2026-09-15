@@ -1991,3 +1991,85 @@ def test_the_two_surface_views_answer_two_different_questions():
     # et l'onglet existe des deux cotes de l'interface
     html = (ATELIER / "static" / "index.html").read_text(encoding="utf-8")
     assert 'id="ong-comment"' in html and 'id="curseur-usinage"' in html
+
+
+# ---------------------------------------------- les CREUX, a l'ecran
+
+def test_a_cavity_that_is_not_machinable_is_never_drawn_being_machined():
+    """Meme regle que pour une surface, et pour la meme raison.
+
+    Une image d'usinage pour un creux dont l'orientation n'a pas ete trouvee
+    ressemblerait a un usinage. ``vue_creux`` leve, et ce que voit
+    l'utilisateur est la phrase qui dit ce qui bloque.
+    """
+    from xyzac.ui.atelier.session import Session
+
+    s = Session()
+    s._creux = {"cle": s.revision, "liste": [
+        {"creux": 0, "titre": "Creux 1", "cotes": "8 × 40 × 35 mm",
+         "usinable": False, "etape": "orientation",
+         "phrase": "le porte-outil touche"}], "_volumes": [], "_matiere": None}
+    with pytest.raises(ValueError, match="porte-outil"):
+        s.vue_creux(0, Path("/tmp/jamais-ecrit-creux.png"))
+
+
+def test_the_cavity_list_is_cached_per_revision():
+    """Trois a dix secondes de calcul : on ne recommence pas a chaque clic.
+
+    Mais le cache porte sur la REVISION, comme partout ailleurs ici : un
+    bridage declare, une cote de machine changee, et l'orientation trouvee
+    n'est plus la bonne. Servir l'ancienne serait montrer l'usinage d'une
+    machine qui n'existe plus.
+    """
+    from xyzac.ui.atelier.session import Session
+
+    s = Session()
+    s._creux = {"cle": s.revision, "liste": [{"creux": 0}]}
+    assert s.creux() == [{"creux": 0}]
+    s.revision += 1
+    # plus de banc ni de passes : la session ne peut RIEN rendre, et c'est la
+    # preuve que le cache a bien ete invalide plutot que resservi.
+    assert s.creux() == []
+
+
+def test_the_cavity_view_shows_the_tool_the_sentence_names():
+    """Une image qui contredit sa legende est pire que pas d'image.
+
+    Le banc porte un outil par defaut — une Ø 6 mm hemispherique. Le creux,
+    lui, est ebauche a l'outil que la decomposition a retenu, souvent une
+    Ø 10 mm. Rendre l'image avec l'outil du banc faisait lire « on ébauche à
+    la fraise de Ø 10 mm » sous la photo d'une Ø 6.
+    """
+    import inspect
+
+    from xyzac.ui.atelier.session import Session
+
+    src = inspect.getsource(Session.vue_creux)
+    assert "build_endmill" in src, "l'outil du creux doit etre construit"
+    assert 'rayon_mm' in src
+    assert "banc.tool = outil_creux" in src
+    # et il est REMIS : la vue suivante ne doit pas heriter de celui-ci
+    assert "banc.tool = outil0" in src and "finally" in src
+    # cadrage sur la PIECE : le nez de broche remplissait l'image
+    assert 'fit="piece"' in src
+
+
+def test_the_cavity_panel_is_wired_end_to_end():
+    """Le bouton, la route, la liste et l'image.
+
+    Un panneau dont le bouton n'appelle rien, ou une route que personne
+    n'appelle, passeraient tous les tests de moteur du projet.
+    """
+    html = (ATELIER / "static" / "index.html").read_text(encoding="utf-8")
+    js = (ATELIER / "static" / "app.js").read_text(encoding="utf-8")
+    srv = (ATELIER / "server.py").read_text(encoding="utf-8")
+
+    for cle in ('id="bloc-creux"', 'id="chercher-creux"', 'id="creux"',
+                'id="image-creux"', 'id="creux-phrase"', 'id="creux-outils"'):
+        assert cle in html, cle
+    assert '"/api/creux"' in js and "/api/vue-creux?" in js
+    assert '$("#chercher-creux").addEventListener' in js
+    assert '/api/creux' in srv and '/api/vue-creux' in srv
+    # chaque etape a son mot : « refus » tout court ne dirait pas quoi changer
+    for etape in ("aucune", "outil", "orientation", "course", "flanc"):
+        assert f"{etape}:" in js, etape

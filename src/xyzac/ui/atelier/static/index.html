@@ -162,6 +162,32 @@
       </div>
     </div>
     <ul id="avertissements" class="reserves"></ul>
+
+    <!-- LES CREUX. Le renversement du point de vue : on ne liste plus les
+         faces du dessin mais la matiere a SORTIR, et pour chacune on repond
+         aux trois questions dans l'ordre — quel volume, quel outil, quelle
+         orientation. Quand ça ne passe pas, c'est l'etape qui bloque qui est
+         nommee, parce que c'est elle qui dit quoi changer.
+
+         Sur demande et non d'office : le calcul prend quelques secondes, et
+         toute la page precedente repond deja sans lui. -->
+    <div id="bloc-creux" class="avis-action avis-action--doux">
+      <div class="rangee rangee--titre">
+        <p><strong>La matière à sortir</strong>
+          <span id="creux-resume"></span></p>
+        <button id="chercher-creux" class="btn btn--lien">chercher les creux</button>
+      </div>
+      <div id="creux-duo" class="duo" hidden>
+        <ul id="creux" class="surfaces"></ul>
+        <div class="duo-vue">
+          <figure class="scene scene--surface">
+            <img id="image-creux" alt="Le creux, vu depuis sa bouche">
+          </figure>
+          <p id="creux-phrase" class="surface-nom creux-texte"></p>
+          <p id="creux-outils" class="diag"></p>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Comment la piece est TENUE. A l'etape 3 parce que cela change la

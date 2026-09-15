@@ -68,6 +68,31 @@ class VoxelGrid:
                         / self.pitch).astype(np.int64)
 
 
+#: Decalage du rayon de sondage, en fraction de pas de grille.
+#:
+#: Le remplissage par parite suppose qu'un rayon vertical traverse le maillage
+#: un nombre PAIR de fois. Un rayon tire exactement du centre d'un voxel viole
+#: cette hypothese des que le centre tombe sur une arete partagee : le test
+#: barycentrique etant inclusif des deux cotes, les deux triangles repondent
+#: « touche » a la meme cote z, la colonne compte trois traversees au lieu de
+#: deux, et le code — prudemment — laisse tomber la derniere. La colonne se
+#: vide alors sur toute la hauteur de la piece.
+#:
+#: Ce n'est pas un cas rare : la face inferieure d'un bloc se maille en deux
+#: triangles dont l'arete commune est la DIAGONALE, et les centres de voxels
+#: d'une grille au pas entier tombent tous dessus. Mesure sur C02, un bloc de
+#: 60 x 60 x 25 mm : 28 fausses colonnes traversantes de 1 x 1 x 25 mm, que la
+#: matiere a enlever presentait comme 28 creux a usiner.
+#:
+#: Deux valeurs DIFFERENTES et incommensurables entre elles : un decalage egal
+#: en x et en y laisserait le rayon sur la diagonale x = y, c'est-a-dire
+#: exactement sur l'arete qu'on cherche a eviter. L'erreur introduite est un
+#: dix-millionieme de pas — six ordres de grandeur sous le pas lui-meme, et
+#: sous toutes les autres approximations de cette chaine.
+DECALAGE_X = 1.0e-7
+DECALAGE_Y = 3.7e-7
+
+
 def solid_mask(verts: np.ndarray, tris: np.ndarray, grid: VoxelGrid,
                chunk: int = 512) -> np.ndarray:
     """Masque (nx, ny, nz) des voxels dont le centre est DANS le solide.
@@ -79,6 +104,8 @@ def solid_mask(verts: np.ndarray, tris: np.ndarray, grid: VoxelGrid,
     Les triangles quasi verticaux (projection XY d'aire nulle) sont ecartes :
     ils ne sont traverses par aucun rayon vertical et leur inclusion
     produirait des divisions par zero.
+
+    Le rayon n'est PAS tire exactement du centre du voxel : voir ``DECALAGE_X``.
     """
     verts = np.asarray(verts, float)
     tris = np.asarray(tris, np.int64)
@@ -92,7 +119,12 @@ def solid_mask(verts: np.ndarray, tris: np.ndarray, grid: VoxelGrid,
     if len(d) == 0:
         return np.zeros(grid.shape, dtype=bool)
 
+    # Le decalage sort le rayon des aretes du maillage. Sans lui, un rayon qui
+    # passe exactement sur une arete partagee touche les DEUX triangles, la
+    # colonne compte un nombre impair de traversees et se vide entierement.
     x, y = grid.centers_xy()
+    x = x + DECALAGE_X * grid.pitch
+    y = y + DECALAGE_Y * grid.pitch
     nx, ny, nz = grid.shape
     z_centers = grid.centers_z()
     mask = np.zeros((nx, ny, nz), dtype=bool)

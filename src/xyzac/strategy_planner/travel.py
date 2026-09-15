@@ -42,10 +42,22 @@ Les deux questions, et leurs deux portees
    Sur une telle machine, le domaine atteignable en cartesien n'est ni une
    boite ni necessairement convexe, et une DROITE cartesienne devient une
    COURBE dans l'espace des chariots : tester ses deux extremites ne prouve
-   plus rien sur ce qu'il y a entre les deux. Ce module serait alors a refaire
-   — les positions de chariots seraient calculees par la cinematique inverse,
-   et le segment devrait etre echantillonne, avec la reserve que cela
-   introduit.
+   plus rien sur ce qu'il y a entre les deux.
+
+   C'est le cas de la machine du projet, qui est une DELTA lineaire XYZ + table
+   A/C, et ``_course_delta`` s'en charge — sans echantillonner non plus. Sur
+   une delta lineaire, la course d'un chariot le long d'un segment cartesien
+   est une fonction dont on connait la forme close : ``a^2 + b^2`` y est une
+   parabole convexe du parametre, donc maximale aux extremites, et ``q(t)``
+   est concave, donc minimale aux extremites. Son maximum interieur est la
+   racine d'un trinome explicite. Le segment se teste donc EXACTEMENT, borne
+   par borne, sans pas d'echantillonnage et sans reserve — mesure : zero faux
+   positif sur 2 000 a 4 000 segments tires au hasard.
+
+   Ce paragraphe a longtemps dit le contraire — « ce module serait alors a
+   refaire, le segment devrait etre echantillonne » — apres que ``_course_delta``
+   eut ete ecrit. Un en-tete qui annonce une reserve que le code n'a plus est
+   aussi trompeur qu'un en-tete qui en cache une.
 
 2. **Cette indexation peut-elle tenir ?** Reponse par une boite englobante,
    donc ASYMETRIQUE, et la distinction est celle de tout le projet (ADR-001 /

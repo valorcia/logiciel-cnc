@@ -55,13 +55,23 @@ def test_finish_allowance_is_independent_of_grid_pitch(pocket, pitch):
 
     L'utilisateur reglait sa finition, et c'etait la resolution du solveur qui
     decidait. La transformee de distance respecte la valeur demandee.
+
+    La mesure se fait a pas EGAL, entre le protege avec surepaisseur et le
+    protege sans. Comparer au volume vrai de la piece, comme ce test le
+    faisait, revenait a tolerer la discretisation — qui atteint 8 % a 1,6 mm
+    de pas — dans la meme enveloppe que la surepaisseur, qui vaut 4 %. Le
+    defaut qu'on cherche se serait cache dedans.
     """
     _, _, _, _, _ = pocket
-    ms = _material(pocket, pitch=pitch, allowance=0.2)
-    part_volume = 72000.0
-    # A 0,2 mm de surepaisseur, le protege depasse la piece de quelques pour
-    # cent au plus — et non d'un tiers comme avec la dilatation entiere.
-    assert ms.protected_volume_mm3 == pytest.approx(part_volume, rel=0.06)
+    avec = _material(pocket, pitch=pitch, allowance=0.2).protected_volume_mm3
+    sans = _material(pocket, pitch=pitch, allowance=None).protected_volume_mm3
+    # 0,2 mm sur ~13 200 mm2 de surface font au plus ~2 600 mm3, soit 4 % —
+    # et moins des que le pas ne resout pas 0,2 mm, ce qui est le bon
+    # comportement et non un manque. Avec la dilatation d'un voxel entier,
+    # ce rapport valait 1,6 / 1,0 / 0,7 mm de surepaisseur selon le pas,
+    # soit jusqu'a +30 %.
+    assert sans > 0.0
+    assert 0.0 <= (avec - sans) / sans <= 0.05, (pitch, sans, avec)
 
 
 def test_larger_allowance_protects_more(pocket):

@@ -227,6 +227,106 @@ function majOngletsUsinage() {
   $("#ong-comment").classList.toggle("onglet--actif", ongletUsinage === "comment");
 }
 
+// ------------------------------------------------------- les CREUX a vider
+//
+// Le renversement du point de vue demande : l'atelier ne liste plus seulement
+// les FACES du dessin mais la matiere a SORTIR. Un usineur ne regarde pas une
+// face, il regarde un creux et se demande « qu'est-ce que je sors de la, et
+// avec quoi ». Chaque creux recoit donc les trois reponses dans l'ordre —
+// quel volume, quel outil, quelle orientation — et quand ça ne passe pas,
+// c'est l'ETAPE qui bloque qui est nommee : c'est elle qui dit quoi changer.
+//
+// Sur demande et non d'office : le calcul prend quelques secondes (3 a 10 s
+// mesurees sur le corpus) et toute la page precedente repond deja sans lui.
+let creuxListe = null;
+let creuxChoisi = null;
+let derniereVueCreux = null;
+let creuxRevision = null;
+
+// Le mot que porte chaque etape, pour la pastille. « Refus » tout court ne
+// distingue pas un creux ou aucun outil n'entre — un outil plus fin le
+// reglerait — d'un creux ou le porte-outil touche, qui demande un autre
+// montage. Ce sont deux gestes differents, donc deux mots differents.
+// Les classes sont celles de la liste des surfaces — « faisable », « a-changer »,
+// « impossible » — et non des noms nouveaux : elles portent deja les couleurs du
+// code couleur du projet, et deux vocabulaires de couleurs sur la meme page
+// obligeraient a en apprendre un second. Les trois premieres etapes se
+// reglent par un geste de l'operateur, donc « a changer » ; les deux dernieres
+// ne se reglent pas ici, donc « impossible ».
+const ETAPES_CREUX = {
+  aucune: ["faisable", "se vide"],
+  outil: ["a-changer", "aucun outil n'entre"],
+  orientation: ["a-changer", "aucune orientation"],
+  course: ["a-changer", "hors course"],
+  flanc: ["impossible", "au flanc seulement"],
+  volume: ["impossible", "pas un creux"],
+};
+
+async function chercherCreux() {
+  const b = $("#chercher-creux");
+  b.disabled = true;
+  $("#creux-resume").textContent = "Recherche des creux…";
+  try {
+    const r = await get("/api/creux");
+    creuxListe = r.creux || [];
+    dessinerCreux();
+  } catch (e) {
+    $("#creux-resume").textContent = `Recherche impossible : ${e.message}`;
+  } finally {
+    b.disabled = false;
+  }
+}
+
+function dessinerCreux() {
+  if (!creuxListe) return;
+  const n = creuxListe.length;
+  const vides = creuxListe.filter((c) => c.usinable).length;
+  $("#creux-resume").textContent = n === 0
+    ? "Aucun creux trouvé : cette pièce n'a pas de concavité à cette résolution."
+    : `${n} creux, dont ${vides} avec un outil et une orientation trouvés.`;
+  $("#creux-duo").hidden = n === 0;
+  if (!n) return;
+
+  $("#creux").innerHTML = creuxListe.map((c) => {
+    const [classe, mot] = ETAPES_CREUX[c.etape] || ["attention", c.etape];
+    return `
+    <li class="${classe}">
+      <div class="haut">
+        <span class="titre">${c.cotes} — ${c.volume_mm3} mm³</span>
+        <span class="pastille">${mot}</span>
+      </div>
+      <p class="consigne-s">${c.outil}${
+        c.reprise_mm ? `, reprise Ø ${(2 * c.reprise_mm).toFixed(0)} mm` : ""
+      }${c.usinable ? ` — A = ${Math.round(c.a_deg)}°, C = ${Math.round(c.c_deg)}°` : ""}</p>
+    </li>`;
+  }).join("");
+  document.querySelectorAll("#creux li").forEach((li, k) =>
+    li.addEventListener("click", () => montrerCreux(k)));
+  montrerCreux(creuxChoisi !== null && creuxChoisi < n ? creuxChoisi : 0);
+}
+
+function montrerCreux(i) {
+  if (!creuxListe || !creuxListe[i]) return;
+  creuxChoisi = i;
+  const c = creuxListe[i];
+  document.querySelectorAll("#creux li").forEach((li, k) =>
+    li.classList.toggle("choisie", k === i));
+  $("#creux-phrase").textContent = c.phrase;
+  // Les trois outils essayes, avec ce que chacun prend. C'est la reponse a
+  // « et avec un autre outil ? » posee AVANT qu'on la pose.
+  $("#creux-outils").textContent = c.par_outil.join("  |  ");
+  $("#creux-outils").hidden = false;
+  const fig = $("#image-creux").parentElement;
+  // Pas d'image pour un creux dont l'orientation n'a pas ete trouvee : une
+  // vue de la pose de depart laisserait croire que ça passe.
+  fig.hidden = !c.usinable;
+  if (!c.usinable) { derniereVueCreux = null; return; }
+  const demande = `i=${i}&a=${azimutS}&e=${elevationS}&r=${etat.revision}`;
+  if (demande === derniereVueCreux) return;
+  derniereVueCreux = demande;
+  $("#image-creux").src = `/api/vue-creux?${demande}`;
+}
+
 // « Et avec quel outil, alors ? » — la question que pose tout refus. Elle se
 // declenche sur la SELECTION et non sur un bouton : un bouton de plus a
 // trouver pour une question qui se pose d'elle-meme est un bouton de trop.
@@ -258,6 +358,17 @@ function dessinerDiagnostic(i, s) {
 
 function dessinerResultat() {
   const bloc = $("#resultat");
+  // Les creux sont date de la revision qui les a produits. Un bridage change,
+  // une cote de machine changee, et l'orientation trouvee n'est plus la bonne :
+  // garder la liste a l'ecran ferait lire un verdict perime comme un verdict.
+  if (creuxRevision !== etat.revision) {
+    creuxRevision = etat.revision;
+    creuxListe = null;
+    creuxChoisi = null;
+    derniereVueCreux = null;
+    $("#creux-duo").hidden = true;
+    $("#creux-resume").textContent = "";
+  }
   if (!etat.surfaces.length) { bloc.hidden = true; surfaceChoisie = null; return; }
   bloc.hidden = false;
   $("#resume").textContent = etat.resume;
@@ -773,6 +884,7 @@ async function init() {
   $("#curseur-usinage").addEventListener("input", () => {
     if (surfaceChoisie !== null) rafraichirVueUsinage(surfaceChoisie);
   });
+  $("#chercher-creux").addEventListener("click", chercherCreux);
 
   const lancerSimulation = async () => {
     reinitialiserFilm();

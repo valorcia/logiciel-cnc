@@ -75,19 +75,26 @@ _ROLE_TO_REASON = {
 
 #: Action corrective suggeree a l'UI pour chaque motif. Un rejet doit toujours
 #: proposer une sortie, sinon l'utilisateur est bloque sans levier.
+#: Action corrective par motif, ACCENTUEE : ces phrases sont lues par
+#: l'operateur telles quelles — dans le banc de debogage, et depuis
+#: ``strategy_planner.creux``, au bout d'une phrase qui, elle, est accentuee.
+#: Un texte a moitie accentue dans une meme phrase se lit comme un bout de
+#: code qui aurait fui jusqu'a l'ecran.
 REMEDY = {
-    RejectReason.LEAD_LIMIT: "augmenter l'angle de lead maximal, ou changer de strategie",
-    RejectReason.AXIS_LIMITS: "rebrider la piece, ou la reorienter sur le plateau",
-    RejectReason.SINGULARITY: "incliner la piece au montage pour eloigner A de 0",
-    RejectReason.COLLISION_CUTTING: "reduire la profondeur de passe ou le diametre",
-    RejectReason.COLLISION_NECK: "outil a col degage plus long",
+    RejectReason.LEAD_LIMIT: "augmenter l'angle de lead maximal, ou changer de stratégie",
+    RejectReason.AXIS_LIMITS: "rebrider la pièce, ou la réorienter sur le plateau",
+    RejectReason.SINGULARITY: "incliner la pièce au montage pour éloigner A de 0",
+    RejectReason.COLLISION_CUTTING: "réduire la profondeur de passe ou le diamètre",
+    RejectReason.COLLISION_NECK: "outil à col dégagé plus long",
     RejectReason.COLLISION_SHANK: "augmenter la longueur hors pince (jauge)",
-    RejectReason.COLLISION_HOLDER: "porte-outil plus elance, ou jauge plus longue",
-    RejectReason.COLLISION_SPINDLE: "jauge nettement plus longue, ou accessibilite impossible",
-    RejectReason.MACHINE_COLLISION: "rapprocher la piece du centre du plateau, ou reduire "
-                                    "l'inclinaison : l'outil touche un organe machine",
-    RejectReason.MACHINE_TRAVEL: "repositionner la piece sur le plateau : la pose sort "
-                                 "des courses lineaires",
+    RejectReason.COLLISION_HOLDER: "porte-outil plus élancé, ou jauge plus longue",
+    RejectReason.COLLISION_SPINDLE: "jauge nettement plus longue, ou accessibilité impossible",
+    # Ces deux-la portaient leur propre cause en fin de phrase (« : l'outil
+    # touche un organe machine »). Partout ou ils sont lus, le motif est deja
+    # nomme juste avant — la phrase se terminait donc en se repetant.
+    RejectReason.MACHINE_COLLISION: "rapprocher la pièce du centre du plateau, "
+                                    "ou réduire l'inclinaison",
+    RejectReason.MACHINE_TRAVEL: "repositionner la pièce sur le plateau",
 }
 
 

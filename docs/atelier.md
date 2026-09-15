@@ -266,6 +266,67 @@ vient de dire qu'elle ne passe pas serait exactement la fausse valeur que ce
 projet refuse — et elle ressemblerait à un usinage. `vue_usinage` lève plutôt
 que de rendre une image.
 
+### 3bis-i. « La matière à sortir » : les creux, et ce qui bloque
+
+Le renversement du point de vue. Jusqu'ici l'atelier listait les **faces du
+dessin** ; il liste maintenant aussi la matière à **sortir**. Un usineur ne
+regarde pas une face : il regarde un creux et se demande « qu'est-ce que je
+sors de là, et avec quoi ? ».
+
+Le panneau s'ouvre par un bouton, pas d'office : le calcul prend 1 à 10 s selon
+la pièce, et toute la page précédente répond déjà sans lui.
+
+Chaque creux reçoit **trois réponses dans l'ordre où elles se posent**, et
+quand ça ne passe pas, c'est **l'étape qui bloque** qui est nommée :
+
+| étiquette | ce que ça veut dire | ce qu'il faut changer |
+|---|---|---|
+| **se vide** | un outil entre, une orientation dégage | rien |
+| **aucun outil** | aucun outil de la gamme n'y entre | un outil plus fin |
+| **aucune orientation** | l'outil entre, mais quelque chose touche | la jauge, le porte-outil, la pose |
+| **hors course** | l'orientation dégage, les courses non | reposer la pièce |
+| **au flanc** | le creux ne se prend qu'en roulant | rien — c'est le moteur qui ne sait pas encore |
+| **pas un creux** | aucune face de la pièce ne le borde | rien — c'est de la matière libre |
+
+« Non usinable » tout court n'aurait indiqué aucune de ces actions.
+
+**L'outil annoncé est celui de l'ébauche**, c'est-à-dire le plus gros qui entre
+et **atteint le fond**. Ce n'est pas le plus gros qui vide la poche
+entièrement : sur la poche de C02, celui-là serait une Ø 3 mm, seule à prendre
+les angles — une heure de travail pour ce qu'une Ø 10 fait en quelques minutes.
+L'atelier annonce donc « on ébauche à la Ø 10, reprise à la Ø 6 pour les 10 %
+qu'elle laisse », ce qui est la gamme qu'un usineur écrirait.
+
+Les trois outils essayés sont affichés côte à côte, avec ce que chacun prend.
+C'est la réponse à « et avec un autre outil ? » donnée **avant** qu'on la pose.
+
+**L'image montre l'outil que la phrase nomme.** Le banc porte une Ø 6
+hémisphérique par défaut ; rendre l'image avec lui faisait lire « on ébauche à
+la Ø 10 » sous la photo d'une Ø 6. Une image qui contredit sa légende est pire
+que pas d'image.
+
+**Mesuré sur les 20 pièces du corpus** : 23 creux, dont 12 se vident avec un
+outil et une orientation trouvés, 8 refusés avec leur cause et le geste qui la
+lève, 3 signalés « au flanc seulement ». Aucun refusé faute d'outil. Le calcul
+prend 1 à 11 s par pièce.
+
+Le cas qui justifie la machine : sur C06, une contre-dépouille que rien
+n'atteint à plat se vide à la Ø 10 mm en basculant le berceau à **−65°**. Et sur
+C09, quatre trous sur quatre faces donnent **quatre creux**, chacun avec son
+orientation — mélangés à la peau du brut, c'était un seul volume et un seul
+chiffre.
+
+Ce que ce panneau ne fait pas, et qu'il faut savoir :
+
+- **un détail plus fin que 1 mm est invisible.** La matière est comptée sur une
+  grille au pas de 1 mm. Sur C20, dont la gravure est plus fine, la pièce se
+  voxélise en bloc plein et l'atelier répond « aucun creux » — la bonne réponse
+  à cette résolution, mais pas une réponse à la pièce ;
+- **une seule orientation par creux.** Les points de bord qui regardent
+  ailleurs sont comptés et dits, mais la seconde orientation n'est pas cherchée ;
+- **la trajectoire n'est pas produite.** On sait quel outil, depuis quelle
+  orientation, et ce qui bloque — pas le parcours.
+
 ### 3bis. La simulation d'usinage
 
 Ce n'est **pas** un tour de manège autour de la pièce. La caméra ne bouge pas ;

@@ -248,6 +248,14 @@ h2{margin:0;font-size:19.5px;font-weight:650;letter-spacing:-.012em}
   color:var(--accent-sombre);font-weight:550}
 .surface-nom{margin:8px 0 0;font-size:14px;font-weight:600;text-align:center;
   min-height:1.4em}
+
+/* Le verdict d'un creux est un PARAGRAPHE, pas une legende. Il herite de
+   ``.surface-nom`` pour la taille, mais centre et en gras il devenait illisible
+   des la troisieme ligne — et il en fait cinq. Aligne a gauche, poids normal. */
+.creux-texte{text-align:left;font-weight:400;line-height:1.45}
+/* Le titre du bloc et son resume se collaient : « La matiere a sortir 3 creux,
+   dont 0... ». */
+#creux-resume{display:block;margin-top:2px;text-align:left;font-weight:400}
 .surfaces{list-style:none;padding:0;margin:0;display:grid;gap:10px}
 .surfaces li{cursor:pointer;transition:.12s box-shadow,.12s border-color}
 .surfaces li:hover{border-color:var(--trait-fort);box-shadow:var(--ombre)}
