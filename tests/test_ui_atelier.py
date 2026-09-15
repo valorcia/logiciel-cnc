@@ -1880,3 +1880,114 @@ def test_the_offered_shift_is_never_a_rounding_artefact():
                               + np.asarray(c.correction_piece_mm),
                               -90.0, -90.0, exact=True)
     assert corrige.tient, corrige.describe()
+
+
+# ------------- « comment cette face sera-t-elle usinée ? » (M15)
+
+def test_the_per_surface_answer_is_the_same_calculation_as_the_simulation(
+        monkeypatch):
+    """Une seule source pour les deux ecrans.
+
+    L'orientation d'une surface se demandait a l'etape 4, pour la piece
+    entiere. On la demande maintenant a l'etape 3, surface par surface — et
+    c'est le MEME calcul, pas une approximation rapide pour l'affichage. Deux
+    calculs differents pour la meme question donneraient deux reponses, et
+    celle qu'on croirait serait celle qu'on voit.
+    """
+    import inspect
+
+    from xyzac.ui.atelier.session import Session
+
+    # les deux chemins passent par ``_decider_surface``, et rien d'autre ne
+    # decide une orientation
+    for nom in ("_operations_finition", "usinage_surface"):
+        src = inspect.getsource(getattr(Session, nom))
+        assert "_decider_surface" in src, nom
+    decide = inspect.getsource(Session._decider_surface)
+    assert "decide_indexed_pass" in decide
+    assert "course_lineaire" in decide, "la finition subit la meme regle de course"
+    # et personne d'autre ne l'appelle
+    entier = inspect.getsource(Session)
+    assert entier.count("decide_indexed_pass(") == 1, \
+        "une seule invocation : deux en feraient deux verdicts possibles"
+
+
+def test_the_per_surface_answer_is_cached_per_revision(monkeypatch):
+    """0,1 a 4 s par surface : on ne recalcule pas a chaque clic.
+
+    Mais le cache porte sur la REVISION : changer un reglage ou reposer la
+    piece change l'orientation, et servir l'ancienne serait montrer l'usinage
+    d'une machine qui n'existe plus.
+    """
+    from xyzac.ui.atelier.session import Session, Surface
+
+    s = Session()
+    s.surfaces = [Surface(1, 40, "faisable", "Le dessus", "")]
+    s._passes_finition = [_fausse_passe(40, (0.0, 0.0, 1.0))]
+    appels = []
+
+    def faux(self, i, *, solveur, banc):
+        appels.append(i)
+        return {"etat": "usinable", "surface": i, "titre": "Le dessus",
+                "a_deg": 24.0, "c_deg": -180.0, "tcp": np.zeros((3, 3)),
+                "n_points": 40, "n_verifies": 40, "degagement": 15.0,
+                "phrase": "Orientation trouvée"}
+
+    monkeypatch.setattr(Session, "_decider_surface", faux)
+    from xyzac.accessibility_solver import solver as acc
+    monkeypatch.setattr(acc, "AccessibilitySolver", lambda *a, **k: object())
+    s._banc = _faux_banc()
+
+    assert s.usinage_surface(0)["etat"] == "usinable"
+    assert s.usinage_surface(0)["etat"] == "usinable"
+    assert appels == [0], "le second clic doit lire le cache"
+
+    s.revision += 1
+    s.usinage_surface(0)
+    assert appels == [0, 0], "une revision differente doit recalculer"
+
+
+def test_an_unverified_surface_is_never_drawn_being_machined():
+    """On ne dessine pas un usinage dont on vient de dire qu'il ne passe pas.
+
+    ``vue_usinage`` leve plutot que de rendre une image : une image d'usinage
+    pour une surface refusee serait exactement la fausse valeur que ce projet
+    refuse — et elle ressemblerait a un usinage.
+    """
+    from xyzac.ui.atelier.session import Session, Surface
+
+    s = Session()
+    s.surfaces = [Surface(1, 40, "impossible", "Le dessous", "")]
+    s._usinages = {"cle": s.revision,
+                   (s.revision, 0): {"etat": "refus", "surface": 0,
+                                     "titre": "Le dessous",
+                                     "phrase": "aucune orientation ne dégage"}}
+    s._passes_finition = [_fausse_passe(40, (0.0, 0.0, -1.0))]
+    with pytest.raises(ValueError, match="dégage"):
+        s.vue_usinage(0, Path("/tmp/jamais-ecrit.png"))
+
+
+def test_the_two_surface_views_answer_two_different_questions():
+    """« Laquelle est-ce ? » et « comment sera-t-elle usinée ? ».
+
+    Deux images de la meme piece qui ne se contredisent pas : la premiere la
+    montre dans la pose de DEPART, celle que l'operateur a sous les yeux ; la
+    seconde la montre BASCULEE a l'orientation trouvee, outil pose dessus.
+    Chacune porte sa question, sans quoi l'operateur devrait reconcilier deux
+    images — le travail qu'on lui enleve.
+    """
+    import inspect
+
+    from xyzac.ui.atelier.session import Session
+
+    quoi = inspect.getsource(Session.vue_surface)
+    comment = inspect.getsource(Session.vue_usinage)
+    # celle qui designe CACHE l'outil ; celle qui usine le MONTRE
+    assert "tool_cutting" in quoi and "tool_holder" in quoi
+    assert "tool_cutting" not in comment and "tool_holder" not in comment
+    # celle qui usine bascule la machine, et REND la pose ensuite
+    assert "inspect_a_deg" in comment and "finally" in comment
+    assert "toolpath=" in comment
+    # et l'onglet existe des deux cotes de l'interface
+    html = (ATELIER / "static" / "index.html").read_text(encoding="utf-8")
+    assert 'id="ong-comment"' in html and 'id="curseur-usinage"' in html

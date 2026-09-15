@@ -545,6 +545,9 @@ class Session:
     #: calcul du temps : le rapport du planner porte les courses mais pas les
     #: trajectoires, et les recalculer coûterait une simulation entiere.
     _operations_simulees: list = field(default_factory=list, repr=False)
+    #: « Comment cette surface sera usinee », par surface, pour la revision
+    #: courante. Un calcul de 0,1 a 6,5 s qu'on ne refait pas a chaque clic.
+    _usinages: dict = field(default_factory=dict, repr=False)
     #: Le meme, en une ligne — pour un ecran de 10 pouces.
     #:
     #: Deux champs et non un seul tronque : ce qui doit rester VISIBLE, ce sont
@@ -730,6 +733,7 @@ class Session:
         self._passes_finition = []
         self._refus_finition = []
         self._operations_simulees = []
+        self._usinages = {}
         self.duree = None
         self._blocages = []
         self._blocages_outil = []
@@ -1106,6 +1110,7 @@ class Session:
         self._passes_finition = []
         self._refus_finition = []
         self._operations_simulees = []
+        self._usinages = {}
         self.duree = None
         self._blocages = []
         self._blocages_outil = []
@@ -1192,6 +1197,63 @@ class Session:
                               surface=(pts, teinte),
                               blocking=bloquants,
                               part_color=palette.NEUTRAL)
+
+    def vue_usinage(self, i: int, chemin: Path, *, fraction: float = 0.5,
+                    azimut: float = 25.0, elevation: float = 15.0) -> Path:
+        """La surface EN TRAIN d'etre usinee : machine basculee, outil en place.
+
+        C'est une autre image que ``vue_surface``, et la difference est le
+        sujet meme de cette page. ``vue_surface`` repond a « laquelle est-ce ? »
+        et montre donc la piece dans la pose de DEPART, celle que l'operateur a
+        sous les yeux. Celle-ci repond a « comment sera-t-elle usinee ? » et
+        montre donc la machine BASCULEE a l'orientation trouvee, avec l'outil
+        pose dessus et la trajectoire derriere lui.
+
+        Les deux images de la meme piece ne se contredisent pas : elles
+        repondent a deux questions, et chacune porte son titre.
+
+        ``fraction`` place l'outil le long de la passe. La moitie par defaut :
+        au debut l'outil est encore au bord et ne montre rien de l'usinage.
+        """
+        from ..debug import scene as sc
+
+        u = self.usinage_surface(i)
+        if u["etat"] != "usinable":
+            raise ValueError(u["phrase"])
+        tcp = np.asarray(u["tcp"], dtype=float)
+        j = int(min(max(fraction, 0.0), 1.0) * (len(tcp) - 1))
+
+        banc = self._banc
+        with self._verrou:
+            a0, c0, t0 = banc.inspect_a_deg, banc.inspect_c_deg, banc.inspect_tcp
+            try:
+                banc.inspect_a_deg = float(u["a_deg"])
+                banc.inspect_c_deg = float(u["c_deg"])
+                banc.inspect_tcp = tcp[j]
+                # PAS de camera de serie ici : celle-la englobe le berceau
+                # pour qu'une suite d'images ne saute pas, au prix d'un tiers
+                # de vide et d'un outil coupe en haut. Pour une image UNIQUE,
+                # le cadrage propre de ``capture`` porte sur « piece + brut +
+                # OUTIL » — donc l'outil entier tient dans l'image, ce qui est
+                # precisement ce qu'on vient regarder.
+                #
+                # Les organes machine sont caches : la question est « comment
+                # cette face sera usinee », pas « ou est le plateau ». Le
+                # basculement se lit sur la piece elle-meme, et les angles sont
+                # ecrits a cote.
+                return sc.capture(banc, chemin,
+                                  azimuth_deg=azimut, elevation_deg=elevation,
+                                  zoom=1.2,
+                                  window_size=(900, 620), background=FOND_3D,
+                                  hidden=("limits", "machine_axes", "machine",
+                                          "stock"),
+                                  toolpath=(tcp[:j + 1], None))
+            finally:
+                # La pose d'inspection est celle de la scene, pas de cette
+                # image : la rendre sans la restaurer ferait basculer toutes
+                # les vues suivantes sans que rien ne l'ait demande.
+                banc.inspect_a_deg, banc.inspect_c_deg = a0, c0
+                banc.inspect_tcp = t0
 
     def diagnostiquer(self, i: int) -> dict:
         """« Et avec quel outil, alors ? » — la question que le refus posait.
@@ -1567,44 +1629,111 @@ class Session:
             # secondes se lit comme un calcul bloque. Les images occupent
             # ensuite 0,1 a 1,0 ; cette phase tient donc dans 0,02 a 0,10.
             self.progres = 0.02 + 0.08 * i / max(n_s, 1)
-            verdict = decide_indexed_pass(
-                solveur, pts[k], nrm[k],
-                n_probe=SONDES_FINITION, max_candidates=CANDIDATS_FINITION)
-            if not verdict.indexable:
+            u = self._decider_surface(i, solveur=solveur, banc=banc)
+            if u["etat"] != "usinable":
                 self._refus_finition.append({
-                    "surface": i, "titre": titre,
-                    "phrase": verdict.consigne(),
+                    "surface": i, "titre": titre, "phrase": u["phrase"],
                 })
                 continue
-            axe = banc.machine.tool_axis_in_part(verdict.a_deg, verdict.c_deg)
-            tcp = np.array([tcp_from_contact(pts[j], nrm[j], axe, banc.tool)
-                            for j in range(len(pts))])
-
-            # LES COURSES LINEAIRES, sur la passe de finition aussi. Le
-            # solveur d'accessibilite connait MACHINE_TRAVEL et le verifie aux
-            # points examines ; la trajectoire, elle, passe aussi par des
-            # points non examines, et c'est sur ses sommets que le verdict est
-            # exact. Sans ce test, la finition etait tenue a une exigence plus
-            # faible que l'ebauche — sur le meme ecran.
-            course = course_lineaire(banc.machine, tcp, banc.mount_offset,
-                                     verdict.a_deg, verdict.c_deg, exact=True)
-            if not course.tient:
-                self._refus_finition.append({
-                    "surface": i, "titre": titre,
-                    "phrase": ("l'orientation trouvée dégage, mais "
-                               + course.consigne()),
-                })
-                continue
-
-            out.append({
-                "surface": i, "titre": titre,
-                "a_deg": float(verdict.a_deg), "c_deg": float(verdict.c_deg),
-                "tcp": tcp, "n_points": len(pts),
-                "n_verifies": int(len(k)),
-                "degagement": verdict.min_clearance_mm,
-                "consigne": verdict.consigne(),
-            })
+            out.append(u)
         return out
+
+    def usinage_surface(self, i: int) -> dict:
+        """Comment CETTE surface sera usinee. Calcule a la demande, mis en cache.
+
+        C'est la question que l'operateur pose en cliquant une ligne, et
+        jusqu'ici l'atelier n'y repondait qu'a l'etape suivante, pour la piece
+        entiere. Or l'orientation est une propriete de la SURFACE : la calculer
+        surface par surface, quand on la demande, c'est rendre la reponse au
+        moment ou la question se pose.
+
+        Le meme calcul que la simulation, exactement — pas une approximation
+        rapide pour l'affichage. Deux calculs differents pour la meme question
+        donneraient deux reponses, et celle qu'on croirait serait celle qu'on
+        voit.
+
+        Coût mesure : de 0,1 s (refus au sondage) a 6,5 s (orientation trouvee
+        et verifiee). C'est l'ordre de grandeur du diagnostic d'outil, qui est
+        deja synchrone — l'operateur vient de cliquer, il attend.
+        """
+        from ...accessibility_solver.solver import (AccessibilityConfig,
+                                                    AccessibilitySolver)
+
+        if not (0 <= i < len(self._passes_finition)):
+            return {"etat": "rien", "surface": i,
+                    "phrase": "Cette surface n'a pas de passe de finition : "
+                              "lancez d'abord la vérification."}
+        cle = (self.revision, i)
+        if self._usinages.get("cle") != self.revision:
+            self._usinages = {"cle": self.revision}
+        if cle in self._usinages:
+            return self._usinages[cle]
+
+        banc = self._banc
+        cfg = AccessibilityConfig(subdivisions=3, max_lead_deg=45.0,
+                                  cutting_depth=0.0)
+        solveur = AccessibilitySolver(banc.tool, banc.machine,
+                                      banc.obstacle_field(), cfg,
+                                      mount_offset_mm=banc.mount_offset)
+        u = self._decider_surface(i, solveur=solveur, banc=banc)
+        self._usinages[cle] = u
+        return u
+
+    def _decider_surface(self, i: int, *, solveur, banc) -> dict:
+        """L'orientation VERIFIEE d'une surface, ou le motif du refus.
+
+        Une seule source pour la simulation et pour l'apercu d'une surface :
+        voir ``usinage_surface``. La trajectoire rendue est celle des points de
+        contact transportes au centre de l'outil — donc ce que la machine
+        parcourra, et non un contour redessine pour l'affichage.
+        """
+        from ...accessibility_solver.solver import tcp_from_contact
+        from ...strategy_planner.indexed_pass import decide_indexed_pass
+        from ...strategy_planner.travel import course_lineaire
+
+        # ``banc`` est PASSE, pas lu sur la session : ``_operations_finition``
+        # le reçoit en parametre, et lire ``self._banc`` ici aurait fait mentir
+        # sa signature — les deux sont le meme objet en production, et pas dans
+        # un essai qui fournit un banc reduit.
+        fp = self._passes_finition[i]
+        titre = (self.surfaces[i].titre if i < len(self.surfaces)
+                 else f"surface {i + 1}")
+        pts = np.asarray(fp.points, dtype=float)
+        nrm = np.asarray(fp.normals, dtype=float)
+        # Echantillon REGULIER : un echantillon aleatoire donnerait un chiffre
+        # different a chaque lancement, et un chiffre qui bouge sans que rien
+        # ne bouge n'est pas une mesure.
+        k = np.unique(np.linspace(0, len(pts) - 1,
+                                  min(ECHANTILLON_FINITION, len(pts))
+                                  ).astype(int))
+        verdict = decide_indexed_pass(
+            solveur, pts[k], nrm[k],
+            n_probe=SONDES_FINITION, max_candidates=CANDIDATS_FINITION)
+        base = {"surface": i, "titre": titre, "n_points": int(len(pts)),
+                "n_verifies": int(len(k))}
+        if not verdict.indexable:
+            return dict(base, etat="refus", phrase=verdict.consigne())
+
+        axe = banc.machine.tool_axis_in_part(verdict.a_deg, verdict.c_deg)
+        tcp = np.array([tcp_from_contact(pts[j], nrm[j], axe, banc.tool)
+                        for j in range(len(pts))])
+
+        # LES COURSES LINEAIRES, sur la passe de finition aussi. Le solveur
+        # d'accessibilite connait MACHINE_TRAVEL et le verifie aux points
+        # examines ; la trajectoire, elle, passe aussi par des points non
+        # examines, et c'est sur ses sommets que le verdict est exact. Sans ce
+        # test, la finition etait tenue a une exigence plus faible que
+        # l'ebauche — sur le meme ecran.
+        course = course_lineaire(banc.machine, tcp, banc.mount_offset,
+                                 verdict.a_deg, verdict.c_deg, exact=True)
+        if not course.tient:
+            return dict(base, etat="refus",
+                        phrase=("l'orientation trouvée dégage, mais "
+                                + course.consigne()))
+        return dict(base, etat="usinable",
+                    a_deg=float(verdict.a_deg), c_deg=float(verdict.c_deg),
+                    tcp=tcp, degagement=verdict.min_clearance_mm,
+                    consigne=verdict.consigne(), phrase=verdict.consigne())
 
     @staticmethod
     def _titre_operation(numero: int, sur: int, cand) -> str:

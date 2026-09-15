@@ -131,6 +131,27 @@
           <img id="image-surface" alt="Surface désignée sur la pièce">
         </figure>
         <p id="surface-nom" class="surface-nom"></p>
+
+        <!-- COMMENT cette face sera usinee. C'est une autre question que
+             « laquelle est-ce ? », donc une autre image : la machine basculee
+             a l'orientation trouvee, l'outil entier pose dessus, et la
+             trajectoire derriere lui. Le curseur parcourt la passe. -->
+        <div id="bloc-usinage" hidden>
+          <div class="onglets" role="tablist">
+            <button id="ong-quoi" class="onglet onglet--actif" role="tab">La surface</button>
+            <button id="ong-comment" class="onglet" role="tab">Son usinage</button>
+          </div>
+          <figure class="scene scene--surface" id="fig-usinage" hidden>
+            <img id="image-usinage" alt="La surface en cours d'usinage">
+          </figure>
+          <div id="barre-usinage" class="barre-lecture" hidden>
+            <input id="curseur-usinage" type="range" min="0" max="100" value="50"
+                   aria-label="Position de l'outil le long de la passe">
+            <span id="pos-usinage" class="compteur"></span>
+          </div>
+          <p id="usinage-phrase" class="surface-nom" hidden></p>
+        </div>
+
         <p id="surface-diag" class="diag" hidden></p>
         <div class="rangee rangee--outils">
           <button class="btn btn--icone" data-tourne-s="-45" title="Tourner à gauche">↺</button>

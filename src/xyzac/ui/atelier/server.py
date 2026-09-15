@@ -137,6 +137,41 @@ class Atelier(BaseHTTPRequestHandler):
                         {"erreur": rendu_3d() or f"{type(e).__name__} : {e}"},
                         500)
             return self._fichier(out)
+        if u.path == "/api/usinage":
+            # « Comment cette face sera-t-elle usinee ? » — synchrone, comme le
+            # diagnostic : 0,1 a 4 s mesurees, et l'operateur vient de cliquer.
+            i = int(q.get("i", ["0"])[0])
+            if not s.piece_chargee or i >= len(s.surfaces):
+                return self._json({"erreur": "surface inconnue"}, 404)
+            try:
+                u2 = dict(s.usinage_surface(i))
+            except Exception as e:                 # noqa: BLE001
+                return self._json({"erreur": f"{type(e).__name__} : {e}"}, 500)
+            # La trajectoire ne descend PAS au navigateur : cinq mille points
+            # dont il ne ferait rien, et l'image les montre deja.
+            u2.pop("tcp", None)
+            return self._json(u2)
+
+        if u.path == "/api/vue-usinage":
+            i = int(q.get("i", ["0"])[0])
+            if not s.piece_chargee or i >= len(s.surfaces):
+                return self._json({"erreur": "surface inconnue"}, 404)
+            f = max(0.0, min(1.0, float(q.get("f", ["0.5"])[0])))
+            az = float(q.get("a", ["25"])[0])
+            el = float(q.get("e", ["15"])[0])
+            out = (type(self).travail /
+                   f"usi_{s.revision}_{i}_{f:.2f}_{az:.0f}_{el:.0f}.png")
+            if not out.exists():
+                try:
+                    s.vue_usinage(i, out, fraction=f, azimut=az, elevation=el)
+                except ValueError as e:            # surface non usinable
+                    return self._json({"erreur": str(e)}, 409)
+                except Exception as e:             # noqa: BLE001
+                    return self._json(
+                        {"erreur": rendu_3d() or f"{type(e).__name__} : {e}"},
+                        500)
+            return self._fichier(out)
+
         if u.path == "/api/image":
             i = int(q.get("i", ["0"])[0])
             return self._fichier(type(self).travail / "sim" / f"f{i:03d}.png")

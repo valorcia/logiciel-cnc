@@ -235,6 +235,37 @@ surface elle-même restant en transparence — sur une surface refusée, les deu
 étaient du même rouge et le « où exactement » disparaissait dans le
 « laquelle ».
 
+### 3bis-h. « Comment cette face sera-t-elle usinée ? »
+
+C'est **la** question du logiciel, et jusqu'ici l'atelier n'y répondait qu'à
+l'étape suivante, pour la pièce entière. Or l'orientation est une propriété de
+la **surface** : la calculer surface par surface, quand on clique la ligne,
+c'est rendre la réponse au moment où la question se pose.
+
+**Deux images, deux questions, et elles ne se contredisent pas.** L'onglet
+*« La surface »* répond à « laquelle est-ce ? » et montre donc la pièce dans la
+pose de **départ**, celle que l'opérateur a sous les yeux. L'onglet *« Son
+usinage »* répond à « comment sera-t-elle usinée ? » et montre la machine
+**basculée** à l'orientation trouvée, l'outil entier posé dessus — nez de
+broche compris — et la trajectoire derrière lui. Un curseur parcourt la passe.
+
+**Le même calcul que la simulation, pas une approximation pour l'affichage.**
+`_decider_surface` est la seule fonction du projet qui appelle
+`decide_indexed_pass` ; un test l'exige. Deux calculs pour la même question
+donneraient deux réponses, et celle qu'on croirait serait celle qu'on voit.
+
+**Coûts mesurés** : de 0,1 s (refus au sondage) à 4 s (orientation trouvée et
+vérifiée) pour la décision, puis **0,3 s par image** — le curseur est donc
+utilisable. Le premier rendu d'un processus coûte 18 s d'initialisation VTK,
+mais l'atelier l'a déjà payée à l'étape 2. Le résultat est mis en cache par
+**révision** : changer un réglage ou reposer la pièce change l'orientation, et
+servir l'ancienne montrerait l'usinage d'une machine qui n'existe plus.
+
+**Un refus n'ouvre pas l'onglet.** Dessiner l'usinage d'une surface dont on
+vient de dire qu'elle ne passe pas serait exactement la fausse valeur que ce
+projet refuse — et elle ressemblerait à un usinage. `vue_usinage` lève plutôt
+que de rendre une image.
+
 ### 3bis. La simulation d'usinage
 
 Ce n'est **pas** un tour de manège autour de la pièce. La caméra ne bouge pas ;

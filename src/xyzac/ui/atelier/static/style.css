@@ -342,6 +342,21 @@ h2{margin:0;font-size:19.5px;font-weight:650;letter-spacing:-.012em}
 .avis-action .btn{align-self:stretch}
 @media (min-width:700px){.avis-action .btn{align-self:flex-start}}
 
+/* Deux questions sur la meme surface, donc deux onglets : « laquelle
+   est-ce ? » et « comment sera-t-elle usinee ? ». Des onglets et non deux
+   images cote a cote : sur 10 pouces, deux vues 3D font deux vignettes
+   illisibles. */
+.onglets{display:flex;gap:4px;margin:12px 0 10px;
+  background:var(--creux);padding:3px;border-radius:var(--r-petit);
+  border:1px solid var(--trait)}
+.onglet{flex:1;appearance:none;border:0;background:transparent;cursor:pointer;
+  font:inherit;font-size:13.5px;font-weight:600;color:var(--doux);
+  padding:7px 10px;border-radius:6px}
+.onglet:hover{color:var(--texte)}
+.onglet--actif{background:var(--carte);color:var(--accent-sombre);
+  box-shadow:0 1px 2px rgba(20,26,34,.08)}
+.onglet:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
 /* La pose declaree, dans la fiche de la piece : un fait du montage. */
 .jeton--pose{background:var(--attention-pale);color:var(--attention)}
 

@@ -159,6 +159,72 @@ function montrerSurface(i) {
   n.textContent = `${s.titre} — ${s.etiquette}`;
   n.style.color = s.couleur;
   dessinerDiagnostic(i, s);
+  dessinerUsinage(i, s);
+}
+
+// ------------------------------------------------- « comment sera-t-elle usinee ? »
+//
+// La question que l'atelier ne savait poser qu'a l'etape suivante, pour la
+// piece entiere. Or l'orientation est une propriete de la SURFACE : la
+// demander en cliquant la ligne, c'est repondre au moment ou la question se
+// pose. Le calcul est le MEME que celui de la simulation — deux calculs pour
+// la meme question donneraient deux reponses.
+let ongletUsinage = "quoi";
+let derniereVueUsinage = null;
+let usinageEnCours = null;
+
+function dessinerUsinage(i, s) {
+  const bloc = $("#bloc-usinage");
+  // Tant que la surface est en cours d'analyse, la question n'a pas de sens :
+  // son verdict n'existe pas encore.
+  if (!bloc || s.verdict === "en-cours") { bloc.hidden = true; return; }
+  bloc.hidden = false;
+  majOngletsUsinage();
+
+  const u = (etat.usinages || {})[String(i)];
+  if (u === undefined && usinageEnCours !== i) {
+    usinageEnCours = i;
+    $("#usinage-phrase").hidden = false;
+    $("#usinage-phrase").textContent = "Recherche de l'orientation…";
+    get(`/api/usinage?i=${i}`).then((r) => {
+      etat.usinages = etat.usinages || {};
+      etat.usinages[String(i)] = r;
+      usinageEnCours = null;
+      if (surfaceChoisie === i) dessinerUsinage(i, etat.surfaces[i]);
+    });
+    return;
+  }
+  if (!u) return;
+
+  const ok = u.etat === "usinable";
+  $("#usinage-phrase").hidden = false;
+  // La phrase du MOTEUR, telle quelle : elle porte deja les angles. La
+  // prefixer par « À A = 24°, C = -180° — » les disait deux fois dans la meme
+  // ligne. Deux phrases vraies qui se repetent valent moins qu'une seule.
+  $("#usinage-phrase").textContent = u.phrase;
+  $("#usinage-phrase").style.color = ok ? "var(--ok)" : "var(--attention)";
+  $("#ong-comment").disabled = !ok;
+
+  const montre = ongletUsinage === "comment" && ok;
+  $("#fig-usinage").hidden = !montre;
+  $("#barre-usinage").hidden = !montre;
+  $("#image-surface").parentElement.hidden = montre;
+  if (montre) rafraichirVueUsinage(i);
+}
+
+function rafraichirVueUsinage(i) {
+  const f = Number($("#curseur-usinage").value) / 100;
+  const demande = `i=${i}&f=${f.toFixed(2)}&a=${azimutS}&e=${elevationS}` +
+                  `&r=${etat.revision}`;
+  if (demande === derniereVueUsinage) return;
+  derniereVueUsinage = demande;
+  $("#image-usinage").src = `/api/vue-usinage?${demande}`;
+  $("#pos-usinage").textContent = `${Math.round(f * 100)} % de la passe`;
+}
+
+function majOngletsUsinage() {
+  $("#ong-quoi").classList.toggle("onglet--actif", ongletUsinage === "quoi");
+  $("#ong-comment").classList.toggle("onglet--actif", ongletUsinage === "comment");
 }
 
 // « Et avec quel outil, alors ? » — la question que pose tout refus. Elle se
@@ -696,6 +762,17 @@ async function init() {
   };
   $("#verifier").addEventListener("click", lancerVerification);
   $("#reverifier").addEventListener("click", lancerVerification);
+  for (const [id, nom] of [["#ong-quoi", "quoi"], ["#ong-comment", "comment"]]) {
+    $(id).addEventListener("click", () => {
+      ongletUsinage = nom;
+      if (surfaceChoisie !== null && etat.surfaces[surfaceChoisie]) {
+        dessinerUsinage(surfaceChoisie, etat.surfaces[surfaceChoisie]);
+      }
+    });
+  }
+  $("#curseur-usinage").addEventListener("input", () => {
+    if (surfaceChoisie !== null) rafraichirVueUsinage(surfaceChoisie);
+  });
 
   const lancerSimulation = async () => {
     reinitialiserFilm();

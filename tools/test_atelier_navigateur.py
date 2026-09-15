@@ -239,6 +239,61 @@ with sync_playwright() as pw:
     page.wait_for_timeout(300)
     page.screenshot(path=SORTIE / "3b-surface.png", full_page=True)
 
+    # --- 6quinquies. « COMMENT cette face sera-t-elle usinee ? » ----------
+    #
+    # La question centrale du logiciel, et elle se pose en cliquant une ligne.
+    # Deux issues, eprouvees toutes les deux : une orientation verifiee (on
+    # montre l'usinage, curseur compris) ou un refus nomme (l'onglet reste
+    # inerte — on ne dessine pas un usinage dont on vient de dire qu'il ne
+    # passe pas).
+    assert page.locator("#bloc-usinage").is_visible()
+
+    # On PARCOURT les lignes jusqu'a en trouver une usinable. Sans cela
+    # l'epreuve n'exerçait que la branche du refus — la surface designee
+    # d'office est celle qui pose probleme —, et la fonction principale,
+    # « montrez-moi comment ça s'usine », n'etait jamais montree.
+    lignes = page.locator("#surfaces li")
+    u = None
+    for k in range(lignes.count()):
+        lignes.nth(k).click()
+        page.wait_for_function(
+            "(k) => { const u = (etat.usinages || {})[String(k)];"
+            "         return u && u.etat; }", arg=k, timeout=120000)
+        u = page.evaluate("(k) => etat.usinages[String(k)]", k)
+        if u["etat"] == "usinable":
+            break
+    print("6quinquies. usinage de la surface choisie :", u["etat"])
+    print("            ", page.inner_text("#usinage-phrase")[:150])
+    assert page.inner_text("#usinage-phrase").strip()
+
+    if u["etat"] == "usinable":
+        page.click("#ong-comment")
+        page.wait_for_selector("#fig-usinage:not([hidden])", timeout=30000)
+        page.wait_for_function(
+            "document.querySelector('#image-usinage').complete && "
+            "document.querySelector('#image-usinage').naturalWidth > 0",
+            timeout=120000)
+        # le curseur parcourt la passe : l'image doit CHANGER
+        avant = page.get_attribute("#image-usinage", "src")
+        page.fill("#curseur-usinage", "85")
+        page.dispatch_event("#curseur-usinage", "input")
+        page.wait_for_function(
+            "(a) => document.querySelector('#image-usinage').src !== a",
+            arg=avant, timeout=30000)
+        page.wait_for_function(
+            "document.querySelector('#image-usinage').complete && "
+            "document.querySelector('#image-usinage').naturalWidth > 0",
+            timeout=120000)
+        print("            outil à", page.inner_text("#pos-usinage"))
+        tient_dans_l_ecran("usinage d'une surface")
+        page.locator("#bloc-usinage").screenshot(
+            path=SORTIE / "3e-usinage-surface.png")
+        page.click("#ong-quoi")
+    else:
+        assert page.is_disabled("#ong-comment"), \
+            "un refus ne doit pas offrir de voir l'usinage"
+        print("            (refus : l'onglet « son usinage » reste inerte)")
+
     # Le BRIDAGE : declare un etau et verifie que le verdict est jete — le
     # bridage change ce qui est atteignable, contrairement a la matiere.
     assert page.locator("#bloc-bridage").is_visible()
