@@ -182,8 +182,16 @@
         <ul id="creux" class="surfaces"></ul>
         <div class="duo-vue">
           <figure class="scene scene--surface">
-            <img id="image-creux" alt="Le creux, vu depuis sa bouche">
+            <img id="image-creux" alt="Le creux en cours d'usinage">
           </figure>
+          <!-- Le curseur parcourt le chemin CALCULÉ, pas une animation
+               redessinée pour l'affichage. -->
+          <div id="barre-creux" class="barre-lecture" hidden>
+            <input id="curseur-creux" type="range" min="0" max="100" value="50"
+                   aria-label="Position de l'outil le long du parcours">
+            <span id="pos-creux" class="compteur"></span>
+          </div>
+          <p id="creux-parcours" class="surface-nom creux-texte"></p>
           <p id="creux-phrase" class="surface-nom creux-texte"></p>
           <p id="creux-outils" class="diag"></p>
         </div>

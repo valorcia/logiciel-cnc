@@ -289,6 +289,7 @@ def slice_for_direction(
     max_layers: int = 200,
     safety_clearance: float = 0.3,
     balayage: str = BALAYAGE_ALTERNE,
+    masque: np.ndarray | None = None,
 ) -> SliceResult:
     """Tranche la matiere enlevable atteignable depuis ``direction``.
 
@@ -305,16 +306,38 @@ def slice_for_direction(
 
     Faire du slicer le plus conservatif des deux est le bon sens d'arrondi : il
     perd un peu de matiere, la ou l'inverse produirait un plan refuse en aval.
+
+    ``masque`` restreint la CIBLE a une partie de la matiere enlevable — les
+    voxels d'un creux, typiquement. Il ne touche pas a ce qui est INTERDIT : la
+    piece protegee reste obstacle partout, et le plan de degagement reste
+    au-dessus de TOUTE la matiere vue dans ce repere, pas seulement du creux.
+    Restreindre l'un sans l'autre aurait produit un parcours qui degage juste
+    au-dessus de sa poche et percute ce qui est reste ailleurs.
+
+    Ce que ce masque suppose, et qu'il faut dire : la matiere enlevable qui
+    n'est PAS dans le masque ne bloque pas l'outil. C'est le meme choix que
+    ``reachable_from`` — elle sera partie quand on arrivera la — mais il devient
+    ici une hypothese d'ORDRE : ce parcours suppose que le reste du brut a deja
+    ete enleve, ou qu'on peut le traverser en coupant. Le sequencement des
+    creux entre eux n'est pas decide par cette fonction.
     """
     d = normalize(direction)
     R = indexed_frame(d)
 
     reach = material.reachable_from(d)
+    # La CIBLE se restreint ; l'ETENDUE, non.
+    #
+    # Le plan de degagement et la grille de raster se calent sur ``reach``
+    # entier, c'est-a-dire sur toute la matiere que cette direction voit. Les
+    # caler sur le seul creux aurait produit un parcours qui remonte juste
+    # au-dessus de sa poche et percute la peau du brut restee en place tout
+    # autour — un degagement qui degage d'un creux et rentre dans un autre.
+    cible = reach if masque is None else (reach & np.asarray(masque, dtype=bool))
     result = SliceResult(direction=d, layer_thickness=layer_thickness,
                          stepover=tool.diameter * stepover_ratio,
                          safety_clearance=safety_clearance, balayage=balayage,
-                         reachable_mm3=float(reach.sum()) * material.grid.voxel_volume)
-    if not reach.any():
+                         reachable_mm3=float(cible.sum()) * material.grid.voxel_volume)
+    if not cible.any():
         return result
 
     pitch = grid_pitch or material.grid.pitch
@@ -323,11 +346,14 @@ def slice_for_direction(
     # une tranche oblique d'une grille cartesienne a des bords en escalier dont
     # l'epaisseur depend de l'angle, ce qui rendrait la couche non reproductible.
     centers = material.grid.centers().reshape(material.grid.shape + (3,))
-    rem_pts = centers[reach] @ R.T
+    rem_pts = centers[cible] @ R.T
+    #: Toute la matiere enlevable que cette direction voit — cible ou non.
+    #: Sert a l'etendue et au degagement, jamais a la cible.
+    vue_pts = rem_pts if masque is None else centers[reach] @ R.T
     prot_pts = centers[material.protected] @ R.T if material.protected.any() else np.zeros((0, 3))
 
-    lo = rem_pts.min(axis=0)
-    hi = rem_pts.max(axis=0)
+    lo = vue_pts.min(axis=0)
+    hi = vue_pts.max(axis=0)
     if prot_pts.size:
         lo = np.minimum(lo, prot_pts.min(axis=0))
         hi = np.maximum(hi, prot_pts.max(axis=0))

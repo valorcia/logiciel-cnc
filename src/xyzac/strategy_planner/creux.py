@@ -594,3 +594,365 @@ def decider_creux(volume, passes, material, *, fabrique_solveur, machine,
     return VerdictCreux(**base, etape=ETAPE_AUCUNE,
                         degagement_mm=degagement,
                         motif="")
+
+
+# ---------------------------------------------------------- le PARCOURS
+#
+# Jusqu'ici l'enchainement s'arretait a « ce creux se vide a la Ø 10 mm, par sa
+# bouche, a A = 0, C = 0 ». Il ne disait pas PAR OU l'outil passe — c'est la
+# derniere marche entre un analyseur et un logiciel d'usinage.
+#
+# Rien n'est reinvente ici : ``slice_for_direction`` sait trancher et
+# zigzaguer, ``continuous_path`` sait relier les passes sans traverser la
+# matiere — un defaut deja trouve a la validation et corrige la-bas. Ce qui
+# manquait etait de pouvoir RESTREINDRE le tranchage a un creux, et de
+# l'appeler avec l'outil et la direction que ``decider_creux`` a deja trouves.
+
+#: Epaisseur d'une couche d'ebauche, en mm.
+#:
+#: 1,5 mm : sous le pas de grille de 1 mm la couche ne distingue plus rien de
+#: neuf, et au-dela de 2 mm une fraise de Ø 6 mm en aluminium travaille au
+#: dela de ce qu'un kit encaisse. Ce n'est pas une valeur qualifiee sur
+#: machine — voir ``recipe_profiles`` — c'est un point de depart declare.
+EPAISSEUR_COUCHE_MM = 1.5
+
+#: Fraction du diametre entre deux passes voisines.
+STEPOVER = 0.45
+
+#: Distance entre deux points le long d'une passe de coupe, en mm.
+PAS_POINT_MM = 1.5
+
+#: Garde de securite du tranchage, en mm. Doit valoir celle du champ
+#: d'obstacles qui servira a la validation — voir ``slice_for_direction``.
+GARDE_MM = 0.3
+
+
+def marge_de_tranchage(pas_mm: float, garde_mm: float = GARDE_MM) -> float:
+    """Ce que le trancheur s'impose EN PLUS du rayon de l'outil, en mm.
+
+    Trois termes, et chacun a sa raison, toutes ecrites dans
+    ``slice_for_direction`` :
+
+      - la demi-diagonale du VOXEL, parce qu'un voxel est declare touche des
+        que l'outil entre dans sa sphere circonscrite ;
+      - la garde de securite, partagee avec le champ d'obstacles pour que les
+        deux modeles conservatifs ne divergent pas ;
+      - la demi-diagonale de la CELLULE de position 2D, parce qu'un centre
+        d'outil peut se trouver n'importe ou dans sa cellule.
+
+    Reproduite ici et non lue sur le resultat : le trancheur ne la rend pas, et
+    c'est elle qu'il faut nommer quand un parcours sort vide. Si elle change
+    la-bas, ce calcul ment — d'ou le test qui les compare.
+    """
+    return (0.5 * pas_mm * np.sqrt(3.0) + garde_mm
+            + 0.5 * pas_mm * np.sqrt(2.0))
+
+
+@dataclass(frozen=True)
+class ParcoursCreux:
+    """Le chemin que l'outil parcourt pour vider UN creux."""
+
+    index: int
+    #: Positions du bout de l'outil, dans le repere PIECE.
+    points: np.ndarray
+    #: Vrai la ou le point est un deplacement RAPIDE, faux la ou il coupe.
+    rapide: np.ndarray
+    a_deg: float
+    c_deg: float
+    rayon_mm: float
+    #: Part du creux que cet outil atteint GEOMETRIQUEMENT (ouverture
+    #: morphologique, voir ``feature_engine.volumes``). Sert a partager ce que
+    #: le parcours laisse en deux tas qui n'appellent pas le meme geste.
+    fraction_outil: float
+    #: TOUT le creux, en mm3. C'est le seul denominateur de cette classe.
+    #:
+    #: Il y en avait deux, et ils ne se comparaient pas : ce que la coupe VISE
+    #: (le creux vu depuis cette bouche) et ce qu'elle laisse (mesure sur tout
+    #: le creux). Sur la poche conique de C03, que cette direction ne voit qu'a
+    #: 33 %, le rapport des deux donnait « enleve 0 % » pour un parcours de
+    #: 344 points qui coupait pour de bon. Meme famille de defaut que les
+    #: douze precedentes : une grandeur divisee par une autre qui ne mesure
+    #: pas la meme chose.
+    volume_mm3: float
+    #: Ce que cette direction VISE : le creux moins ce qu'elle ne voit pas.
+    vise_mm3: float
+    #: Ce que l'outil enleve VRAIMENT, mesure en le passant sur une copie de
+    #: la matiere.
+    #:
+    #: Et non le ``uncovered_mm3`` du trancheur, qui minore volontairement sa
+    #: couverture — « on ne se cree pas de couverture fictive » — avec un rayon
+    #: ampute de la demi-diagonale du voxel et de celle de la cellule. Sur la
+    #: poche de C02 il annonce 58 % la ou l'outil en prend 70. Les deux chiffres
+    #: sont justes pour ce qu'ils mesurent ; celui qu'on affiche doit etre celui
+    #: de l'outil.
+    enleve_mm3: float
+    #: Part du creux que cette direction voit. Le reste ne sera pas pris ici,
+    #: quel que soit l'outil.
+    visibilite: float
+    #: Rayon du plus gros outil qui atteint le fond du creux, en mm.
+    rayon_au_fond_mm: float
+    n_couches: int
+    longueur_coupe_mm: float
+    longueur_rapide_mm: float
+    #: Marge que le TRANCHEUR s'impose entre le centre de l'outil et la piece,
+    #: en mm, en plus du rayon.
+    #:
+    #: Elle n'est pas cosmetique : le trancheur est deliberement le plus
+    #: conservatif des deux modeles, pour ne jamais proposer une position que
+    #: le verificateur de gouge refuserait ensuite. Mais sur un petit creux
+    #: elle devient le facteur qui decide, et il faut alors la NOMMER : dans
+    #: un trou de Ø 10 mm, une fraise de Ø 6 mm a 2,0 mm de jeu au rayon et la
+    #: marge en mange 1,9 — il ne reste pas une cellule ou poser un centre, et
+    #: le parcours sort vide. Sans ce chiffre, l'ecran affichait « se vide »
+    #: au-dessus d'un parcours de zero point, sans un mot.
+    marge_tranchage_mm: float = 0.0
+
+    @property
+    def n_points(self) -> int:
+        return int(len(self.points))
+
+    @property
+    def part_en_coupe(self) -> float:
+        """Part de la LONGUEUR parcourue qui coupe."""
+        total = self.longueur_coupe_mm + self.longueur_rapide_mm
+        return self.longueur_coupe_mm / total if total > 0.0 else 0.0
+
+    @property
+    def marge_de_grille_mm(self) -> float:
+        """La part de la marge de tranchage qui tient au PAS DE GRILLE.
+
+        Le reste est la garde de securite, qui ne bouge pas avec la
+        resolution. Dire « les deux tiers » a vue de nez serait un chiffre
+        invente : a 1 mm de pas c'est 1,6 sur 1,9, soit cinq sixiemes.
+        """
+        return max(0.0, self.marge_tranchage_mm - GARDE_MM)
+
+    @property
+    def place_libre_mm(self) -> float:
+        """Jeu entre le rayon de l'outil et la plus grosse boule du creux.
+
+        Mesure ce que le creux offre AU-DELA du rayon de l'outil — c'est cette
+        place-la que la marge du tranchage doit tenir. Negative ou nulle,
+        l'outil ne rentre pas du tout ; plus petite que la marge, il rentre
+        mais le tranchage refuse de l'y mettre.
+        """
+        return max(0.0, self.rayon_au_fond_mm - self.rayon_mm)
+
+    @property
+    def couvert(self) -> float:
+        """Part de TOUT le creux que ce parcours enleve."""
+        if self.volume_mm3 <= 0.0:
+            return 0.0
+        return max(0.0, min(1.0, self.enleve_mm3 / self.volume_mm3))
+
+    @property
+    def non_vu(self) -> float:
+        """Part du creux que cette bouche ne voit pas.
+
+        Aucun outil et aucun reglage de passe n'y changera rien depuis ICI :
+        il y faut une autre orientation, ou une seconde prise de piece.
+        """
+        return max(0.0, 1.0 - self.visibilite)
+
+    @property
+    def hors_de_portee(self) -> float:
+        """Part du creux, VU depuis cette bouche, que cet outil n'atteint pas.
+
+        Purement geometrique : les angles plus serres que son rayon. Aucun
+        reglage de passe n'y changera rien — il faut un outil plus fin.
+        """
+        return max(0.0, self.visibilite - min(self.fraction_outil,
+                                              self.visibilite))
+
+    @property
+    def surepaisseur(self) -> float:
+        """Part du creux que l'outil ATTEINDRAIT mais que l'ebauche laisse.
+
+        C'est la marge de l'ebauche, et elle est VOULUE : le trancheur
+        s'interdit d'approcher la piece protegee a moins d'une demi-diagonale
+        de voxel plus la garde de securite, et ses couches sont plates alors
+        que le fond ne tombe pas forcement sur une frontiere de couche. Cette
+        matiere-la est celle que la passe de FINITION prend.
+
+        La confondre avec la precedente ferait conclure « il faut un outil
+        plus fin » devant une poche que la finition allait terminer.
+        """
+        return max(0.0, min(self.fraction_outil, self.visibilite)
+                   - self.couvert)
+
+    def consigne(self) -> str:
+        """Le parcours, dit a l'operateur.
+
+        Le chiffre qui compte est la part de la longueur passee A COUPER : sur
+        une gamme complete elle tombe a 24-29 %, et c'est le plus gros levier
+        de temps mesure du projet.
+        """
+        if self.n_points == 0:
+            jeu = self.place_libre_mm
+            if self.marge_tranchage_mm > 0.0:
+                return (f"Aucun parcours : pour ne jamais proposer une "
+                        f"position que le contrôle de gouge refuserait, le "
+                        f"découpage garde {self.marge_tranchage_mm:.1f} mm "
+                        f"entre l'outil et la pièce — et ce creux n'en offre "
+                        f"que {jeu:.1f} mm au rayon de cette fraise. Il faut "
+                        f"un outil plus fin, ou une grille plus fine : "
+                        f"{self.marge_de_grille_mm:.1f} de ces "
+                        f"{self.marge_tranchage_mm:.1f} mm viennent du pas de "
+                        f"grille, et fondent avec lui.")
+            return ("Aucun parcours : l'outil ne trouve aucune position qui "
+                    "ne gouge pas la pièce.")
+        bouts = [f"{self.n_couches} couche"
+                 f"{'s' if self.n_couches > 1 else ''} de "
+                 f"{EPAISSEUR_COUCHE_MM:.1f} mm, "
+                 f"{self.longueur_coupe_mm / 1000.0:.2f} m de coupe et "
+                 f"{self.longueur_rapide_mm / 1000.0:.2f} m de déplacement "
+                 f"({self.part_en_coupe * 100:.0f} % du chemin coupe)"]
+        # Le reste se partage en TROIS tas, et chacun appelle un geste
+        # different : une autre orientation, un outil plus fin, ou rien du
+        # tout parce que la finition s'en charge. Les confondre sous un seul
+        # « il en laisse 30 % » ferait chercher un outil plus fin devant une
+        # poche que la finition allait terminer.
+        reste = []
+        if self.non_vu > 0.01:
+            reste.append(f"{self.non_vu * 100:.0f} % que cette bouche ne voit "
+                         f"pas — une autre orientation, ou une seconde prise")
+        if self.hors_de_portee > 0.01:
+            reste.append(f"{self.hors_de_portee * 100:.0f} % dans les angles, "
+                         f"hors de portée de cet outil — il y faut plus fin")
+        if self.surepaisseur > 0.01:
+            reste.append(f"{self.surepaisseur * 100:.0f} % de surépaisseur, "
+                         f"que la finition prend")
+        if reste:
+            bouts.append(f"Il enlève {self.couvert * 100:.0f} % du creux ; "
+                         f"restent " + ", ".join(reste))
+        else:
+            bouts.append(f"Il enlève {self.couvert * 100:.0f} % du creux")
+        return ". ".join(bouts) + "."
+
+    def describe(self) -> str:
+        return (f"parcours {self.index} : {self.n_points} points, "
+                f"{self.n_couches} couches, "
+                f"coupe {self.longueur_coupe_mm:.0f} mm / rapide "
+                f"{self.longueur_rapide_mm:.0f} mm "
+                f"({self.part_en_coupe * 100:.0f} %), "
+                f"enleve {self.couvert * 100:.0f} % "
+                f"(vu {self.visibilite * 100:.0f} %, "
+                f"outil {self.fraction_outil * 100:.0f} %)")
+
+
+def _longueurs(points: np.ndarray, rapide: np.ndarray) -> tuple[float, float]:
+    """Longueur coupee et longueur parcourue a vide.
+
+    Un segment est compte RAPIDE des que l'une de ses deux extremites l'est :
+    le compter en coupe flatterait la part coupante, qui est precisement le
+    chiffre qu'on cherche a ne pas flatter.
+    """
+    if len(points) < 2:
+        return 0.0, 0.0
+    d = np.linalg.norm(np.diff(points, axis=0), axis=1)
+    en_rapide = rapide[:-1] | rapide[1:]
+    return float(d[~en_rapide].sum()), float(d[en_rapide].sum())
+
+
+def parcours_creux(volume, verdict: VerdictCreux, material, outil, machine, *,
+                   epaisseur_couche_mm: float = EPAISSEUR_COUCHE_MM,
+                   stepover: float = STEPOVER,
+                   pas_point_mm: float = PAS_POINT_MM) -> ParcoursCreux:
+    """Le chemin qui vide ce creux, avec son outil et depuis sa bouche.
+
+    ``verdict`` doit etre usinable : demander un parcours pour un creux dont on
+    vient de dire qu'aucune orientation ne degage produirait un chemin que rien
+    ne pourra parcourir, et il ressemblerait a un parcours.
+
+    Ce que ce parcours N'EST PAS :
+
+      - il n'est pas VERIFIE en collision. ``decider_creux`` a verifie
+        l'orientation sur les points de bord ; les positions de ce chemin-ci,
+        elles, n'ont pas ete passees au solveur. Le tranchage les garantit sans
+        gouge sur la piece PROTEGEE, ce qui n'est pas la meme chose que sans
+        collision de porte-outil ;
+      - il ne dit pas dans quel ORDRE vider les creux entre eux ;
+      - il n'est pas du G-code, et rien ici ne sort vers une machine.
+    """
+    from ..subtractive_slicer.slicer import continuous_path, slice_for_direction
+
+    base = dict(index=verdict.index, a_deg=float(verdict.a_deg or 0.0),
+                c_deg=float(verdict.c_deg or 0.0),
+                rayon_mm=float(verdict.rayon_mm or 0.0),
+                fraction_outil=float(verdict.fraction))
+    vide = ParcoursCreux(**base, points=np.zeros((0, 3)),
+                         rapide=np.zeros(0, dtype=bool),
+                         volume_mm3=float(volume.volume_mm3), vise_mm3=0.0,
+                         enleve_mm3=0.0, visibilite=float(verdict.visibilite),
+                         rayon_au_fond_mm=_rayon_fond(volume),
+                         n_couches=0, longueur_coupe_mm=0.0,
+                         longueur_rapide_mm=0.0,
+                         marge_tranchage_mm=marge_de_tranchage(
+                             float(material.grid.pitch)) if material is not None
+                         else 0.0)
+    if not verdict.usinable or volume.masque is None:
+        return vide
+
+    direction = machine.tool_axis_in_part(verdict.a_deg, verdict.c_deg)
+    tranche = slice_for_direction(
+        material, direction, outil,
+        layer_thickness=epaisseur_couche_mm, stepover_ratio=stepover,
+        masque=volume.masque)
+    points, rapide = continuous_path(tranche, point_spacing=pas_point_mm,
+                                     tool=outil)
+    coupe, rapide_mm = _longueurs(points, rapide)
+    return ParcoursCreux(**base, points=points, rapide=rapide,
+                         volume_mm3=float(volume.volume_mm3),
+                         vise_mm3=float(tranche.reachable_mm3),
+                         enleve_mm3=enleve_par_passage(
+                             material, volume, points, rapide, direction,
+                             outil),
+                         visibilite=float(verdict.visibilite),
+                         rayon_au_fond_mm=_rayon_fond(volume),
+                         n_couches=len(tranche.layers),
+                         longueur_coupe_mm=coupe,
+                         longueur_rapide_mm=rapide_mm,
+                         marge_tranchage_mm=marge_de_tranchage(
+                             float(material.grid.pitch)))
+
+
+def _rayon_fond(volume) -> float:
+    """Le rayon du plus gros outil qui atteint le fond, ou 0 si non borne."""
+    r = float(getattr(volume, "rayon_au_fond_mm", 0.0) or 0.0)
+    return r if np.isfinite(r) else 0.0
+
+
+def enleve_par_passage(material, volume, points, rapide, direction,
+                       outil) -> float:
+    """Ce que ce parcours enleve VRAIMENT du creux, en mm3.
+
+    On passe l'outil sur une COPIE de la matiere et on regarde ce qui reste :
+    c'est la seule mesure qui parle de l'outil plutot que du trancheur.
+
+    Le trancheur a bien un chiffre a lui, ``uncovered_mm3``, mais il le
+    calcule avec un rayon volontairement MINORE — la demi-diagonale du voxel
+    et celle de la cellule en moins — pour ne jamais s'attribuer de couverture
+    fictive. C'est le bon sens d'arrondi la-bas, et c'est un mauvais chiffre a
+    afficher : sur la poche de C02 il annonce 58 % quand l'outil en prend 70.
+
+    La difference AVANT/APRES et non le reste seul : une partie du creux peut
+    etre deja enlevee quand ce parcours commence, et la compter comme laissee
+    par lui serait lui reprocher le travail d'un autre.
+
+    Les liaisons sont ecartees : un deplacement au plan de degagement n'enleve
+    rien, et le compter comme coupe gonflerait ce que le parcours prend.
+    """
+    import copy
+
+    P = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if not len(P):
+        return 0.0
+    coupants = P[~np.asarray(rapide, dtype=bool)]
+    if not len(coupants):
+        return 0.0
+    avant = int((material.removable() & volume.masque).sum())
+    double = copy.deepcopy(material)
+    axes = np.tile(np.asarray(direction, dtype=np.float64), (len(coupants), 1))
+    double.remove_tool_sweep(coupants, axes, outil)
+    apres = int((double.removable() & volume.masque).sum())
+    return float(avant - apres) * float(material.grid.voxel_volume)

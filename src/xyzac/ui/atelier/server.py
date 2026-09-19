@@ -194,11 +194,12 @@ class Atelier(BaseHTTPRequestHandler):
                 return self._json({"erreur": "aucune pièce"}, 404)
             az = float(q.get("a", ["25"])[0])
             el = float(q.get("e", ["15"])[0])
+            f = max(0.0, min(1.0, float(q.get("f", ["0.5"])[0])))
             out = (type(self).travail /
-                   f"creux_{s.revision}_{i}_{az:.0f}_{el:.0f}.png")
+                   f"creux_{s.revision}_{i}_{f:.2f}_{az:.0f}_{el:.0f}.png")
             if not out.exists():
                 try:
-                    s.vue_creux(i, out, azimut=az, elevation=el)
+                    s.vue_creux(i, out, azimut=az, elevation=el, fraction=f)
                 except ValueError as e:            # creux non usinable
                     return self._json({"erreur": str(e)}, 409)
                 except Exception as e:             # noqa: BLE001

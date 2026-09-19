@@ -443,6 +443,12 @@ function montrerCreux(i) {
   document.querySelectorAll("#creux li").forEach((li, k) =>
     li.classList.toggle("choisie", k === i));
   $("#creux-phrase").textContent = c.phrase;
+  // Le PARCOURS, quand il existe : ce qui sépare « voici l'outil et
+  // l'orientation » de « voici par où il passe ».
+  const par = c.parcours;
+  $("#creux-parcours").textContent = par ? par.phrase : "";
+  $("#creux-parcours").hidden = !par;
+  $("#barre-creux").hidden = !par || !par.n_points;
   // Les trois outils essayes, avec ce que chacun prend. C'est la reponse a
   // « et avec un autre outil ? » posee AVANT qu'on la pose.
   $("#creux-outils").textContent = c.par_outil.join("  |  ");
@@ -452,7 +458,18 @@ function montrerCreux(i) {
   // vue de la pose de depart laisserait croire que ça passe.
   fig.hidden = !c.usinable;
   if (!c.usinable) { derniereVueCreux = null; return; }
-  const demande = `i=${i}&a=${azimutS}&e=${elevationS}&r=${etat.revision}`;
+  rafraichirVueCreux(i);
+}
+
+function rafraichirVueCreux(i) {
+  const f = Number($("#curseur-creux").value) / 100;
+  const demande = `i=${i}&f=${f.toFixed(2)}&a=${azimutS}&e=${elevationS}` +
+                  `&r=${etat.revision}`;
+  const par = creuxListe[i] && creuxListe[i].parcours;
+  $("#pos-creux").textContent = par
+    ? `${Math.round(f * 100)} % du parcours — ${Math.round(f * par.n_points)}`
+      + ` / ${par.n_points} points`
+    : "";
   if (demande === derniereVueCreux) return;
   derniereVueCreux = demande;
   $("#image-creux").src = `/api/vue-creux?${demande}`;
@@ -1045,6 +1062,9 @@ async function init() {
     if (surfaceChoisie !== null) rafraichirVueUsinage(surfaceChoisie);
   });
   $("#chercher-creux").addEventListener("click", chercherCreux);
+  $("#curseur-creux").addEventListener("input", () => {
+    if (creuxChoisi !== null) rafraichirVueCreux(creuxChoisi);
+  });
   $("#machine-nom").addEventListener("change", async () => {
     const r = await post("/api/machine-nom", { nom: $("#machine-nom").value });
     fiche = r.fiche;

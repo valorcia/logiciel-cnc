@@ -1733,6 +1733,7 @@ class Session:
         from ...stock_engine.stock import stock_from_part
         from ...strategy_planner.creux import (decider_creux,
                                                directions_candidates,
+                                               parcours_creux,
                                                vues_par_direction)
         from ...tool_model import build_endmill
 
@@ -1776,12 +1777,20 @@ class Session:
             matiere, directions_candidates(self._passes_finition))
 
         liste = []
+        parcours: list = []
         for v in cavites:
             vc = decider_creux(v, self._passes_finition, matiere,
                                fabrique_solveur=fabrique,
                                machine=banc.machine,
                                mount_offset=banc.mount_offset, vues=vues,
                                echantillon=ECHANTILLON_CREUX)
+            par = None
+            if vc.usinable:
+                _, outil_creux = fabrique(vc.rayon_mm)
+                par = parcours_creux(v, vc, matiere, outil_creux, banc.machine)
+                parcours.append(par)
+            else:
+                parcours.append(None)
             liste.append({
                 "creux": len(liste),
                 "titre": f"Creux {len(liste) + 1} — {v.cotes_mm}",
@@ -1804,19 +1813,40 @@ class Session:
                                else round(vc.degagement_mm, 2)),
                 "phrase": vc.consigne(),
                 "par_outil": [o.describe() for o in v.par_outil],
+                # Le PARCOURS : ce qui manquait pour passer d'un analyseur a
+                # un logiciel d'usinage. Les points ne descendent PAS au
+                # navigateur — quelques milliers dont il ne ferait rien, et
+                # l'image les montre deja.
+                "parcours": None if par is None else {
+                    "n_points": par.n_points,
+                    "n_couches": par.n_couches,
+                    "coupe_mm": round(par.longueur_coupe_mm),
+                    "rapide_mm": round(par.longueur_rapide_mm),
+                    "part_en_coupe": round(par.part_en_coupe, 3),
+                    "enleve": round(par.couvert, 3),
+                    "surepaisseur": round(par.surepaisseur, 3),
+                    "hors_de_portee": round(par.hors_de_portee, 3),
+                    "phrase": par.consigne(),
+                },
             })
         self._creux = {"cle": self.revision, "liste": liste,
                        "duree_s": round(time.time() - t0, 1),
-                       "_volumes": cavites, "_matiere": matiere}
+                       "_volumes": cavites, "_matiere": matiere,
+                       "_parcours": parcours}
         return liste
 
     def vue_creux(self, i: int, chemin: Path, *, azimut: float = 25.0,
-                  elevation: float = 15.0) -> Path:
-        """Le creux selectionne, vu depuis sa bouche, la piece basculee.
+                  elevation: float = 15.0, fraction: float = 0.5) -> Path:
+        """Le creux EN TRAIN d'etre vide : la piece basculee, l'outil sur son
+        parcours, et le chemin deja parcouru derriere lui.
 
-        La meme image que « son usinage » pour une surface, mais pour un creux :
-        la piece a l'orientation trouvee, l'outil retenu pose a l'entree, et
-        les points de bord du creux dessines derriere lui.
+        ``fraction`` place l'outil le long du parcours. La moitie par defaut :
+        au debut il est encore en l'air et ne montre rien de l'usinage.
+
+        La trajectoire dessinee est CELLE QUI A ETE CALCULEE, pas un contour
+        redessine pour l'affichage. Deux chemins differents pour la meme
+        question donneraient deux reponses, et celle qu'on croirait serait
+        celle qu'on voit.
 
         Un creux dont l'orientation n'a pas ete trouvee n'a pas d'image : la
         methode leve, elle ne rend pas une vue de la pose de depart qui
@@ -1833,18 +1863,23 @@ class Session:
             raise ValueError(c["phrase"])
         vol = self._creux["_volumes"][i]
 
-        # L'outil descend par la bouche jusqu'au milieu du creux : au ras de
-        # l'entree il ne montre rien de l'usinage, et tout en haut il eloigne
-        # le nez de broche au point qu'il remplit l'image a lui seul.
-        grille = self._creux["_matiere"].grid
-        idx = np.argwhere(vol.masque)
-        pts = (np.asarray(grille.origin, dtype=float)
-               + (idx + 0.5) * float(grille.pitch))
-        centre = pts.mean(axis=0)
-        axe = self._banc.machine.tool_axis_in_part(c["a_deg"], c["c_deg"])
-        # La bouche : le point du creux le plus AVANCE le long de l'axe outil.
-        bouche = centre + axe * float((pts @ axe).max() - (centre @ axe))
-        chemin_outil = np.array([bouche, centre])
+        # LE PARCOURS CALCULE, et non plus un segment qui descend dans le
+        # creux. Le segment disait « l'outil entre par la » ; le parcours dit
+        # « voila par ou il passe », ce qui est la question.
+        par = (self._creux.get("_parcours") or [None] * len(liste))[i]
+        if par is not None and par.n_points > 1:
+            j = int(min(max(fraction, 0.0), 1.0) * (par.n_points - 1))
+            chemin_outil = np.asarray(par.points[:j + 1], dtype=float)
+        else:
+            # Pas de parcours : on montre au moins l'entree, plutot que rien.
+            grille = self._creux["_matiere"].grid
+            idx = np.argwhere(vol.masque)
+            pts = (np.asarray(grille.origin, dtype=float)
+                   + (idx + 0.5) * float(grille.pitch))
+            centre = pts.mean(axis=0)
+            axe = self._banc.machine.tool_axis_in_part(c["a_deg"], c["c_deg"])
+            bouche = centre + axe * float((pts @ axe).max() - (centre @ axe))
+            chemin_outil = np.array([bouche, centre])
 
         banc = self._banc
         # L'outil MONTRE doit etre celui que la phrase nomme. Le banc porte

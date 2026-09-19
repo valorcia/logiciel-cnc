@@ -316,8 +316,39 @@ C09, quatre trous sur quatre faces donnent **quatre creux**, chacun avec son
 orientation — mélangés à la peau du brut, c'était un seul volume et un seul
 chiffre.
 
+**Et son parcours.** Sous la phrase du creux, une seconde ligne dit **par où
+l'outil passe** : combien de couches, combien de mètres à couper, combien à se
+déplacer, et **quelle part du chemin coupe vraiment**. Le curseur promène
+l'outil le long du chemin **calculé** — pas d'une animation redessinée pour
+l'écran.
+
+Ce que le parcours laisse est partagé en **trois**, parce que chaque tas appelle
+un geste différent :
+
+| ce qui reste | quoi faire |
+|---|---|
+| ce que cette bouche ne voit pas | une autre orientation, ou une seconde prise |
+| les angles, hors de portée de l'outil | un outil plus fin |
+| la surépaisseur | rien : la finition la prend |
+
+Un seul « il en laisse 30 % » ferait chercher un outil plus fin devant une poche
+que la finition allait terminer.
+
+**Quand le parcours est vide, il dit pourquoi.** Sur les quatre trous de C09,
+une fraise de Ø 6 mm entre bien dans un trou de Ø 10 — 1,0 mm de jeu au rayon —
+mais le découpage garde 1,9 mm entre l'outil et la pièce pour ne jamais proposer
+une position que le contrôle de gouge refuserait. Il ne reste pas la place d'y
+poser un centre d'outil. L'écran le dit, avec les deux leviers : un outil plus
+fin, ou une grille plus fine — **1,6 de ces 1,9 mm viennent du pas de grille**.
+
 Ce que ce panneau ne fait pas, et qu'il faut savoir :
 
+- **le parcours n'est pas vérifié en collision.** L'orientation l'a été sur les
+  points de bord ; les positions du chemin, non. Le découpage les garantit sans
+  gouge sur la **pièce**, ce qui n'est pas la même chose que sans collision de
+  porte-outil ;
+- **l'ordre des creux entre eux n'est décidé par personne** ;
+- **ce n'est pas du G-code**, et rien ne sort vers une machine ;
 - **un détail plus fin que 1 mm est invisible.** La matière est comptée sur une
   grille au pas de 1 mm. Sur C20, dont la gravure est plus fine, la pièce se
   voxélise en bloc plein et l'atelier répond « aucun creux » — la bonne réponse

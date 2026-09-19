@@ -305,3 +305,214 @@ def test_every_reject_reason_has_a_french_name():
     for texte in NOM_MOTIF.values():
         assert "_" not in texte, texte
         assert texte.upper() != texte, texte
+
+
+# -------------------------------------------------------- le PARCOURS
+
+def _piece_a_poche():
+    """Bloc de 30 x 30 x 16, poche de 14 x 14 profonde de 8, brut a 2 mm."""
+    piece = np.zeros((34, 34, 22), dtype=bool)
+    piece[2:32, 2:32, 2:18] = True
+    piece[10:24, 10:24, 10:18] = False
+    poche = np.zeros_like(piece)
+    poche[10:24, 10:24, 10:18] = True
+    return piece, poche
+
+
+def test_the_slice_target_shrinks_but_the_clearance_plane_does_not():
+    """Un dégagement qui dégage d'un creux et rentre dans un autre.
+
+    Le masque restreint la CIBLE. S'il restreignait aussi l'étendue, le plan
+    de dégagement se calerait juste au-dessus de la poche et l'outil
+    percuterait la peau du brut restée en place tout autour.
+    """
+    from xyzac.geometry_core.voxelize import VoxelGrid
+    from xyzac.stock_engine.material import MaterialState
+    from xyzac.subtractive_slicer.slicer import slice_for_direction
+    from xyzac.tool_model import build_endmill
+
+    piece, poche = _piece_a_poche()
+    grille = VoxelGrid(origin=np.zeros(3), pitch=1.0, shape=piece.shape)
+    brut = np.zeros_like(piece)
+    brut[1:33, 1:33, 1:20] = True          # le brut dépasse la pièce
+    ms = MaterialState(grid=grille, remaining=brut, protected=piece)
+    outil = build_endmill("e", 4.0, 20.0, stickout=40.0, holder_type="ER16")
+    d = np.array([0.0, 0.0, 1.0])
+
+    entier = slice_for_direction(ms, d, outil, layer_thickness=2.0)
+    creux = slice_for_direction(ms, d, outil, layer_thickness=2.0, masque=poche)
+
+    # la cible rétrécit…
+    assert creux.reachable_mm3 < entier.reachable_mm3
+    assert creux.reachable_mm3 > 0.0
+    # …le dégagement, non : il reste au-dessus de TOUT ce que la direction voit
+    assert creux.clearance_z == pytest.approx(entier.clearance_z)
+
+
+def test_a_path_is_measured_by_what_the_tool_removes_not_by_the_slicer():
+    """Deux chiffres justes, et un seul à afficher.
+
+    Le trancheur minore volontairement sa couverture — rayon amputé de la
+    demi-diagonale du voxel et de celle de la cellule — pour ne jamais
+    s'attribuer de couverture fictive. C'est le bon sens d'arrondi là-bas, et
+    un mauvais chiffre à montrer : sur la poche de C02 il annonce 58 % quand
+    l'outil en prend 70.
+    """
+    import inspect
+
+    from xyzac.strategy_planner import creux as mod
+
+    src = inspect.getsource(mod.parcours_creux)
+    assert "enleve_par_passage" in src
+    assert "uncovered_mm3" not in src, \
+        "le chiffre affiché doit être celui de l'outil, pas du trancheur"
+    mesure = inspect.getsource(mod.enleve_par_passage)
+    assert "remove_tool_sweep" in mesure
+    # la DIFFÉRENCE avant/après, pas le reste seul
+    assert "avant - apres" in mesure
+
+
+def test_what_a_path_leaves_is_split_into_three_different_gestures():
+    """« Il en laisse 30 % » ferait chercher un outil plus fin.
+
+    Le reste se partage en trois tas, et chacun appelle un geste différent :
+    ce que la bouche ne voit pas (autre orientation), ce que l'outil n'atteint
+    pas (outil plus fin), et la surépaisseur (rien à faire, la finition la
+    prend).
+    """
+    p = mod_parcours(volume_mm3=1000.0, vise_mm3=330.0, enleve_mm3=180.0,
+                     visibilite=0.33, fraction_outil=0.74,
+                     points=np.zeros((12, 3)),
+                     rapide=np.zeros(12, dtype=bool), n_couches=4,
+                     longueur_coupe_mm=300.0, longueur_rapide_mm=100.0)
+    assert p.couvert == pytest.approx(0.18)
+    assert p.non_vu == pytest.approx(0.67)
+    # l'outil ne peut pas être « hors de portée » de ce qu'il ne voit pas :
+    # sa part se compte sur le VU, sinon les trois tas dépassent 100 %
+    assert p.hors_de_portee == pytest.approx(0.0)
+    assert p.surepaisseur == pytest.approx(0.15)
+    total = p.couvert + p.non_vu + p.hors_de_portee + p.surepaisseur
+    assert total == pytest.approx(1.0, abs=0.02), total
+
+    phrase = p.consigne()
+    assert "cette bouche ne voit pas" in phrase
+    assert "surépaisseur" in phrase
+
+
+def test_the_three_parts_never_exceed_the_whole():
+    """Le défaut mesuré : deux dénominateurs qui ne se comparaient pas.
+
+    Sur la poche conique de C03, que la direction ne voit qu'à 33 %, le
+    rapport « ce qui reste sur tout le creux » / « ce que la coupe vise »
+    donnait « enlève 0 % » pour un parcours de 344 points qui coupait pour de
+    bon. Même famille que les douze défauts précédents.
+    """
+    for vis, fo, enl in [(1.0, 0.9, 700.0), (0.33, 0.74, 180.0),
+                         (0.5, 0.2, 90.0), (1.0, 1.0, 1000.0),
+                         (0.1, 0.9, 5.0)]:
+        p = mod_parcours(volume_mm3=1000.0, vise_mm3=1000.0 * vis,
+                         enleve_mm3=enl, visibilite=vis, fraction_outil=fo)
+        total = p.couvert + p.non_vu + p.hors_de_portee + p.surepaisseur
+        assert 0.0 <= total <= 1.0001, (vis, fo, enl, total)
+        for part in (p.couvert, p.non_vu, p.hors_de_portee, p.surepaisseur):
+            assert 0.0 <= part <= 1.0, (vis, fo, enl, part)
+
+
+def mod_parcours(**kw):
+    """Un ``ParcoursCreux`` réduit à ce que les parts demandent."""
+    from xyzac.strategy_planner.creux import ParcoursCreux
+
+    defauts = dict(index=0, points=np.zeros((0, 3)),
+                   rapide=np.zeros(0, dtype=bool), a_deg=0.0, c_deg=0.0,
+                   rayon_mm=5.0, fraction_outil=1.0, volume_mm3=1000.0,
+                   vise_mm3=1000.0, enleve_mm3=0.0, visibilite=1.0,
+                   rayon_au_fond_mm=8.0, n_couches=0, longueur_coupe_mm=0.0,
+                   longueur_rapide_mm=0.0, marge_tranchage_mm=1.87)
+    return ParcoursCreux(**{**defauts, **kw})
+
+
+def test_a_link_segment_never_counts_as_cutting():
+    """La part coupante est le chiffre qu'on cherche à ne pas flatter.
+
+    Un segment est rapide dès que l'une de ses deux extrémités l'est : le
+    compter en coupe gonflerait précisément la mesure qui sert à juger le
+    transport — 71 % du temps de cycle mesuré sur une gamme complète.
+    """
+    from xyzac.strategy_planner.creux import _longueurs
+
+    pts = np.array([[0.0, 0, 0], [10.0, 0, 0], [10.0, 0, 10.0],
+                    [20.0, 0, 10.0]])
+    rapide = np.array([False, False, True, True])
+    coupe, vide = _longueurs(pts, rapide)
+    assert coupe == pytest.approx(10.0)
+    assert vide == pytest.approx(20.0), "la montée ET le transfert sont à vide"
+
+
+def test_no_path_is_produced_for_a_cavity_that_was_refused():
+    """Un chemin que rien ne pourra parcourir ressemble à un chemin.
+
+    ``decider_creux`` vient de dire qu'aucune orientation ne dégage : en tirer
+    un parcours serait produire l'image d'un usinage impossible.
+    """
+    from xyzac.strategy_planner.creux import ETAPE_ORIENTATION, VerdictCreux
+    from xyzac.strategy_planner.creux import parcours_creux
+
+    piece, poche = _piece_a_poche()
+    refus = VerdictCreux(index=0, etape=ETAPE_ORIENTATION, volume_mm3=1000.0,
+                         cotes_mm="14 × 14 × 8 mm", rayon_mm=2.0,
+                         a_deg=0.0, c_deg=0.0)
+
+    class _V:
+        index = 0
+        volume_mm3 = 1000.0
+        masque = poche
+
+    p = parcours_creux(_V(), refus, None, None, None)
+    assert p.n_points == 0
+    assert "Aucun parcours" in p.consigne()
+
+
+def test_the_announced_slicing_margin_is_the_one_the_slicer_uses():
+    """Une marge annoncée qui ne serait pas celle appliquée ferait mentir la
+    seule phrase qui explique un parcours vide.
+
+    ``marge_de_tranchage`` reproduit un calcul écrit dans
+    ``slice_for_direction`` plutôt que de le lire sur le résultat — le
+    trancheur ne le rend pas. Ce test les compare, pour que le jour où l'un
+    bouge, l'autre ne mente pas en silence.
+    """
+    import inspect
+
+    from xyzac.strategy_planner.creux import GARDE_MM, marge_de_tranchage
+    from xyzac.subtractive_slicer import slicer
+
+    src = inspect.getsource(slicer.slice_for_direction)
+    assert "voxel_margin = 0.5 * pitch * np.sqrt(3.0) + safety_clearance" in src
+    assert "cell_margin_px = 0.5 * np.sqrt(2.0)" in src
+    assert "safety_clearance: float = 0.3" in inspect.getsource(slicer)
+
+    for pas in (1.0, 0.5, 0.25):
+        attendu = (0.5 * pas * np.sqrt(3.0) + GARDE_MM
+                   + 0.5 * np.sqrt(2.0) * pas)
+        assert marge_de_tranchage(pas) == pytest.approx(attendu)
+    # elle fond avec le pas, et c'est le levier qu'on annonce
+    assert marge_de_tranchage(0.25) < 0.5 * marge_de_tranchage(1.0)
+
+
+def test_an_empty_path_says_why_rather_than_showing_a_blank():
+    """« Se vide » au-dessus d'un parcours de zéro point, sans un mot.
+
+    Mesuré sur les quatre trous de C09 : la fraise de Ø 6 mm entre bien dans
+    un trou de Ø 10 — 1,0 mm de jeu au rayon — mais le découpage garde 1,9 mm
+    à ce pas de grille, et il ne reste pas une cellule où poser un centre
+    d'outil. Le refus est vrai ; c'est le silence qui était fautif.
+    """
+    p = mod_parcours(rayon_mm=3.0, rayon_au_fond_mm=4.0,
+                     marge_tranchage_mm=1.87)
+    assert p.place_libre_mm == pytest.approx(1.0)
+    phrase = p.consigne()
+    assert "Aucun parcours" in phrase
+    assert "1.9 mm" in phrase and "1.0 mm" in phrase
+    assert "outil plus fin" in phrase and "grille plus fine" in phrase
+    # et le chiffre de la grille est CALCULÉ, pas estimé à vue de nez
+    assert p.marge_de_grille_mm == pytest.approx(1.57, abs=0.01)

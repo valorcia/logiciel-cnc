@@ -140,6 +140,13 @@ with sync_playwright() as pw:
 
     page.click("[data-fil='etape-piece']")
     page.get_by_text("Je n'ai pas encore de fichier").click()
+    # La liste se remplit par une requete au chargement : attendre qu'elle
+    # contienne la piece demandee, plutot que de laisser ``select_option``
+    # reessayer trente secondes puis echouer sur « did not find some options »,
+    # qui ne dit pas que la liste etait vide.
+    page.wait_for_function(
+        "(f) => [...document.querySelectorAll('#exemples option')]"
+        ".some((o) => o.value === f)", arg=PIECE, timeout=30000)
     page.select_option("#exemples", PIECE)
     page.click("#charger")
     page.wait_for_selector("#piece-info:not([hidden])", timeout=60000)
@@ -524,6 +531,32 @@ with sync_playwright() as pw:
             larg = page.evaluate(
                 "() => document.querySelector('#image-creux').naturalWidth")
             print(f"      vue du creux {k + 1} : {larg} px de large")
+
+            # LE PARCOURS : ce qui separe « voici l'outil et l'orientation »
+            # de « voici par ou il passe ». Le curseur parcourt le chemin
+            # CALCULE — deux chemins pour la meme question donneraient deux
+            # reponses, et celle qu'on croirait serait celle qu'on voit.
+            par = page.evaluate(f"() => creuxListe[{k}].parcours")
+            assert par is not None, "un creux usinable doit porter son parcours"
+            print(f"      parcours : {par['n_points']} points, "
+                  f"{par['n_couches']} couches, "
+                  f"{par['part_en_coupe'] * 100:.0f} % du chemin coupe")
+            texte = page.inner_text("#creux-parcours")
+            print("      ", texte[:150])
+            assert texte.strip(), "le parcours doit porter sa phrase"
+            if par["n_points"]:
+                assert page.locator("#barre-creux").is_visible()
+                page.locator("#curseur-creux").fill("80")
+                page.locator("#curseur-creux").dispatch_event("input")
+                page.wait_for_function(
+                    "() => { const i = document.querySelector('#image-creux');"
+                    " return i && i.complete && i.naturalWidth > 100; }",
+                    timeout=120000)
+                print("      ", page.inner_text("#pos-creux"))
+            else:
+                # Un parcours vide doit DIRE pourquoi : « se vide » au-dessus
+                # de zero point, sans un mot, etait le defaut.
+                assert "Aucun parcours" in texte, texte
         else:
             print("      aucun creux usinable : pas d'image, et c'est voulu")
             assert not page.locator("#image-creux").is_visible()
