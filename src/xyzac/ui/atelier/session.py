@@ -1823,6 +1823,8 @@ class Session:
                     "coupe_mm": round(par.longueur_coupe_mm),
                     "rapide_mm": round(par.longueur_rapide_mm),
                     "part_en_coupe": round(par.part_en_coupe, 3),
+                    "gain_liaisons_mm": round(par.gain_liaisons_mm),
+                    "n_liaisons_abaissees": par.n_liaisons_abaissees,
                     "enleve": round(par.couvert, 3),
                     "surepaisseur": round(par.surepaisseur, 3),
                     "hors_de_portee": round(par.hors_de_portee, 3),

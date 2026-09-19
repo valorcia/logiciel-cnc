@@ -33,7 +33,7 @@ Aucune commande ne sort. L'interface est marquée SIMULATION UNIQUEMENT.
 | A1 | **Le fraisage en roulant** (flanc de l'outil) | 3 creux du corpus reçoivent « au flanc seulement » — un aveu du moteur, pas un refus de la pièce. C'est le plus gros trou fonctionnel restant. |
 | A2 | **Plusieurs orientations par creux** | Une poche a un fond et quatre flancs. On ne décide aujourd'hui qu'une orientation, et on compte les points qui regardent ailleurs sans les traiter. |
 | A3 | **La trajectoire elle-même** | On sait *quel outil, depuis où*. On ne sait pas encore *quel parcours*. C'est ce qui sépare un analyseur d'un vrai CAM. |
-| A4 | **Le transport (71 % du temps de cycle)** | Mesuré : 140 838 mm de rapides, 1 197 dégagements, 24 à 29 % du temps seulement en coupe. Le plus gros levier chiffré du projet, pas commencé. |
+| A4 | ~~Le transport~~ → **l'ORDRE des passes** | Les liaisons sont abaissées (ADR-017) : 20 m → 15 m sur le corpus, part coupante 42 → 49 %. Ce qui reste est l'ordre : le dôme de C10 fait 117 liaisons pour un seul creux, et n'a gagné que 4 % parce qu'elles enjambent le dôme. |
 | A5 | **Détail plus fin que la grille** | Sur C20 la gravure disparaît à 1 mm de pas et l'atelier répond « aucun creux » — vrai à cette résolution, faux pour la pièce. Il faut le **dire**, en comparant le volume voxélisé au volume B-Rep. |
 | A6 | **Organes de collision de la delta** | Colonnes, anneau, bras balayés : aucun n'est modélisé. Sur une delta, ce sont les bras qui touchent en premier quand la pièce est haute. |
 | A7 | **Carte de rigidité** | Une delta n'a pas la même raideur partout dans son volume. Aucun chiffre aujourd'hui. |

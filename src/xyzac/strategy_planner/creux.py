@@ -694,6 +694,13 @@ class ParcoursCreux:
     n_couches: int
     longueur_coupe_mm: float
     longueur_rapide_mm: float
+    #: Ce que l'abaissement des liaisons a gagne, en mm de transport.
+    #:
+    #: Zero quand il n'y avait rien a gagner ; jamais negatif — le plan de
+    #: degagement reste le plafond, donc le comportement d'avant est le pire
+    #: cas de celui-ci.
+    gain_liaisons_mm: float = 0.0
+    n_liaisons_abaissees: int = 0
     #: Marge que le TRANCHEUR s'impose entre le centre de l'outil et la piece,
     #: en mm, en plus du rayon.
     #:
@@ -807,6 +814,13 @@ class ParcoursCreux:
                  f"{self.longueur_coupe_mm / 1000.0:.2f} m de coupe et "
                  f"{self.longueur_rapide_mm / 1000.0:.2f} m de déplacement "
                  f"({self.part_en_coupe * 100:.0f} % du chemin coupe)"]
+        if self.n_liaisons_abaissees:
+            bouts.append(
+                f"{self.n_liaisons_abaissees} liaison"
+                f"{'s' if self.n_liaisons_abaissees > 1 else ''} "
+                f"{'abaissées' if self.n_liaisons_abaissees > 1 else 'abaissée'}"
+                f" au lieu de remonter au plan de dégagement, "
+                f"{self.gain_liaisons_mm / 1000.0:.2f} m de moins à parcourir")
         # Le reste se partage en TROIS tas, et chacun appelle un geste
         # different : une autre orientation, un outil plus fin, ou rien du
         # tout parce que la finition s'en charge. Les confondre sous un seul
@@ -857,7 +871,8 @@ def _longueurs(points: np.ndarray, rapide: np.ndarray) -> tuple[float, float]:
 def parcours_creux(volume, verdict: VerdictCreux, material, outil, machine, *,
                    epaisseur_couche_mm: float = EPAISSEUR_COUCHE_MM,
                    stepover: float = STEPOVER,
-                   pas_point_mm: float = PAS_POINT_MM) -> ParcoursCreux:
+                   pas_point_mm: float = PAS_POINT_MM,
+                   abaisser: bool = True) -> ParcoursCreux:
     """Le chemin qui vide ce creux, avec son outil et depuis sa bouche.
 
     ``verdict`` doit etre usinable : demander un parcours pour un creux dont on
@@ -874,6 +889,7 @@ def parcours_creux(volume, verdict: VerdictCreux, material, outil, machine, *,
       - il ne dit pas dans quel ORDRE vider les creux entre eux ;
       - il n'est pas du G-code, et rien ici ne sort vers une machine.
     """
+    from ..subtractive_slicer.liaisons import abaisser_les_liaisons
     from ..subtractive_slicer.slicer import continuous_path, slice_for_direction
 
     base = dict(index=verdict.index, a_deg=float(verdict.a_deg or 0.0),
@@ -900,6 +916,16 @@ def parcours_creux(volume, verdict: VerdictCreux, material, outil, machine, *,
         masque=volume.masque)
     points, rapide = continuous_path(tranche, point_spacing=pas_point_mm,
                                      tool=outil)
+    # ABAISSER LES LIAISONS. ``continuous_path`` remonte au plan de degagement
+    # entre chaque passe — sûr partout, y compris la ou il n'y a plus rien.
+    # Mesure sur la poche de C02 : onze aller-retours au plan pour douze
+    # couches, alors que l'outil reste dans la meme poche, deja videe
+    # au-dessus de lui.
+    gain = None
+    if abaisser and len(points):
+        points, rapide, gain = abaisser_les_liaisons(
+            points, rapide, material, outil, direction,
+            clearance_z=float(tranche.clearance_z))
     coupe, rapide_mm = _longueurs(points, rapide)
     return ParcoursCreux(**base, points=points, rapide=rapide,
                          volume_mm3=float(volume.volume_mm3),
@@ -912,6 +938,10 @@ def parcours_creux(volume, verdict: VerdictCreux, material, outil, machine, *,
                          n_couches=len(tranche.layers),
                          longueur_coupe_mm=coupe,
                          longueur_rapide_mm=rapide_mm,
+                         gain_liaisons_mm=(0.0 if gain is None
+                                           else gain.gain_mm),
+                         n_liaisons_abaissees=(0 if gain is None
+                                               else gain.n_abaissees),
                          marge_tranchage_mm=marge_de_tranchage(
                              float(material.grid.pitch)))
 

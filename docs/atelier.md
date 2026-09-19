@@ -322,6 +322,20 @@ déplacer, et **quelle part du chemin coupe vraiment**. Le curseur promène
 l'outil le long du chemin **calculé** — pas d'une animation redessinée pour
 l'écran.
 
+**Les liaisons sont abaissées.** Relier deux passes en remontant au-dessus de
+toute la pièce est sûr partout — y compris là où il n'y a plus rien. L'atelier
+calcule donc, pour chaque liaison, la hauteur la plus basse à laquelle l'outil
+**entier** ne touche plus rien, et s'y tient ; le plan de dégagement reste le
+plafond, donc ce calcul ne peut jamais rendre un parcours pire.
+
+Mesuré sur les sept creux du corpus qui reçoivent un parcours : **245 liaisons,
+20 m de transport ramenés à 15 m**, et la part du chemin qui coupe passe de
+42 % à 49 %. Sur une poche compacte c'est spectaculaire — C03 passe de 37 % à
+**87 %**, C02 de 70 % à **89 %**. Sur le dôme de C10, en revanche, le gain est
+de 4 % : ses liaisons enjambent le dôme lui-même, et aucune hauteur plus basse
+n'existe. Ce qui coûte là n'est pas la hauteur mais **l'ordre des passes**, que
+l'atelier ne choisit pas encore.
+
 Ce que le parcours laisse est partagé en **trois**, parce que chaque tas appelle
 un geste différent :
 
