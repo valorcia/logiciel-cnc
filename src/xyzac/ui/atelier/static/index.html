@@ -39,6 +39,7 @@
     <button type="button" data-fil="etape-verif"><i>3</i>Vérifiez</button>
     <button type="button" data-fil="etape-simu"><i>4</i>Usinage</button>
     <button type="button" data-fil="etape-lancer"><i>5</i>Lancer</button>
+    <button type="button" data-fil="etape-machine"><i>⚙</i>La machine</button>
   </div>
 </nav>
 
@@ -314,6 +315,38 @@
     <p id="lancement-resume" class="resume"></p>
     <ul id="conditions" class="conditions"></ul>
   </div>
+</section>
+
+<!-- LA MACHINE. Une page a elle seule, et hors du fil des cinq etapes :
+     elle ne se remplit pas a chaque piece mais UNE FOIS, le jour du montage,
+     puis se corrige quand on change quelque chose sur la machine.
+
+     Chaque cote porte quatre choses : sa valeur, ce qu'elle change, comment
+     la mesurer, et d'ou elle vient. La quatrieme est celle qui manque a tous
+     les ecrans de reglages, et c'est celle qui rend celui-ci utile : taper
+     une valeur ne la rend pas mesuree. -->
+<section class="etape" id="etape-machine">
+  <div class="tete"><span class="num">⚙</span>
+    <div><h2>Votre machine</h2>
+      <p class="consigne">Les cotes de la machine, à relever une fois qu'elle
+      existe. Tant qu'elles viennent du plan, tout ce que l'atelier annonce
+      porte sur la machine <b>dessinée</b>.</p></div>
+  </div>
+
+  <div class="rangee rangee--titre">
+    <p><label for="machine-nom">Nom de cette machine</label>
+      <input id="machine-nom" type="text" maxlength="80"
+             aria-label="Nom de cette machine"></p>
+    <span id="machine-fichier" class="detail"></span>
+  </div>
+
+  <p id="machine-resume" class="resume"></p>
+  <p class="astuce">Une valeur <b>tapée</b> reste un essai. Elle ne devient une
+  mesure que si vous dites avec <b>quoi</b> vous l'avez mesurée — et les cotes
+  marquées « calibration » ne s'obtiennent que par la procédure de
+  calibration, jamais au pied à coulisse.</p>
+
+  <div id="machine-groupes"></div>
 </section>
 
 </main>

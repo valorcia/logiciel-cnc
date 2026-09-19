@@ -18,6 +18,7 @@ est un simulateur : il montre ce qui se passerait.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import threading
@@ -26,7 +27,41 @@ from pathlib import Path
 
 import numpy as np
 
+from ...machine_model.fiche import NOM_FICHIER, FicheMachine
+
 CORPUS = Path(__file__).resolve().parents[4] / "tests" / "corpus" / "step"
+
+#: Ou la fiche de la machine se garde : a cote du logiciel, pas dans le dossier
+#: de travail.
+#:
+#: Le dossier de travail se vide a chaque lancement — c'est la ou vont les
+#: images. Les cotes de la machine, elles, sont le fruit d'une journee de
+#: mesures : les y mettre aurait voulu dire les retaper a chaque demarrage,
+#: c'est-a-dire ne jamais les mesurer.
+#: Surchargeable par ``XYZAC_FICHE_MACHINE``, et pour deux raisons reelles :
+#: quelqu'un qui monte deux machines veut deux fiches, et une epreuve
+#: automatique ne doit pas ecrire dans le dossier du logiciel — la fiche
+#: laissee par une epreuve devenait le point de depart de la suivante, qui
+#: n'essayait alors plus ce qu'elle croyait essayer.
+FICHIER_MACHINE = Path(os.environ.get("XYZAC_FICHE_MACHINE")
+                       or Path(__file__).resolve().parents[4] / NOM_FICHIER)
+
+#: Les cotes que l'ancien ecran de reglages et la fiche designent toutes deux.
+#:
+#: Ecrite UNE fois et lue des deux cotes. Sans cette table, l'ecran de reglages
+#: continuait d'ecrire dans ``Reglages`` pendant que la machine se construisait
+#: depuis la fiche : l'utilisateur deplacait une course et rien ne bougeait.
+#: Un reglage sans effet est pire qu'un reglage absent — on cherche pourquoi.
+REGLAGES_VERS_FICHE = {
+    "course_x": "course_x_mm",
+    "course_y": "course_y_mm",
+    "course_z_bas": "course_z_bas_mm",
+    "course_z_haut": "course_z_haut_mm",
+    "a_min": "a_min_deg",
+    "a_max": "a_max_deg",
+    "rayon_plateau": "plateau_rayon_mm",
+    "jauge_outil": "jauge_outil_mm",
+}
 
 #: Extensions acceptees pour un fichier televerse. On ne devine pas le format
 #: par le contenu : l'importeur du moteur lit du STEP, et lui presenter autre
@@ -526,6 +561,14 @@ class Surface:
 @dataclass
 class Session:
     reglages: Reglages = field(default_factory=Reglages)
+    #: La fiche de la machine : toutes ses cotes, et d'ou chacune vient.
+    #:
+    #: Chargee depuis le disque au demarrage, donc ce qui a ete MESURE un jour
+    #: ne se retape pas le lendemain. C'est elle qui fait autorite ; les
+    #: ``reglages`` ci-dessus en sont une vue, entretenue par
+    #: ``_fiche_vers_reglages``.
+    fiche: FicheMachine = field(
+        default_factory=lambda: FicheMachine.charger(FICHIER_MACHINE))
     #: Ce dont depend le temps d'usinage. Separe des reglages : voir ``Coupe``.
     coupe: Coupe = field(default_factory=Coupe)
     #: Comment la piece est tenue. Separe aussi : voir ``Bridage``.
@@ -858,7 +901,9 @@ class Session:
         banc.set_default_tool("ballnose",
                               diameter=self.reglages.diametre_outil,
                               stickout=self.reglages.jauge_outil)
-        machine = self.reglages.machine()
+        # La FICHE fait autorite, pas les reglages : elle porte les pivots,
+        # la geometrie delta et les jeux, que ``Reglages`` n'a jamais eus.
+        machine = self.fiche.machine()
         banc.machine = machine
         banc._obstacles = None
         self._poser_piece()
@@ -1431,7 +1476,7 @@ class Session:
         from ..debug import scene as sc
 
         banc = self._banc
-        banc.machine = self.reglages.machine()
+        banc.machine = self.fiche.machine()
         banc._obstacles = None
         self._poser_piece()
         banc.set_default_tool("ballnose",
@@ -2289,6 +2334,110 @@ class Session:
         }
 
     # --------------------------------------------------------------- etat
+
+    # ------------------------------------------------- la fiche machine
+
+    def fiche_etat(self) -> dict:
+        """La fiche, telle que l'ecran la montre : groupee et commentee."""
+        from ...machine_model.fiche import (CRITIQUES, PROVENANCES,
+                                            RESERVEES_A_LA_CALIBRATION,
+                                            TEXTE_PROVENANCE)
+
+        groupes = []
+        for cle, titre, params in self.fiche.groupes():
+            groupes.append({
+                "cle": cle, "titre": titre,
+                "cotes": [{
+                    "cle": p.cle, "libelle": p.libelle, "valeur": p.valeur,
+                    "unite": p.unite, "effet": p.effet,
+                    "comment_mesurer": p.comment_mesurer, "aide": p.aide,
+                    "provenance": p.provenance,
+                    "provenance_texte": TEXTE_PROVENANCE[p.provenance],
+                    "moyen": p.moyen, "incertitude": p.incertitude,
+                    "date_mesure": p.date_mesure,
+                    "suffisante": p.suffisante,
+                    "critique": p.cle in CRITIQUES,
+                    "calibration_seule": p.cle in RESERVEES_A_LA_CALIBRATION,
+                    "mini": p.mini, "maxi": p.maxi,
+                    "decimales": p.decimales,
+                    "booleen": p.unite == "oui/non",
+                } for p in params],
+            })
+        return {
+            "nom": self.fiche.nom,
+            "resume": self.fiche.resume(),
+            "mesuree": self.fiche.mesuree,
+            "n_a_mesurer": len(self.fiche.a_mesurer()),
+            "n_critiques": len(self.fiche.a_mesurer(critiques_seulement=True)),
+            "fichier": str(FICHIER_MACHINE),
+            "provenances": list(PROVENANCES),
+            "groupes": groupes,
+        }
+
+    def regler_cote(self, cle: str, valeur: float, *, moyen: str = "",
+                    incertitude: float | None = None) -> None:
+        """Ecrit une cote, puis invalide tout ce qui en dependait.
+
+        ``moyen`` vide = saisie a la main, donc un ESSAI. ``moyen`` renseigne =
+        une mesure, avec ce qui l'a mesuree. La fiche refuse d'elle-meme de
+        marquer « mesuree » une cote qui ne peut venir que de la calibration.
+
+        L'enregistrement est IMMEDIAT et non differe par un bouton
+        « enregistrer » : une cote relevee sur la machine puis perdue parce
+        qu'on a fermé la fenêtre est exactement le genre de perte qui fait
+        qu'on ne remesure jamais.
+        """
+        if moyen.strip():
+            self.fiche.mesurer(cle, valeur, moyen=moyen,
+                               incertitude=incertitude)
+        else:
+            self.fiche.regler(cle, valeur)
+        self.fiche.enregistrer(FICHIER_MACHINE)
+        self._fiche_vers_reglages()
+        # Une cote de machine change la FAISABILITE : tout verdict rendu sous
+        # l'ancienne machine porte sur une machine qui n'existe plus.
+        self.invalider()
+
+    def _fiche_vers_reglages(self) -> None:
+        """Recopie dans ``reglages`` les cotes que les anciens ecrans lisent.
+
+        Un seul sens, et c'est voulu : la fiche fait autorite. Recopier dans
+        les deux sens aurait cree deux sources pour la meme cote, et celle
+        qu'on croirait serait celle qu'on voit.
+        """
+        for attr, cle in REGLAGES_VERS_FICHE.items():
+            setattr(self.reglages, attr, self.fiche.valeur(cle))
+
+    def regler_depuis_l_ancien_ecran(self, corps: dict) -> list[str]:
+        """Les curseurs de l'etape 3, rediriges vers la fiche.
+
+        Les cotes que la fiche porte y sont ecrites — donc notees ESSAI, ce
+        qu'elles sont : personne n'a mesure quoi que ce soit en bougeant un
+        curseur. Les autres (le diametre de l'outil, le decalage de la piece)
+        ne sont pas des cotes de machine et restent sur ``Reglages``.
+
+        Rend la liste des cles refusees, avec leur motif.
+        """
+        refus = []
+        touche = False
+        for k, v in corps.items():
+            cle = REGLAGES_VERS_FICHE.get(k)
+            if cle is not None:
+                try:
+                    self.fiche.regler(cle, float(v))
+                    touche = True
+                except (ValueError, TypeError) as e:
+                    refus.append(str(e))
+            elif hasattr(self.reglages, k):
+                try:
+                    setattr(self.reglages, k, float(v))
+                except (TypeError, ValueError):
+                    refus.append(f"{k} : valeur illisible")
+        if touche:
+            self.fiche.enregistrer(FICHIER_MACHINE)
+        self._fiche_vers_reglages()
+        self.invalider()
+        return refus
 
     def etat(self) -> dict:
         return {

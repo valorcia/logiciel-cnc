@@ -22,7 +22,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from .session import CORPUS, TAILLE_MAX, Session, rendu_3d
+from .session import (CORPUS, FICHIER_MACHINE, TAILLE_MAX, Session,
+                      rendu_3d)
 
 STATIQUE = Path(__file__).resolve().parent / "static"
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript",
@@ -172,6 +173,9 @@ class Atelier(BaseHTTPRequestHandler):
                         500)
             return self._fichier(out)
 
+        if u.path == "/api/fiche":
+            return self._json(s.fiche_etat())
+
         if u.path == "/api/creux":
             # Les CREUX de la piece, et pour chacun : quel outil, depuis quelle
             # orientation, ou laquelle des trois etapes bloque. Synchrone comme
@@ -242,11 +246,36 @@ class Atelier(BaseHTTPRequestHandler):
             return self._json(s.etat())
 
         if u.path == "/api/reglages":
-            for k, v in corps.items():
-                if hasattr(s.reglages, k):
-                    setattr(s.reglages, k, float(v))
-            s.invalider()
+            # Redirige vers la FICHE pour les cotes qu'elle porte : sans cela,
+            # le curseur ecrivait dans ``Reglages`` pendant que la machine se
+            # construisait depuis la fiche, et ne changeait plus rien.
+            refus = s.regler_depuis_l_ancien_ecran(corps)
+            if refus:
+                return self._json({"erreur": " ".join(refus)}, 400)
             return self._json(s.etat())
+
+        if u.path == "/api/cote":
+            # UNE cote de la fiche machine. ``moyen`` vide = saisie a la main,
+            # donc un essai ; ``moyen`` renseigne = une mesure, avec ce qui
+            # l'a mesuree.
+            cle = str(corps.get("cle", ""))
+            if cle not in s.fiche.parametres:
+                return self._json({"erreur": f"cote inconnue : {cle}"}, 404)
+            try:
+                s.regler_cote(cle, float(corps.get("valeur", 0.0)),
+                              moyen=str(corps.get("moyen", "")),
+                              incertitude=(None
+                                           if corps.get("incertitude") in (None, "")
+                                           else float(corps["incertitude"])))
+            except (ValueError, TypeError) as e:
+                return self._json({"erreur": str(e)}, 400)
+            return self._json({"fiche": s.fiche_etat(), "etat": s.etat()})
+
+        if u.path == "/api/machine-nom":
+            s.fiche.nom = str(corps.get("nom", s.fiche.nom)).strip()[:80] \
+                or s.fiche.nom
+            s.fiche.enregistrer(FICHIER_MACHINE)
+            return self._json({"fiche": s.fiche_etat()})
 
         if u.path == "/api/coupe":
             # La matiere change le TEMPS, pas la faisabilite : elle n'invalide

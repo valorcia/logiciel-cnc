@@ -644,6 +644,47 @@ qu'on lit à l'écran, donc celle sur laquelle quelqu'un se serait fié. Un test
 (`test_the_page_and_the_deposit_refuse_for_the_same_reasons`) les attache
 l'une à l'autre.
 
+### 3sexies. « Votre machine » : les cotes, et d'où chacune vient
+
+Un écran à part, **hors du fil des cinq étapes**, et atteignable sans avoir
+chargé la moindre pièce : le jour du montage on relève des cotes, on n'usine
+rien.
+
+Il porte les **46 cotes** de la machine, rangées en sept groupes repliés — la
+structure delta, les axes A et C, le plateau et le berceau, la broche et le
+porte-outil, les courses utiles, les jeux et la précision, les organes de
+sécurité. Chacune affiche quatre choses :
+
+- sa **valeur** et son unité ;
+- ce qu'elle **change** : faisabilité, temps, précision ou sécurité ;
+- **comment la mesurer**, en une phrase, une fois la machine devant soi ;
+- **d'où elle vient** : du plan, un essai, une mesure, une calibration.
+
+**La quatrième est la raison d'être de cet écran.** Taper une valeur ne la rend
+pas mesurée : elle devient un **essai**. Elle ne devient une **mesure** que si
+vous dites avec **quoi** vous l'avez relevée. Sans cette règle, on tape les
+cotes du plan, l'écran affiche « mesuré », et plus personne ne sait ce que les
+verdicts valent.
+
+Onze cotes portent un liseré bleu : ce sont les **critiques**, celles dont une
+erreur **ne se voit pas à l'écran**. Une course fausse fait refuser une passe et
+cela se remarque ; un pivot faux de 1 mm laisse la simulation parfaitement verte
+et décale la pièce de 1 mm.
+
+Treize cotes n'ont **pas de champ « mesuré avec »** : un pivot, un jeu, un rayon
+de bille ne se relèvent pas au pied à coulisse. Ils s'obtiennent par la
+procédure de calibration, qui les écrit elle-même. Vous pouvez les saisir pour
+essayer — elles resteront notées « essai ».
+
+La fiche est **enregistrée à chaque saisie**, dans un `machine.json` lisible au
+Bloc-notes à côté du logiciel. Pas de bouton « enregistrer » : une cote relevée
+sur la machine puis perdue parce qu'on a fermé la fenêtre ne se remesure jamais.
+
+Les trois cotes de **sécurité** sont des **déclarations**, pas des commandes :
+cocher la case n'arrête aucune broche. Ces organes sont matériels et
+indépendants du logiciel par construction — l'écran les constate, et dit quand
+elles manquent.
+
 ## 3quater. Le design, et pourquoi il est clair
 
 Retouche complète après un premier jet jugé « vraiment moche », et le reproche

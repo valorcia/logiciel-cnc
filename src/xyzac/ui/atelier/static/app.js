@@ -27,7 +27,7 @@ let film = { n: 0, i: 0, timer: null, images: [] };
 // sur un ecran de 10 pouces. Sur cinq cartes empilees, quatre etaient
 // inaccessibles et remplissaient pourtant tout l'ecran de choses a ignorer.
 const PAGES = ["etape-piece", "etape-vue", "etape-verif", "etape-simu",
-               "etape-lancer"];
+               "etape-lancer", "etape-machine"];
 let page = 0;
 
 // Une page est ATTEIGNABLE quand ce qu'elle demande existe. On ne bloque pas
@@ -35,6 +35,9 @@ let page = 0;
 // fait, et l'operateur se retrouverait coince sans savoir pourquoi.
 function atteignable(i) {
   if (i === 0) return true;
+  // La page MACHINE ne dépend d'aucune pièce : on doit pouvoir relever ses
+  // cotes le jour du montage, avant d'avoir le moindre fichier à usiner.
+  if (PAGES[i] === "etape-machine") return true;
   return !!(etat && etat.chargee);
 }
 
@@ -227,6 +230,134 @@ function majOngletsUsinage() {
   $("#ong-comment").classList.toggle("onglet--actif", ongletUsinage === "comment");
 }
 
+// ------------------------------------------------- LA FICHE DE LA MACHINE
+//
+// Un ecran a part, et hors du fil des cinq etapes : il ne se remplit pas a
+// chaque piece mais UNE FOIS, le jour du montage, puis se corrige quand on
+// change quelque chose sur la machine.
+//
+// La regle qu'il applique, et qui est toute sa raison d'etre : taper une
+// valeur ne la rend pas mesuree. Sans elle, un operateur presse tape les
+// cotes du plan, l'ecran affiche « mesuré », et plus personne — lui le
+// premier — ne sait ce que les verdicts valent.
+let fiche = null;
+
+// La couleur d'une pastille vient d'une règle DESCENDANTE — `.faisable
+// .pastille` — donc la classe d'état se pose sur un ANCÊTRE, jamais sur la
+// pastille elle-même. Posée dessus, elle ne s'appliquait pas : la pastille
+// s'affichait sans fond, et le texte flottait à côté d'un bout de bord
+// arrondi.
+//
+// L'ancêtre est un <span> qui ne sert QU'À ça. Posée sur la ligne de titre,
+// la classe traînait avec elle `.faisable{border-left:3px}` — prévue pour un
+// <li> de la liste des surfaces — et plantait un petit trait coloré devant
+// chaque nom de cote.
+const PASTILLE_PROVENANCE = {
+  plan: ["a-changer", "du plan"],
+  essai: ["a-changer", "essai"],
+  mesure: ["faisable", "mesurée"],
+  calibre: ["faisable", "calibrée"],
+};
+
+async function chargerFiche() {
+  try {
+    fiche = await get("/api/fiche");
+    dessinerFiche();
+  } catch (e) {
+    $("#machine-resume").textContent = `Fiche illisible : ${e.message}`;
+  }
+}
+
+function dessinerFiche() {
+  if (!fiche) return;
+  $("#machine-nom").value = fiche.nom;
+  $("#machine-resume").textContent = fiche.resume;
+  $("#machine-resume").className = "resume " +
+    (fiche.mesuree ? "resume--ok" : "resume--attention");
+  $("#machine-fichier").textContent = `gardée dans ${fiche.fichier}`;
+
+  $("#machine-groupes").innerHTML = fiche.groupes.map((g) => `
+    <details class="groupe-cotes" ${g.cle === "structure" ? "open" : ""}>
+      <summary><b>${g.titre}</b>
+        <span class="detail">${g.cotes.filter((c) => c.suffisante).length}
+        / ${g.cotes.length} mesurée(s)</span></summary>
+      <div class="cotes">
+        ${g.cotes.map((c) => ligneCote(c)).join("")}
+      </div>
+    </details>`).join("");
+
+  document.querySelectorAll("#machine-groupes .fiche-cote").forEach((n) => {
+    const cle = n.dataset.cote;
+    const val = n.querySelector(".fiche-cote-valeur");
+    const moy = n.querySelector(".fiche-cote-moyen");
+    const env = () => envoyerCote(cle, val, moy);
+    val.addEventListener("change", env);
+    if (moy) moy.addEventListener("change", env);
+  });
+}
+
+function ligneCote(c) {
+  const [classe, mot] = PASTILLE_PROVENANCE[c.provenance] ||
+                        ["a-changer", c.provenance];
+  const pas = Math.pow(10, -c.decimales).toFixed(c.decimales);
+  const champ = c.booleen
+    ? `<select class="fiche-cote-valeur">
+         <option value="0" ${c.valeur < 0.5 ? "selected" : ""}>non</option>
+         <option value="1" ${c.valeur >= 0.5 ? "selected" : ""}>oui</option>
+       </select>`
+    : `<input class="fiche-cote-valeur" type="number" step="${pas}"
+              min="${c.mini}" max="${c.maxi}"
+              value="${c.valeur.toFixed(c.decimales)}">`;
+  // Pas de champ « mesuré avec » sur les cotes de calibration : les proposer
+  // laisserait croire qu'on peut les relever à la main, alors que la fiche
+  // refuserait la mesure. Un champ qui n'aboutit jamais est un piège.
+  const moyen = (c.booleen || c.calibration_seule) ? "" :
+    `<input class="fiche-cote-moyen" type="text" placeholder="mesuré avec…"
+            value="${c.moyen.replace(/"/g, "&quot;")}">`;
+  return `
+    <div class="fiche-cote ${c.critique ? "fiche-cote--critique" : ""}" data-cote="${c.cle}">
+      <div class="fiche-cote-tete">
+        <span class="fiche-cote-nom">${c.libelle}</span>
+        <span class="${classe} porte-pastille"><span class="pastille">${mot}</span></span>
+      </div>
+      <div class="fiche-cote-champs">
+        ${champ}<span class="fiche-cote-unite">${c.unite === "oui/non" ? "" : c.unite}</span>
+        ${moyen}
+      </div>
+      <p class="fiche-cote-mesure">${c.comment_mesurer}</p>
+      ${c.aide ? `<p class="detail">${c.aide}</p>` : ""}
+      <p class="detail">Change&nbsp;: <b>${c.effet}</b>${
+        c.calibration_seule
+          ? " — <b>calibration</b>&nbsp;: ne se relève pas à la main"
+          : ""}${
+        c.date_mesure ? ` — relevée le ${c.date_mesure}` : ""}${
+        c.incertitude != null ? ` — ± ${c.incertitude} ${c.unite}` : ""}</p>
+    </div>`;
+}
+
+async function envoyerCote(cle, champValeur, champMoyen) {
+  const corps = { cle, valeur: Number(champValeur.value) };
+  if (champMoyen && champMoyen.value.trim()) corps.moyen = champMoyen.value;
+  const r = await post("/api/cote", corps);
+  // ``post`` ne LÈVE pas sur un 400 : il rend le corps de la réponse. Un
+  // try/catch ne voyait donc jamais le refus, la fiche n'était pas redessinée,
+  // et l'utilisateur voyait sa valeur absurde disparaître sans un mot. Trouvé
+  // au navigateur, invisible autrement.
+  if (r && r.erreur) {
+    // On redessine D'ABORD depuis le serveur — ce qui remet la valeur refusée
+    // à ce qu'elle était — PUIS on écrit le motif. L'inverse effaçait le
+    // motif aussitôt affiché.
+    await chargerFiche();
+    $("#machine-resume").textContent = r.erreur;
+    $("#machine-resume").className = "resume resume--attention";
+    return;
+  }
+  fiche = r.fiche;
+  etat = r.etat;
+  dessinerFiche();
+  appliquer();
+}
+
 // ------------------------------------------------------- les CREUX a vider
 //
 // Le renversement du point de vue demande : l'atelier ne liste plus seulement
@@ -356,6 +487,12 @@ function dessinerDiagnostic(i, s) {
   }
 }
 
+//: Le dernier HTML écrit dans la liste des surfaces et dans les réserves.
+//  Comparer le HTML plutôt que de tenir un état parallèle : c'est exactement
+//  ce qui est affiché, donc la comparaison ne peut pas diverger de l'écran.
+let dernieresSurfaces = null;
+let derniersAvertissements = null;
+
 function dessinerResultat() {
   const bloc = $("#resultat");
   // Les creux sont date de la revision qui les a produits. Un bridage change,
@@ -369,10 +506,24 @@ function dessinerResultat() {
     $("#creux-duo").hidden = true;
     $("#creux-resume").textContent = "";
   }
-  if (!etat.surfaces.length) { bloc.hidden = true; surfaceChoisie = null; return; }
+  if (!etat.surfaces.length) {
+    bloc.hidden = true;
+    surfaceChoisie = null;
+    dernieresSurfaces = null;
+    return;
+  }
   bloc.hidden = false;
   $("#resume").textContent = etat.resume;
-  $("#surfaces").innerHTML = etat.surfaces.map((s) => `
+  // La liste n'est RÉÉCRITE que si son contenu a changé.
+  //
+  // Elle était reconstruite à chaque interrogation du serveur, soit plusieurs
+  // fois par seconde pendant toute l'analyse — qui dure une minute sur une
+  // pièce du corpus. Les <li> étaient donc détruits et recréés sous le doigt
+  // de celui qui lit : un clic parti sur une ligne pouvait atterrir sur une
+  // ligne qui n'existait plus. Trouvé au navigateur, sur un clic qui a échoué
+  // avec « Element is not attached to the DOM » — c'est-à-dire exactement ce
+  // qui arrive à un utilisateur, sans le message.
+  const html = etat.surfaces.map((s) => `
     <li class="${s.verdict}">
       <div class="haut">
         <span class="titre">${s.titre}</span>
@@ -381,11 +532,17 @@ function dessinerResultat() {
       ${s.consigne ? `<p class="consigne-s">${s.consigne}</p>` : ""}
       ${s.detail ? `<p class="detail">${s.detail}</p>` : ""}
     </li>`).join("");
-  $("#avertissements").innerHTML =
-    etat.avertissements.map((a) => `<li>${a}</li>`).join("");
-
-  document.querySelectorAll("#surfaces li").forEach((li, k) =>
-    li.addEventListener("click", () => { choixManuel = true; montrerSurface(k); }));
+  if (html !== dernieresSurfaces) {
+    dernieresSurfaces = html;
+    $("#surfaces").innerHTML = html;
+    document.querySelectorAll("#surfaces li").forEach((li, k) =>
+      li.addEventListener("click", () => { choixManuel = true; montrerSurface(k); }));
+  }
+  const avert = etat.avertissements.map((a) => `<li>${a}</li>`).join("");
+  if (avert !== derniersAvertissements) {
+    derniersAvertissements = avert;
+    $("#avertissements").innerHTML = avert;
+  }
   // On en designe une d'office : la premiere qui demande une action, sinon la
   // premiere de la liste. Une vue vide a cote d'une liste ne dit pas qu'elle
   // attend un clic — elle a l'air cassee.
@@ -425,7 +582,10 @@ function appliquer() {
   // griser quatre etapes remplissait l'ecran de choses a ignorer.
   document.querySelectorAll("[data-requiert='piece']").forEach((s) =>
     s.classList.toggle("verrouille", !chargee));
-  if (!chargee && page !== 0) allerA(0);
+  // …sauf la page MACHINE, qui est précisément celle qu'on ouvre AVANT
+  // d'avoir la moindre pièce : le jour du montage, on relève des cotes, on
+  // n'usine rien. La renvoyer à l'étape 1 la rendait inatteignable.
+  if (!chargee && page !== 0 && PAGES[page] !== "etape-machine") allerA(0);
 
   const info = $("#piece-info");
   info.hidden = !chargee;
@@ -885,6 +1045,12 @@ async function init() {
     if (surfaceChoisie !== null) rafraichirVueUsinage(surfaceChoisie);
   });
   $("#chercher-creux").addEventListener("click", chercherCreux);
+  $("#machine-nom").addEventListener("change", async () => {
+    const r = await post("/api/machine-nom", { nom: $("#machine-nom").value });
+    fiche = r.fiche;
+    dessinerFiche();
+  });
+  chargerFiche();
 
   const lancerSimulation = async () => {
     reinitialiserFilm();

@@ -19,8 +19,14 @@ Il prend des captures dans ``out/atelier/`` : c'est aussi la façon de montrer
 a quoi ressemble l'atelier sans l'ouvrir.
 """
 
-import os, sys, threading, time
+import os, sys, tempfile, threading, time
 from pathlib import Path
+
+# La fiche machine se garde a cote du logiciel. Une epreuve qui l'y ecrit
+# laisse ses cotes a la suivante, qui n'essaie alors plus ce qu'elle croit.
+os.environ.setdefault(
+    "XYZAC_FICHE_MACHINE",
+    str(Path(tempfile.mkdtemp(prefix="fiche-epreuve-")) / "machine.json"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from playwright.sync_api import sync_playwright
 from xyzac.ui.atelier.server import servir
@@ -42,11 +48,20 @@ erreurs = []
 # ERR_CONNECTION_REFUSED, qui est le comportement attendu et non un defaut.
 # Sans ce drapeau, l'epreuve echouait sur la panne qu'elle provoque elle-meme.
 coupure_voulue = [False]
+# L'etape 8ter envoie VOLONTAIREMENT une cote absurde pour verifier que le
+# refus atteint l'ecran. Le serveur repond 400, et le navigateur journalise
+# tout fetch non-2xx comme une erreur de console. C'est le comportement
+# attendu, pas un defaut — mais seulement pendant ce pas-la : hors de lui, un
+# 400 reste une erreur a rapporter.
+refus_voulu = [False]
 
 
 def _console(m):
-    if m.type == "error" and not coupure_voulue[0]:
-        erreurs.append(m.text)
+    if m.type != "error" or coupure_voulue[0]:
+        return
+    if refus_voulu[0] and "400" in m.text:
+        return
+    erreurs.append(m.text)
 
 
 with sync_playwright() as pw:
@@ -573,6 +588,58 @@ with sync_playwright() as pw:
         print("8bis. aucune correction à proposer (toutes les indexations "
               "retenues tiennent dans les courses)")
         assert not page.locator("#bloc-correction").is_visible()
+
+    # --- 8ter. LA FICHE DE LA MACHINE --------------------------------------
+    #
+    # L'ecran qu'on remplit le jour du montage. Ce pas verifie la seule regle
+    # qui le rend utile plutot que decoratif : taper une valeur ne la rend pas
+    # mesuree. Et il verifie qu'un refus ATTEINT l'ecran — ``post`` ne leve pas
+    # sur un 400, de sorte qu'un try/catch ne voyait jamais rien et que la
+    # valeur refusee disparaissait sans un mot.
+    page.click('[data-fil="etape-machine"]')
+    page.wait_for_function("() => fiche && fiche.groupes.length", timeout=30000)
+    n_cotes = page.eval_on_selector_all("#machine-groupes .fiche-cote",
+                                        "ns => ns.length")
+    print(f"8ter. fiche machine : {n_cotes} cotes")
+    print("      ", page.inner_text("#machine-resume")[:150])
+    assert n_cotes >= 40, n_cotes
+    tient_dans_l_ecran("machine")
+
+    cote = '[data-cote="delta_longueur_bras_mm"]'
+    champ = page.locator(f"{cote} .fiche-cote-valeur")
+    champ.fill("248.7")
+    champ.dispatch_event("change")
+    page.wait_for_function(
+        "() => fiche.groupes[0].cotes.find("
+        "c => c.cle === 'delta_longueur_bras_mm').provenance === 'essai'",
+        timeout=30000)
+    print("      tapée →", page.inner_text(f"{cote} .pastille"))
+
+    moyen = page.locator(f"{cote} .fiche-cote-moyen")
+    moyen.fill("pied à coulisse")
+    moyen.dispatch_event("change")
+    page.wait_for_function(
+        "() => fiche.groupes[0].cotes.find("
+        "c => c.cle === 'delta_longueur_bras_mm').provenance === 'mesure'",
+        timeout=30000)
+    print("      avec le moyen →", page.inner_text(f"{cote} .pastille"))
+
+    # une valeur absurde : refusee, motivee, et la valeur precedente GARDEE
+    refus_voulu[0] = True
+    champ.fill("2500")
+    champ.dispatch_event("change")
+    page.wait_for_function(
+        "() => document.querySelector('#machine-resume')"
+        ".textContent.includes('bornes')", timeout=30000)
+    print("      absurde →", page.inner_text("#machine-resume")[:90])
+    assert page.locator(f"{cote} .fiche-cote-valeur").input_value() \
+        .startswith("248.7"), "la valeur refusée ne doit pas être prise"
+
+    # un pivot ne se releve pas a la main : pas de champ « mesuré avec »
+    refus_voulu[0] = False
+    # un pivot ne se releve pas a la main : pas de champ « mesuré avec »
+    assert page.locator('[data-cote="pivot_a_z_mm"] .fiche-cote-moyen').count() == 0
+    page.locator(".groupe-cotes").first.screenshot(path=SORTIE / "7-machine.png")
 
     # --- 9. l'atelier s'arrete : la page doit le DIRE -----------------------
     # Le defaut que ce pas couvre : une page qui reste affichee, boutons

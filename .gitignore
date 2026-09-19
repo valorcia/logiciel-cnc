@@ -10,3 +10,9 @@ dist/
 
 # journal du lanceur (tools/demarrer_atelier.py)
 demarrage.log
+
+# La fiche de VOTRE machine : ses cotes mesurees, son nom, ses provenances.
+# Elle decrit un exemplaire physique, pas le logiciel — deux machines montees
+# a partir du meme kit n'ont pas les memes cotes. La versionner imposerait
+# celles d'une machine a tout le monde.
+machine.json

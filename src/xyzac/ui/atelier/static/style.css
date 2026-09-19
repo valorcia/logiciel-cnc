@@ -445,3 +445,65 @@ code{background:var(--creux);border:1px solid var(--trait);padding:1px 6px;
   .largeur{padding:0 14px}
   .bandeau-in{padding:12px 14px}
 }
+
+/* ------------------------------------------------ la fiche de la machine
+ *
+ * Prefixees ``fiche-`` et non ``cote-`` : ``.cote`` designe deja LA COLONNE
+ * du panneau de simulation, plus haut dans ce fichier. Une regle ``.cote``
+ * ecrite ici l'ecrasait en silence — un defaut invisible aux tests, qui ne
+ * se serait vu que sur l'ecran de quelqu'un.
+ *
+ * Quarante-six cotes sur un ecran de 10 pouces : repliees par groupe, une
+ * seule ouverte au depart. Tout derouler d'un coup donnerait quatre metres a
+ * faire defiler le jour ou l'on cherche une cote precise, accroupi devant la
+ * machine.
+ */
+.groupe-cotes{border:1px solid var(--trait);border-radius:var(--r-petit);
+  background:var(--carte);margin-bottom:10px}
+.groupe-cotes>summary{cursor:pointer;padding:11px 14px;display:flex;
+  gap:10px;align-items:baseline;justify-content:space-between;
+  border-radius:var(--r-petit)}
+.groupe-cotes>summary:hover{background:var(--creux)}
+.groupe-cotes[open]>summary{border-bottom:1px solid var(--trait)}
+.cotes{padding:6px 14px 12px}
+.fiche-cote{padding:12px 0;border-bottom:1px solid var(--trait)}
+.fiche-cote:last-child{border-bottom:none}
+/* Les cotes CRITIQUES sont celles dont une erreur ne se voit pas a l'ecran :
+   un pivot faux de 1 mm laisse la simulation verte et decale la piece de
+   1 mm. Elles portent donc un liseré, pas une couleur d'alerte — elles ne
+   sont pas en faute, elles sont a ne pas oublier. */
+/* Le liseré est pris SUR la cote, pas ajouté à côté : un margin-left négatif
+   la rendait 3 px plus large que son cadre et rognait la pastille de
+   provenance contre le bord droit. */
+.fiche-cote--critique{border-left:3px solid var(--accent);padding-left:11px}
+.fiche-cote-tete{display:flex;gap:10px;align-items:baseline;
+  justify-content:space-between}
+/* La pastille ne RÉTRÉCIT pas. Par défaut un élément flex accepte de passer
+   sous sa largeur de contenu : le fond arrondi se réduisait à son bord
+   gauche pendant que le texte débordait par-dessus, ce qui donnait « ( du
+   plan » au lieu d'une pastille. */
+.fiche-cote-tete .porte-pastille{flex:0 0 auto;border-left:none}
+.fiche-cote-tete .pastille{white-space:nowrap}
+.fiche-cote-nom{min-width:0}
+.fiche-cote-nom{font-weight:600;font-size:14.5px}
+.fiche-cote-champs{display:flex;gap:8px;align-items:center;margin:7px 0 0;
+  flex-wrap:wrap}
+.fiche-cote-valeur{width:120px;font:inherit;padding:7px 9px;
+  border:1px solid var(--trait-fort);border-radius:var(--r-petit);
+  background:var(--carte);color:var(--texte)}
+.fiche-cote-moyen{flex:1 1 180px;min-width:150px;font:inherit;padding:7px 9px;
+  border:1px solid var(--trait-fort);border-radius:var(--r-petit);
+  background:var(--carte);color:var(--texte)}
+.fiche-cote-unite{color:var(--doux);font-size:13.5px;min-width:44px}
+/* La phrase de mesure est ce qui transforme un formulaire en fiche de mise
+   en service : elle se lit, donc elle est alignee a gauche et en poids
+   normal, comme un texte et non comme une etiquette. */
+.fiche-cote-mesure{margin:7px 0 0;font-size:13.5px;line-height:1.45;
+  color:var(--texte);background:var(--creux);border-radius:var(--r-petit);
+  padding:8px 10px}
+.fiche-cote .detail{margin:6px 0 0;font-size:13px;color:var(--doux)}
+.resume--ok{color:var(--ok)}
+.resume--attention{color:var(--attention)}
+#machine-nom{font:inherit;padding:7px 9px;border:1px solid var(--trait-fort);
+  border-radius:var(--r-petit);background:var(--carte);color:var(--texte);
+  min-width:220px;margin-left:8px}

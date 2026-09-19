@@ -2073,3 +2073,126 @@ def test_the_cavity_panel_is_wired_end_to_end():
     # chaque etape a son mot : « refus » tout court ne dirait pas quoi changer
     for etape in ("aucune", "outil", "orientation", "course", "flanc"):
         assert f"{etape}:" in js, etape
+
+
+# --------------------------------------------- la fiche de la machine
+
+def test_a_cote_typed_through_the_page_is_never_marked_measured():
+    """La regle de la fiche doit survivre au passage par l'interface.
+
+    Le moteur la tient (``Parametre.regler``), mais c'est l'ecran qui decide
+    ce qu'il lui envoie. Un champ « mesuré avec » facultatif rempli d'office,
+    et toute la discipline tombait.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from xyzac.ui.atelier import session as mod
+    from xyzac.ui.atelier.session import Session
+
+    s = Session()
+    with tempfile.TemporaryDirectory() as d:
+        chemin = Path(d) / "machine.json"
+        ancien, mod.FICHIER_MACHINE = mod.FICHIER_MACHINE, chemin
+        try:
+            s.regler_cote("delta_longueur_bras_mm", 248.7)
+            assert s.fiche["delta_longueur_bras_mm"].provenance == "essai"
+            s.regler_cote("delta_longueur_bras_mm", 248.7,
+                          moyen="pied à coulisse")
+            assert s.fiche["delta_longueur_bras_mm"].provenance == "mesure"
+            # et c'est ECRIT tout de suite : une cote relevée puis perdue
+            # parce qu'on a fermé la fenêtre ne se remesure jamais
+            assert chemin.exists()
+        finally:
+            mod.FICHIER_MACHINE = ancien
+
+
+def test_the_old_settings_screen_writes_into_the_sheet():
+    """Un réglage sans effet est pire qu'un réglage absent.
+
+    La machine se construit maintenant depuis la FICHE. L'ancien écran de
+    réglages continuait d'écrire dans ``Reglages`` : l'utilisateur déplaçait
+    une course et plus rien ne bougeait, sans un mot.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from xyzac.ui.atelier import session as mod
+    from xyzac.ui.atelier.session import REGLAGES_VERS_FICHE, Session
+
+    s = Session()
+    with tempfile.TemporaryDirectory() as d:
+        ancien, mod.FICHIER_MACHINE = mod.FICHIER_MACHINE, Path(d) / "m.json"
+        try:
+            assert not s.regler_depuis_l_ancien_ecran({"course_x": 175.0})
+            assert s.fiche.valeur("course_x_mm") == 175.0
+            assert s.reglages.course_x == 175.0
+            assert s.fiche.machine().x.max_mm == 175.0
+            # une valeur absurde est refusée, et le motif remonte
+            refus = s.regler_depuis_l_ancien_ecran({"course_x": 99999.0})
+            assert refus and "bornes" in refus[0]
+            assert s.fiche.valeur("course_x_mm") == 175.0
+        finally:
+            mod.FICHIER_MACHINE = ancien
+    # toute cote portée par la fiche doit passer par elle, sans exception
+    for attr in REGLAGES_VERS_FICHE:
+        assert hasattr(s.reglages, attr), attr
+
+
+def test_the_machine_page_is_reachable_without_a_part():
+    """C'est la page qu'on ouvre AVANT d'avoir la moindre pièce.
+
+    Le jour du montage, on relève des cotes ; on n'usine rien. La règle
+    générale « sans pièce, retour à l'étape 1 » la rendait inatteignable, et
+    le défaut ne se voyait qu'au navigateur.
+    """
+    js = (ATELIER / "static" / "app.js").read_text(encoding="utf-8")
+    html = (ATELIER / "static" / "index.html").read_text(encoding="utf-8")
+    assert '"etape-machine"' in js
+    assert 'PAGES[i] === "etape-machine"' in js, "l'onglet doit être atteignable"
+    assert 'PAGES[page] !== "etape-machine"' in js, "et ne pas être renvoyé"
+    # la section ne porte PAS data-requiert : elle ne dépend d'aucune pièce
+    i = html.index('id="etape-machine"')
+    assert 'data-requiert' not in html[i - 80:i + 40]
+
+
+def test_the_machine_sheet_is_wired_end_to_end():
+    """Le bouton, la route, la fiche et le fichier."""
+    html = (ATELIER / "static" / "index.html").read_text(encoding="utf-8")
+    js = (ATELIER / "static" / "app.js").read_text(encoding="utf-8")
+    srv = (ATELIER / "server.py").read_text(encoding="utf-8")
+    css = (ATELIER / "static" / "style.css").read_text(encoding="utf-8")
+
+    for cle in ('id="etape-machine"', 'id="machine-groupes"',
+                'id="machine-resume"', 'id="machine-nom"',
+                'data-fil="etape-machine"'):
+        assert cle in html, cle
+    assert '"/api/fiche"' in js and '"/api/cote"' in js
+    assert '/api/fiche' in srv and '/api/cote' in srv
+    # ``post`` ne lève pas sur un 400 : le refus doit être lu dans le corps
+    assert "r.erreur" in js, "sinon le refus n'atteint jamais l'écran"
+    # ``.cote`` appartient déjà au panneau de simulation : une règle du même
+    # nom écrite pour la fiche l'écrasait en silence
+    assert css.count(".cote{") == 1
+    assert ".fiche-cote{" in css
+
+
+def test_the_surface_list_is_not_rebuilt_under_the_reader_s_finger():
+    """La liste ne se réécrit que si son contenu a changé.
+
+    Elle était reconstruite à chaque interrogation du serveur — plusieurs fois
+    par seconde pendant toute l'analyse, qui dure une minute sur une pièce du
+    corpus. Les lignes étaient donc détruites et recréées sous le doigt de
+    celui qui lit, et un clic parti sur une ligne pouvait atterrir sur une
+    ligne qui n'existait plus.
+
+    Trouvé au navigateur, sur un clic qui a échoué avec « Element is not
+    attached to the DOM » — c'est-à-dire exactement ce qui arrive à un
+    utilisateur, sans le message.
+    """
+    js = (ATELIER / "static" / "app.js").read_text(encoding="utf-8")
+    assert "dernieresSurfaces" in js
+    assert "if (html !== dernieresSurfaces)" in js
+    # et une pièce sans surfaces doit remettre le repère à zéro, sinon la
+    # pièce suivante hériterait de la liste de la précédente
+    assert "dernieresSurfaces = null;" in js
