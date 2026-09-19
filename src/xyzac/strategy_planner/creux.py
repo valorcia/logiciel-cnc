@@ -694,6 +694,10 @@ class ParcoursCreux:
     n_couches: int
     longueur_coupe_mm: float
     longueur_rapide_mm: float
+    #: Ce que le reordonnancement des passes a gagne, en mm de saut a vol
+    #: d'oiseau. Ce n'est pas la longueur des vraies liaisons — celle-la
+    #: depend de la hauteur, donc de la matiere, donc de l'ordre lui-meme.
+    gain_ordre_mm: float = 0.0
     #: Ce que l'abaissement des liaisons a gagne, en mm de transport.
     #:
     #: Zero quand il n'y avait rien a gagner ; jamais negatif — le plan de
@@ -872,7 +876,8 @@ def parcours_creux(volume, verdict: VerdictCreux, material, outil, machine, *,
                    epaisseur_couche_mm: float = EPAISSEUR_COUCHE_MM,
                    stepover: float = STEPOVER,
                    pas_point_mm: float = PAS_POINT_MM,
-                   abaisser: bool = True) -> ParcoursCreux:
+                   abaisser: bool = True,
+                   reordonner: bool = True) -> ParcoursCreux:
     """Le chemin qui vide ce creux, avec son outil et depuis sa bouche.
 
     ``verdict`` doit etre usinable : demander un parcours pour un creux dont on
@@ -890,6 +895,7 @@ def parcours_creux(volume, verdict: VerdictCreux, material, outil, machine, *,
       - il n'est pas du G-code, et rien ici ne sort vers une machine.
     """
     from ..subtractive_slicer.liaisons import abaisser_les_liaisons
+    from ..subtractive_slicer.ordre import ordonner
     from ..subtractive_slicer.slicer import continuous_path, slice_for_direction
 
     base = dict(index=verdict.index, a_deg=float(verdict.a_deg or 0.0),
@@ -914,6 +920,12 @@ def parcours_creux(volume, verdict: VerdictCreux, material, outil, machine, *,
         material, direction, outil,
         layer_thickness=epaisseur_couche_mm, stepover_ratio=stepover,
         masque=volume.masque)
+    # L'ORDRE DES PASSES, avant de les relier. Reordonner apres coup n'aurait
+    # aucun sens : ce sont les liaisons qu'on cherche a raccourcir, et elles
+    # n'existent pas encore.
+    ordre = None
+    if reordonner:
+        ordre = ordonner(tranche)
     points, rapide = continuous_path(tranche, point_spacing=pas_point_mm,
                                      tool=outil)
     # ABAISSER LES LIAISONS. ``continuous_path`` remonte au plan de degagement
@@ -938,6 +950,8 @@ def parcours_creux(volume, verdict: VerdictCreux, material, outil, machine, *,
                          n_couches=len(tranche.layers),
                          longueur_coupe_mm=coupe,
                          longueur_rapide_mm=rapide_mm,
+                         gain_ordre_mm=(0.0 if ordre is None
+                                        else ordre.gain_mm),
                          gain_liaisons_mm=(0.0 if gain is None
                                            else gain.gain_mm),
                          n_liaisons_abaissees=(0 if gain is None

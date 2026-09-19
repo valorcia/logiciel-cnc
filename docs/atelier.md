@@ -328,13 +328,28 @@ calcule donc, pour chaque liaison, la hauteur la plus basse à laquelle l'outil
 **entier** ne touche plus rien, et s'y tient ; le plan de dégagement reste le
 plafond, donc ce calcul ne peut jamais rendre un parcours pire.
 
-Mesuré sur les sept creux du corpus qui reçoivent un parcours : **245 liaisons,
-20 m de transport ramenés à 15 m**, et la part du chemin qui coupe passe de
-42 % à 49 %. Sur une poche compacte c'est spectaculaire — C03 passe de 37 % à
-**87 %**, C02 de 70 % à **89 %**. Sur le dôme de C10, en revanche, le gain est
-de 4 % : ses liaisons enjambent le dôme lui-même, et aucune hauteur plus basse
-n'existe. Ce qui coûte là n'est pas la hauteur mais **l'ordre des passes**, que
-l'atelier ne choisit pas encore.
+**Et l'ordre des passes est choisi.** Abaisser ne suffisait pas : sur le dôme de
+C10, les liaisons enjambent le dôme lui-même, et aucune hauteur plus basse
+n'existe. Ce qui coûte là est le **nombre** de liaisons et leur longueur.
+L'atelier réordonne donc les passes à l'intérieur de chaque couche — jamais les
+couches entre elles, qui sont une contrainte physique.
+
+Une passe n'est retournée qu'en balayage **zigzag**, où l'alternance est déjà
+dans le contrat. En **unidirectionnel**, le sens de coupe est précisément ce
+qu'on a choisi de garder constant : l'atelier déplace les passes sans les
+retourner, ce qui gagne moins, et c'est le prix du réglage.
+
+Mesuré sur les sept creux du corpus qui reçoivent un parcours, les deux leviers
+cumulés : **245 liaisons, 20,1 m de transport ramenés à 6,3 m**, et la part du
+chemin qui coupe passe de **42 % à 70 %**. Les 245 liaisons ont été repassées
+une à une au balayage complet de l'outil : **aucune en faute**.
+
+| pièce | transport | part coupante |
+|---|---|---|
+| C03 poche conique | 446 → **38 mm** | 37 → **87 %** |
+| C11 cavité sphérique | 974 → **213 mm** | 63 → **89 %** |
+| C02 poche droite | 566 → **160 mm** | 70 → **89 %** |
+| C10 dôme convexe | 10 481 → **3 035 mm** | 32 → **62 %** |
 
 Ce que le parcours laisse est partagé en **trois**, parce que chaque tas appelle
 un geste différent :
