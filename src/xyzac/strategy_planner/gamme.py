@@ -44,15 +44,18 @@ finie (qui laisserait passer un porte-outil traversant 20 mm de brut). Voir
 ``subtractive_slicer.corps``. Cette verification exige un etat de matiere ; sans
 lui, elle n'est pas faite — et l'operation le DIT, au lieu de laisser croire.
 
+**5. L'ORDRE des creux, et la matiere qu'il fait evoluer.** Les creux sont
+reordonnes (``ordre_creux``) AVANT d'etre verifies, puis verifies DANS CET
+ORDRE contre la matiere que leurs predecesseurs laissent. Les deux moities ne
+se separent pas : un creux refuse n'avance pas la matiere, sinon les suivants
+seraient verifies contre un usinage qu'on ne fera pas — et ils le seraient du
+cote optimiste.
+
 Ce que ce module ne fait toujours pas
 -------------------------------------
 
-  - il n'ordonne pas les creux entre eux autrement que dans l'ordre recu, et
-    verifie donc chaque creux contre l'etat de matiere INITIAL. C'est le cote
-    prudent — il y a plus de matiere au depart qu'apres les creux precedents,
-    donc le test peut refuser un peu trop — et c'est volontaire : avancer
-    l'etat d'un creux a l'autre figerait un ordre que personne n'a encore
-    decide ;
+  - il ne decoupe pas un creux en plusieurs operations (ebauche puis reprise) :
+    chaque creux porte un outil et une orientation ;
   - il n'emet rien. ``post_process`` reste la seule porte, et
     ``linuxcnc_gateway`` reste verrouille.
 """
@@ -254,7 +257,8 @@ def operation_du_creux(parcours, outil, recette, machine, *,
 
 
 def gamme_des_creux(setup, elements, *, plan_id: str, material=None,
-                    mount_offset=None, work_offset=None) -> tuple[ProcessPlan, list]:
+                    mount_offset=None, work_offset=None,
+                    reordonner: bool = True) -> tuple[ProcessPlan, list]:
     """Assemble la gamme, en REFUSANT tout creux dont le chemin ne degage pas.
 
     ``elements`` est une suite de ``(parcours, outil, recette)``.
@@ -269,11 +273,19 @@ def gamme_des_creux(setup, elements, *, plan_id: str, material=None,
     Sans ``material``, le second n'est pas fait — et chaque operation le dit
     dans le fichier produit, au lieu de laisser croire qu'il l'a ete.
 
-    Rend la gamme ET la liste des verifications, y compris celles qui ont
-    echoue : une gamme amputee sans dire de quoi laisserait croire que les
-    creux manquants n'existaient pas.
+    **L'ordre vient d'abord, la verification ensuite, et dans cet ordre-la.**
+    Les creux sont reordonnes par ``ordre_creux`` (outil, puis orientation,
+    puis transport), puis la matiere est avancee creux par creux : chacun est
+    verifie contre ce que ses predecesseurs ACCEPTES ont reellement sorti. Un
+    creux refuse n'avance rien — sinon les suivants seraient verifies contre un
+    usinage qu'on ne fera pas, donc avec moins de matiere qu'il n'y en aura.
+
+    Rend la gamme, la liste des verifications — y compris celles qui ont
+    echoue, parce qu'une gamme amputee sans dire de quoi laisserait croire que
+    les creux manquants n'existaient pas — et ce que l'ordre a change.
     """
     from ..subtractive_slicer.corps import verifier_le_corps
+    from .ordre_creux import GainOrdreCreux, ordonner_les_creux
 
     if material is None:
         raise ValueError(
@@ -293,13 +305,28 @@ def gamme_des_creux(setup, elements, *, plan_id: str, material=None,
         mount_offset = setup.mount_offset
     if work_offset is None:
         work_offset = setup.work_offset.origin_mm
+    elements = list(elements)
+    # Les creux sans parcours ne participent pas a l'ordre — ils n'ont ni debut
+    # ni fin — mais ils ne disparaissent pas pour autant : ils passent en fin de
+    # liste, ou les gardes les refuseront en le DISANT. Les omettre les ferait
+    # s'evaporer du rapport.
+    avec = [i for i, e in enumerate(elements)
+            if len(np.asarray(e[0].points).reshape(-1, 3)) > 0]
+    sans = [i for i in range(len(elements)) if i not in set(avec)]
+    gain = (ordonner_les_creux([elements[i] for i in avec]) if reordonner
+            else GainOrdreCreux(n_creux=len(avec), ordre=list(range(len(avec)))))
+    gain.ordre = [avec[k] for k in gain.ordre]
+
     ops, verifs = [], []
-    for i, (parcours, outil, recette) in enumerate(elements):
+    etat = material
+    for i in gain.ordre + sans:
+        parcours, outil, recette = elements[i]
         v = verifier_le_parcours(parcours, machine, outil,
                                  mount_offset=mount_offset, work_offset=work_offset)
-        corps = verifier_le_corps(
-            parcours.points, parcours.rapide, material, outil,
-            direction_de(machine, parcours.a_deg, parcours.c_deg))
+        corps, apres = verifier_le_corps(
+            parcours.points, parcours.rapide, etat, outil,
+            direction_de(machine, parcours.a_deg, parcours.c_deg),
+            rendre_etat=True)
         verifs.append((parcours.index, v, corps))
         if not v.ok or not corps.ok:
             continue
@@ -307,4 +334,6 @@ def gamme_des_creux(setup, elements, *, plan_id: str, material=None,
             parcours, outil, recette, machine,
             op_id=f"creux-{parcours.index}",
             notes=v.consigne(), corps=corps))
-    return ProcessPlan(plan_id=plan_id, setup=setup, operations=ops), verifs
+        # La matiere n'avance que pour un creux RETENU.
+        etat = apres
+    return ProcessPlan(plan_id=plan_id, setup=setup, operations=ops), verifs, gain

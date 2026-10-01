@@ -507,3 +507,18 @@ code{background:var(--creux);border:1px solid var(--trait);padding:1px 6px;
 #machine-nom{font:inherit;padding:7px 9px;border:1px solid var(--trait-fort);
   border-radius:var(--r-petit);background:var(--carte);color:var(--texte);
   min-width:220px;margin-left:8px}
+
+/* Le rang d'usinage d'un creux : un chiffre devant ses cotes.
+   Discret mais lisible a 60 cm sur un ecran de 10 pouces — c'est l'ordre
+   dans lequel on fera les choses, pas une decoration. */
+.rang-creux {
+  display: inline-block;
+  min-width: 1.35em;
+  padding: 0 .25em;
+  margin-right: .35em;
+  border-radius: .3em;
+  background: var(--trait, #c9d4e0);
+  color: var(--encre, #1d242b);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

@@ -234,7 +234,8 @@ def _marche_fine(etat: MaterialState, poses: np.ndarray, source: np.ndarray,
 
 def verifier_le_corps(points, rapide, material, outil, direction, *,
                       pas_mm: float | None = None,
-                      maximum: int = 3) -> VerificationCorps:
+                      maximum: int = 3,
+                      rendre_etat: bool = False):
     """Le corps de l'outil touche-t-il la matiere, quelque part sur le chemin ?
 
     ``material`` est l'etat au DEBUT de l'operation. Il n'est pas modifie :
@@ -243,23 +244,30 @@ def verifier_le_corps(points, rapide, material, outil, direction, *,
     ``maximum`` borne le nombre de fautes localisees. Au-dela on sait deja que
     le parcours est refuse, et continuer a bisecter coûterait sans rien dire de
     plus.
+
+    ``rendre_etat`` rend EN PLUS la matiere telle que ce parcours la laisse.
+    C'est ce qui permet d'enchainer les creux dans l'ordre decide : le suivant
+    est alors verifie contre ce que le precedent a reellement sorti, et non
+    contre le brut du debut. L'etat rendu n'a de sens que si le parcours est
+    accepte — un parcours refuse s'arrete a sa faute, et l'etat qu'il rend est
+    celui d'un usinage qu'on ne fera pas.
     """
     P = np.asarray(points, dtype=np.float64).reshape(-1, 3)
     R = np.asarray(rapide, dtype=bool).reshape(-1)
     v = VerificationCorps(n_poses=len(P))
     if material is None:
         v.faite = False
-        return v
+        return (v, None) if rendre_etat else v
     if len(P) < 1:
-        return v
+        return (v, copy.deepcopy(material)) if rendre_etat else v
 
     d = np.asarray(direction, dtype=np.float64)
     d = d / np.linalg.norm(d)
     roles = roles_du_corps(outil)
-    if not roles:
-        return v
-
     etat = copy.deepcopy(material)
+    if not roles:
+        return (v, etat) if rendre_etat else v
+
     pas = float(material.grid.pitch) * 0.5 if pas_mm is None else float(pas_mm)
 
     for deb, fin, est_rapide in _troncons(R):
@@ -289,8 +297,8 @@ def verifier_le_corps(points, rapide, material, outil, direction, *,
                 etat, poses, source, d, outil, roles, base, est_rapide,
                 maximum - len(v.defauts)))
             if len(v.defauts) >= maximum:
-                return v
+                return (v, etat) if rendre_etat else v
         elif not est_rapide:
             etat.remove_tool_sweep(P[deb:fin], np.tile(d, (fin - deb, 1)), outil)
 
-    return v
+    return (v, etat) if rendre_etat else v

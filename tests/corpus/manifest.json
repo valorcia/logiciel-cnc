@@ -472,5 +472,28 @@
       60.0,
       20.0
     ]
+  },
+  {
+    "id": "C21",
+    "name": "creux_multiples",
+    "difficulty": "ordre des creux entre eux",
+    "expect": "six creux, deux outils, deux orientations : le groupement doit se voir",
+    "file": "C21_creux_multiples.step",
+    "volume_mm3": 147096.0,
+    "n_faces": 36,
+    "n_solids": 1,
+    "face_types": {
+      "plane": 36
+    },
+    "bbox_lo": [
+      -0.0,
+      -0.0,
+      -0.0
+    ],
+    "bbox_hi": [
+      90.0,
+      70.0,
+      26.0
+    ]
   }
 ]

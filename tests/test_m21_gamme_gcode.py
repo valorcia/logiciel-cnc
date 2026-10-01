@@ -253,7 +253,7 @@ def test_a_refused_cavity_is_left_out_of_the_plan_but_not_out_of_the_report():
     mauvais = FauxParcours([[0, 0, 10], [demi - 5.0, 0, 10]], [False, False],
                            0.0, 0.0, index=2)
 
-    plan, verifs = gamme_des_creux(setup, [(bon, outil, rec), (mauvais, outil, rec)],
+    plan, verifs, _ = gamme_des_creux(setup, [(bon, outil, rec), (mauvais, outil, rec)],
                                    plan_id="partielle", material=_matiere(mur=((-30, -30, 0), (-29, -29, 1))))
     assert [o.op_id for o in plan.operations] == ["creux-1"]
     assert [i for i, _, _ in verifs] == [1, 2]
@@ -463,7 +463,7 @@ def test_the_plan_verifies_the_machine_it_will_post():
     setup.part_to_table_mm = [demi - 2.0, 0.0, 10.0]
 
     au_centre = FauxParcours([[0, 0, 0], [3, 0, 0]], [False, False], 0.0, 0.0)
-    plan, verifs = gamme_des_creux(
+    plan, verifs, _ = gamme_des_creux(
         setup, [(au_centre, outil, rec)], plan_id="decale",
         material=_matiere(mur=((-30, -30, 0), (-29, -29, 1))))
 

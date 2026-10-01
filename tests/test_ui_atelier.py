@@ -2235,3 +2235,27 @@ def test_saving_a_cote_does_not_rebuild_the_sheet_under_the_finger():
     # et les groupes ouverts le restent d'un redessin à l'autre
     assert "groupesOuverts" in js
     assert 'groupesOuverts.has(g.cle)' in js
+
+
+def test_a_cavity_with_no_toolpath_is_not_shown_as_machinable():
+    """« Se vide » sur un creux qui n'a aucun parcours est une fausse valeur.
+
+    L'étape 3 peut dire oui — un outil entre, une orientation dégage — et le
+    découpage ne laisser ensuite AUCUNE position, parce que la marge de
+    tranchage est plus large que ce que le creux offre (ADR-016). Sur C21, deux
+    poches de 12 mm sont exactement dans ce cas.
+
+    Le défaut ne se voyait qu'à l'écran : pastille verte « se vide », et une
+    ligne sans rang d'usinage juste à côté de lignes qui en ont un. Le projet
+    interdit de masquer une fonctionnalité non terminée derrière une fausse
+    valeur ; un creux qui ne sera pas usiné ne doit pas s'annoncer comme usiné.
+    """
+    js = (ATELIER / "static" / "app.js").read_text(encoding="utf-8")
+    assert "sansParcours" in js
+    assert '"aucun parcours"' in js
+    i = js.index("const sansParcours")
+    bloc = js[i:i + 400]
+    assert "c.usinable" in bloc and "n_points" in bloc, (
+        "le cas se reconnaît à : usinable MAIS pas un point de parcours")
+    # et le rang n'est posé que sur un creux qui en a un
+    assert "c.rang ?" in js

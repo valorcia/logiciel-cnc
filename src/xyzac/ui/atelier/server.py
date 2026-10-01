@@ -184,7 +184,10 @@ class Atelier(BaseHTTPRequestHandler):
             if not s.piece_chargee:
                 return self._json({"erreur": "aucune pièce"}, 404)
             try:
-                return self._json({"creux": s.creux()})
+                liste = s.creux()
+                return self._json({"creux": liste,
+                                   "ordre": s._creux.get("ordre", ""),
+                                   "n_ordonnes": s._creux.get("n_ordonnes", 0)})
             except Exception as e:                 # noqa: BLE001
                 return self._json({"erreur": f"{type(e).__name__} : {e}"}, 500)
 

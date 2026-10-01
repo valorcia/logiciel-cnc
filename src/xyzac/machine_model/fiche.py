@@ -480,6 +480,16 @@ def parametres_du_kit() -> list[Parametre]:
            5.0, 300.0,
            "C'est le premier levier quand un refus dit « la tige touche » : "
            "l'allonger dégage la tige ET le porte-outil."),
+        _p("changeur_outil_automatique", "Changeur d'outil automatique",
+           0.0, "oui/non", "broche", TEMPS,
+           "Regarder la broche : y a-t-il un magasin et une prise/dépose "
+           "automatique ? Une pince ER serrée à la clé, c'est non.",
+           0.0, 1.0,
+           "Décide à quel point l'ordre des creux doit grouper par outil. Sans "
+           "changeur, chaque changement est une intervention : on arrête, on "
+           "desserre, on remonte, on rejauge — cela ne se compare pas à des "
+           "millimètres de transport.",
+           decimales=0),
 
         # ------------------------------------------------ courses utiles
         _p("course_x_mm", "Demi-course utile en X",

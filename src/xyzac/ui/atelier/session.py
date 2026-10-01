@@ -1794,6 +1794,10 @@ class Session:
             liste.append({
                 "creux": len(liste),
                 "titre": f"Creux {len(liste) + 1} — {v.cotes_mm}",
+                #: Rang dans l'ordre d'usinage, ou 0 pour un creux sans
+                #: parcours : un rang sur un creux refuse laisserait croire
+                #: qu'il va se faire.
+                "rang": 0,
                 "volume_mm3": round(v.volume_mm3),
                 "cotes": v.cotes_mm,
                 "etape": vc.etape,
@@ -1831,10 +1835,36 @@ class Session:
                     "phrase": par.consigne(),
                 },
             })
+        # L'ORDRE dans lequel les vider.
+        #
+        # Il n'a de sens qu'entre les creux qui ont un parcours : proposer un
+        # rang a un creux refuse laisserait croire qu'il va se faire. Le rang
+        # est donc nul pour les autres, et la phrase dit ce que l'ordre
+        # economise — un changement d'outil est une intervention, pas un
+        # millimetre.
+        from ...strategy_planner.ordre_creux import ordonner_les_creux
+
+        # ``p is not None`` ne suffit PAS : un creux peut etre declare usinable,
+        # recevoir un outil, et n'avoir aucun parcours — la marge de tranchage
+        # le refuse (ADR-016). Son chemin est alors vide, il n'a ni debut ni
+        # fin, et l'ordonnanceur n'a rien a en faire. Trouve en ouvrant cet
+        # ecran sur C21, ou deux poches sur six sont dans ce cas.
+        avec = [(i, p) for i, p in enumerate(parcours)
+                if p is not None and len(p.points)]
+        gain = ordonner_les_creux([(p, build_endmill("creux", 2.0 * p.rayon_mm,
+                                                     30.0,
+                                                     stickout=self.reglages.jauge_outil,
+                                                     holder_type="ER16"), None)
+                                   for _, p in avec])
+        for rang, k in enumerate(gain.ordre, start=1):
+            liste[avec[k][0]]["rang"] = rang
+
         self._creux = {"cle": self.revision, "liste": liste,
                        "duree_s": round(time.time() - t0, 1),
+                       "ordre": gain.resume(),
+                       "n_ordonnes": len(avec),
                        "_volumes": cavites, "_matiere": matiere,
-                       "_parcours": parcours}
+                       "_parcours": parcours, "_ordre": gain}
         return liste
 
     def vue_creux(self, i: int, chemin: Path, *, azimut: float = 25.0,

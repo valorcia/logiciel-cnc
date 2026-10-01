@@ -436,6 +436,7 @@ async function envoyerCote(cle, champValeur, champMoyen) {
 // Sur demande et non d'office : le calcul prend quelques secondes (3 a 10 s
 // mesurees sur le corpus) et toute la page precedente repond deja sans lui.
 let creuxListe = null;
+let creuxOrdre = "";
 let creuxChoisi = null;
 let derniereVueCreux = null;
 let creuxRevision = null;
@@ -466,6 +467,7 @@ async function chercherCreux() {
   try {
     const r = await get("/api/creux");
     creuxListe = r.creux || [];
+    creuxOrdre = r.ordre || "";
     dessinerCreux();
   } catch (e) {
     $("#creux-resume").textContent = `Recherche impossible : ${e.message}`;
@@ -482,14 +484,29 @@ function dessinerCreux() {
     ? "Aucun creux trouvé : cette pièce n'a pas de concavité à cette résolution."
     : `${n} creux, dont ${vides} avec un outil et une orientation trouvés.`;
   $("#creux-duo").hidden = n === 0;
+  // L'ORDRE dans lequel les vider, et ce qu'il économise. Un changement
+  // d'outil est une intervention — on arrête, on desserre, on rejauge — donc
+  // il se dit en toutes lettres plutôt qu'en millimètres.
+  $("#creux-ordre").textContent = creuxOrdre;
+  $("#creux-ordre").hidden = !creuxOrdre;
   if (!n) return;
 
   $("#creux").innerHTML = creuxListe.map((c) => {
-    const [classe, mot] = ETAPES_CREUX[c.etape] || ["attention", c.etape];
+    // « se vide » sur un creux qui n'a AUCUN parcours serait une fausse
+    // valeur — c'est l'étape 3 qui a dit oui, pas le découpage. Sur C21, deux
+    // poches de 12 mm sont dans ce cas : un outil leur est bien trouvé, et la
+    // marge de tranchage ne laisse ensuite aucune position. Le défaut ne se
+    // voit qu'à l'écran : la pastille est verte et la ligne n'a pas de rang.
+    const sansParcours = c.usinable && (!c.parcours || !c.parcours.n_points);
+    const [classe, mot] = sansParcours
+      ? ["a-changer", "aucun parcours"]
+      : (ETAPES_CREUX[c.etape] || ["attention", c.etape]);
     return `
     <li class="${classe}">
       <div class="haut">
-        <span class="titre">${c.cotes} — ${c.volume_mm3} mm³</span>
+        <span class="titre">${
+          c.rang ? `<b class="rang-creux">${c.rang}</b> ` : ""
+        }${c.cotes} — ${c.volume_mm3} mm³</span>
         <span class="pastille">${mot}</span>
       </div>
       <p class="consigne-s">${c.outil}${

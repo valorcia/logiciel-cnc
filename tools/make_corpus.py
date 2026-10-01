@@ -213,6 +213,40 @@ def _c20():
     return _cut(b, _cyl(0.6, 10, at=(30, 30, 12)))
 
 
+def _c21():
+    """Plusieurs creux sur une meme piece : deux outils, deux orientations.
+
+    Le corpus n'avait aucune piece ou l'ORDRE des creux entre eux se pose
+    vraiment. C05 en offre deux, du meme outil ; partout ailleurs il n'y en a
+    qu'un. Or l'ordre decide trois choses — changements d'outil, re-indexations,
+    transport — et aucune ne se mesure sur une piece a un seul creux.
+
+    Six poches, choisies pour que les trois termes existent simultanement :
+
+      - deux larges (20 mm) et deux etroites (12 mm) sur le DESSUS, donc a
+        A = 0 ;
+      - une large et une etroite sur le FLANC +Y, donc a une autre orientation.
+
+    **Les largeurs ne sont pas choisies au hasard.** La marge de tranchage vaut
+    1,87 mm au pas de 1 mm (ADR-016), donc une poche doit faire plus de
+    2.(R + 1,87) pour qu'un outil de rayon R y laisse un parcours : 13,7 mm
+    pour une Ø 10, 9,7 mm pour une Ø 6. Une poche de 12 mm tombe entre les
+    deux — la Ø 10 n'y entre pas, la Ø 6 oui. Un premier jet a 7 mm ne
+    produisait AUCUN parcours sur les trois poches etroites, et la piece
+    n'eprouvait alors rien du tout.
+    """
+    s = _box(90, 70, 26)
+    # dessus : large, etroite, etroite, large — alternees d'un bout a l'autre
+    s = _cut(s, _box(20, 24, 9, at=(6, 23, 17)))
+    s = _cut(s, _box(12, 24, 9, at=(32, 23, 17)))
+    s = _cut(s, _box(12, 24, 9, at=(50, 23, 17)))
+    s = _cut(s, _box(20, 24, 9, at=(64, 23, 17)))
+    # flanc +Y : une large et une etroite, debouchantes sur la face y = 70
+    s = _cut(s, _box(20, 9, 10, at=(6, 61, 4)))
+    s = _cut(s, _box(12, 9, 10, at=(64, 61, 4)))
+    return s
+
+
 CASES: list[Case] = [
     Case("C01", "bloc_simple", "reference", "import et volume exacts ; 6 faces planes", _c01),
     Case("C02", "poche_droite", "poche fermee", "parois verticales accessibles a A=0", _c02),
@@ -251,6 +285,9 @@ CASES: list[Case] = [
          "import sans erreur ; 2 solides comptes", _c19),
     Case("C20", "micro_detail", "tolerances",
          "le percage D1.2 survit a la tessellation", _c20),
+    Case("C21", "creux_multiples", "ordre des creux entre eux",
+         "six creux, deux outils, deux orientations : le groupement doit se voir",
+         _c21),
 ]
 
 

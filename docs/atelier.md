@@ -956,6 +956,19 @@ fixe sauf la longueur sortie de pince : dégagé jusqu'à 21 mm, refusé à part
 porte-outil*), l'endroit, et le remède (*sortir l'outil davantage de la pince,
 ou prendre un porte-outil plus élancé*).
 
+5. **L'ordre des creux entre eux.** Chaque creux porte maintenant son **rang**
+   devant ses cotes, et une phrase dit ce que l'ordre économise. L'ordre est
+   décidé d'abord, et les creux sont ensuite vérifiés **dans cet ordre** contre
+   la matière que leurs prédécesseurs ont réellement sortie — un creux refusé
+   n'avance rien, sinon les suivants seraient validés contre un usinage qu'on
+   ne fera pas.
+
+   Trois choses en dépendent, et dans cet ordre : les **changements d'outil**
+   (sur ce kit, sans changeur, chacun est une intervention — on arrête, on
+   desserre, on rejauge), les **ré-indexations** du berceau, et le
+   **transport**. Elles ne sont pas pondérées : les comparer exigerait un taux
+   de change qu'on n'a pas. Voir l'ADR-022.
+
 Sans état de matière, la gamme **refuse d'être construite** : poster un
 programme dont une des quatre vérifications n'a pas eu lieu reviendrait à la
 présenter comme faite.
