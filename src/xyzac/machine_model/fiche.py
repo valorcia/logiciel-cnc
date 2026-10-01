@@ -381,12 +381,46 @@ def parametres_du_kit() -> list[Parametre]:
            "berceau à A = 0. C'est cette hauteur qui décide à partir de quel "
            "basculement l'outil vient toucher une joue.",
            20.0, 600.0, decimales=0),
-        _p("berceau_profondeur_mm", "Profondeur du berceau A",
+        _p("berceau_profondeur_mm", "Épaisseur d'une joue du berceau",
            15.0, "mm", "organes", FAISABILITE,
            "Épaisseur d'une joue au pied à coulisse — celle contre laquelle "
            "l'outil peut venir quand le berceau est basculé vers elle. "
            "Prendre la plus épaisse des deux si elles diffèrent.",
            5.0, 300.0, decimales=0),
+        _p("berceau_joue_longueur_mm", "Longueur d'une joue, d'avant en arrière",
+           90.0, "mm", "organes", FAISABILITE,
+           "Au mètre ruban, d'un bord à l'autre d'une joue dans le sens de "
+           "l'axe Y, berceau à A = 0. C'est l'étendue que l'outil longe quand "
+           "il descend le long d'un flanc de la pièce.",
+           10.0, 600.0,
+           "Le berceau de ce kit est un U : deux joues de part et d'autre de "
+           "la pièce, et non une paroi à l'arrière.",
+           decimales=0),
+        _p("berceau_depassement_mm", "Hauteur des joues au-dessus du plateau",
+           40.0, "mm", "organes", FAISABILITE,
+           "De la face supérieure du plateau C au sommet d'une joue, berceau "
+           "à A = 0, au pied à coulisse ou à la règle. C'est le nombre qui "
+           "décide à partir de quelle hauteur de pièce l'outil cesse de voir "
+           "les joues.",
+           0.0, 400.0, decimales=0),
+        _p("moteur_a_diametre_mm", "Diamètre hors tout d'un moteur de l'axe A",
+           42.0, "mm", "organes", FAISABILITE,
+           "Le côté du carter si le moteur est carré (NEMA 17 : 42 mm, "
+           "NEMA 23 : 57 mm), mesuré au pied à coulisse. Modélisé par une "
+           "boîte de ce côté, faces parallèles à la table : exact pour un "
+           "carter carré monté droit. Si le moteur est rond, donner son "
+           "diamètre — la boîte le contient alors avec un peu de marge.",
+           10.0, 200.0,
+           "Les deux moteurs de l'axe A dépassent latéralement, de part et "
+           "d'autre du berceau. Ce sont eux que l'outil rencontre en premier "
+           "quand il descend bas sur un flanc, berceau basculé.",
+           decimales=0),
+        _p("moteur_a_longueur_mm", "Longueur d'un moteur de l'axe A",
+           48.0, "mm", "organes", FAISABILITE,
+           "Du flasque d'accouplement à l'arrière du carter, câbles non "
+           "compris — un câble se range, un carter non. Mesuré au pied à "
+           "coulisse, moteur monté.",
+           10.0, 300.0, decimales=0),
 
         # ------------------------------------------ broche et porte-outil
         _p("broche_rpm_min", "Régime minimal de la broche",
@@ -779,17 +813,76 @@ class FicheMachine:
                      self.valeur("pivot_a_z_mm")]
         m.pivot_c = [self.valeur("pivot_c_x_mm"), self.valeur("pivot_c_y_mm"),
                      self.valeur("pivot_c_z_mm")]
-        ep = self.valeur("plateau_epaisseur_mm")
-        larg = self.valeur("berceau_largeur_mm") / 2.0
-        haut = self.valeur("berceau_hauteur_mm")
-        prof = self.valeur("berceau_profondeur_mm")
-        for v in m.collision_volumes:
-            if v.frame == "table_C" and v.kind == "cylinder":
-                v.radius = self.valeur("plateau_rayon_mm")
-                v.height = ep
-                v.base = [0.0, 0.0, -ep]
-            elif v.frame == "cradle_A" and v.kind == "box":
-                v.lo = [-larg, -95.0, -haut + 40.0]
-                v.hi = [larg, -95.0 + prof, 40.0]
+        m.collision_volumes = self.organes()
         m.delta = self.delta()
         return m
+
+    def organes(self) -> list:
+        """Les organes qui peuvent toucher l'outil, decrits par la fiche.
+
+        **La forme du berceau.** Celui de ce kit est un U : deux joues de part
+        et d'autre de la piece, et deux moteurs qui depassent lateralement. Il
+        etait modelise par UNE boite — un mur plein a l'arriere, sur toute la
+        largeur. Les deux formes ne se trompent pas au meme endroit, et la
+        difference n'est pas academique :
+
+          - le mur arriere bloquait des orientations que la vraie machine
+            laisse passer, puisqu'il n'y a rien derriere la piece ;
+          - rien ne bloquait sur les COTES, alors que c'est precisement la que
+            se trouvent les joues et les moteurs. Un outil qui descend bas sur
+            un flanc, berceau bascule, rencontre un carter de moteur — et la
+            simulation le declarait degage.
+
+        **Dans quel repere.** Les joues tournent avec le berceau : repere
+        ``cradle_A``. Les carters de moteur, eux, ne tournent PAS — c'est le
+        rotor qui tourne, le stator est boulonne sur le bati. Ils vont donc
+        dans le repere fixe ``machine``. Mettre un carter dans ``cradle_A``
+        l'aurait fait basculer avec la piece, c'est-a-dire s'ecarter tout seul
+        des orientations ou il gene le plus.
+
+        **Deux hypotheses, toutes deux verifiables a l'oeil le jour ou la
+        machine existe**, et aucune des deux n'est mesuree aujourd'hui :
+
+          1. les moteurs sont COAXIAUX a l'axe A (entrainement direct). Un
+             entrainement par courroie les deporterait, et il faudrait alors
+             deux cotes de plus pour dire ou ;
+          2. le carter carre est boulonne faces PARALLELES a la table, comme
+             un NEMA le permet a 90 degres pres ; il est donc modelise par une
+             boite de cote ``moteur_a_diametre_mm``, ce qui est exact dans
+             cette position. Un cylindre de ce DIAMETRE aurait laisse passer
+             les quatre coins du carter — c'est le carre qui contient le
+             cercle, et non l'inverse.
+        """
+        from .machine import CollisionVolume
+
+        ep = self.valeur("plateau_epaisseur_mm")
+        demi = self.valeur("berceau_largeur_mm") / 2.0
+        joue = self.valeur("berceau_profondeur_mm")
+        longueur = self.valeur("berceau_joue_longueur_mm") / 2.0
+        haut = self.valeur("berceau_hauteur_mm")
+        depasse = self.valeur("berceau_depassement_mm")
+        demi_carter = self.valeur("moteur_a_diametre_mm") / 2.0
+        l_mot = self.valeur("moteur_a_longueur_mm")
+        px = self.valeur("pivot_a_x_mm")
+        py = self.valeur("pivot_a_y_mm")
+        pz = self.valeur("pivot_a_z_mm")
+
+        organes = [CollisionVolume(
+            name="plateau C", frame="table_C", kind="cylinder",
+            base=[0.0, 0.0, -ep], axis=[0.0, 0.0, 1.0],
+            radius=self.valeur("plateau_rayon_mm"), height=ep)]
+        for cote, signe in (("gauche", -1.0), ("droite", 1.0)):
+            x_ext = signe * demi
+            x_int = signe * (demi - joue)
+            organes.append(CollisionVolume(
+                name=f"joue {cote}", frame="cradle_A", kind="box",
+                lo=[min(x_int, x_ext), -longueur, -(haut - depasse)],
+                hi=[max(x_int, x_ext), longueur, depasse]))
+            # Le carter part de la face exterieure de la joue vers le dehors,
+            # centre sur l'axe A : il n'empiete donc jamais sur la piece.
+            x_loin = px + signe * (demi + l_mot)
+            organes.append(CollisionVolume(
+                name=f"moteur A {cote}", frame="machine", kind="box",
+                lo=[min(x_ext, x_loin), py - demi_carter, pz - demi_carter],
+                hi=[max(x_ext, x_loin), py + demi_carter, pz + demi_carter]))
+        return organes

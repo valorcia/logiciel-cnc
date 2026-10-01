@@ -35,7 +35,7 @@ Aucune commande ne sort. L'interface est marquée SIMULATION UNIQUEMENT.
 | A3 | **La trajectoire elle-même** | On sait *quel outil, depuis où*. On ne sait pas encore *quel parcours*. C'est ce qui sépare un analyseur d'un vrai CAM. |
 | ~~A4~~ | ~~Le transport~~ — **fait** | Liaisons abaissées (ADR-017) puis passes réordonnées (ADR-018) : **20,1 m → 6,3 m** sur le corpus, part coupante **42 → 70 %**, 245 liaisons vérifiées une à une, 0 en faute. Reste, plus loin : l'ordre des creux entre eux, et l'engagement d'outil. |
 | A5 | **Détail plus fin que la grille** | Sur C20 la gravure disparaît à 1 mm de pas et l'atelier répond « aucun creux » — vrai à cette résolution, faux pour la pièce. Il faut le **dire**, en comparant le volume voxélisé au volume B-Rep. |
-| A6 | **Organes de collision de la delta** | Colonnes, anneau, bras balayés : aucun n'est modélisé. Sur une delta, ce sont les bras qui touchent en premier quand la pièce est haute. |
+| A6 | **Organes de collision de la delta** | Colonnes, anneau, bras balayés : aucun n'est modélisé. Sur une delta, ce sont les bras qui touchent en premier quand la pièce est haute. Le **berceau**, lui, est fait : le dessin de la machine a montré un U et non un mur, corrigé en ADR-019 — 2 creux du corpus passent de refusés à usinables, et les côtés cessent d'être déclarés libres. |
 | A7 | **Carte de rigidité** | Une delta n'a pas la même raideur partout dans son volume. Aucun chiffre aujourd'hui. |
 | **A8** | **Post-processeur / module G-code** + la cinématique delta+AC pour LinuxCNC | **Chantier suivant.** À écrire et à **valider hors machine**, contre le simulateur. LinuxCNC reste la seule couche autorisée à exécuter du mouvement, et rien ne sort tant que les portillons de sécurité ne sont pas franchis. |
 

@@ -710,7 +710,7 @@ Un écran à part, **hors du fil des cinq étapes**, et atteignable sans avoir
 chargé la moindre pièce : le jour du montage on relève des cotes, on n'usine
 rien.
 
-Il porte les **46 cotes** de la machine, rangées en sept groupes repliés — la
+Il porte les **50 cotes** de la machine, rangées en sept groupes repliés — la
 structure delta, les axes A et C, le plateau et le berceau, la broche et le
 porte-outil, les courses utiles, les jeux et la précision, les organes de
 sécurité. Chacune affiche quatre choses :
@@ -735,6 +735,13 @@ Treize cotes n'ont **pas de champ « mesuré avec »** : un pivot, un jeu, un ra
 de bille ne se relèvent pas au pied à coulisse. Ils s'obtiennent par la
 procédure de calibration, qui les écrit elle-même. Vous pouvez les saisir pour
 essayer — elles resteront notées « essai ».
+
+**Quatre cotes nouvelles décrivent la forme du berceau.** Le dessin de la
+machine réelle a montré qu'il est un **U** — deux joues de part et d'autre de la
+pièce, deux moteurs qui dépassent latéralement — et non la paroi pleine que le
+logiciel plaçait derrière la pièce. On demande donc maintenant la longueur d'une
+joue, sa hauteur au-dessus du plateau, et les deux cotes d'un moteur. Voir
+l'ADR-019 pour ce que cela change aux verdicts.
 
 La fiche est **enregistrée à chaque saisie**, dans un `machine.json` lisible au
 Bloc-notes à côté du logiciel. Pas de bouton « enregistrer » : une cote relevée

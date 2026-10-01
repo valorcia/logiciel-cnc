@@ -228,3 +228,189 @@ def test_safety_is_a_declaration_the_software_never_satisfies_by_itself():
         assert f.oui(cle)
     assert f.securite_declaree() == []
     assert "Sécurité non déclarée" not in f.resume()
+
+
+def test_the_cradle_is_a_U_not_a_wall():
+    """La forme du berceau decide quelles orientations sont refusees.
+
+    Une seule boite derriere la piece se trompait DEUX fois : elle barrait
+    l'arriere, ou la vraie machine ne porte rien, et elle laissait les cotes
+    libres, la ou se trouvent les joues. Ce test ne verifie pas une tournure
+    de code : il verifie que la matiere declaree est la ou elle est sur le
+    dessin de la machine, et nulle part ailleurs.
+    """
+    f = FicheMachine.du_kit()
+    organes = f.organes()
+    noms = [v.name for v in organes]
+    assert noms.count("joue gauche") == 1 and noms.count("joue droite") == 1
+    assert noms.count("moteur A gauche") == 1 and noms.count("moteur A droite") == 1
+
+    demi = f.valeur("berceau_largeur_mm") / 2.0
+    joue = f.valeur("berceau_profondeur_mm")
+    boites = {v.name: v for v in organes if v.kind == "box"}
+
+    def dedans(v, p):
+        return all(v.lo[i] - 1e-9 <= p[i] <= v.hi[i] + 1e-9 for i in range(3))
+
+    # entre les deux joues, la ou la piece est posee : rien.
+    for organe in boites.values():
+        assert not dedans(organe, [0.0, 0.0, 10.0]), (
+            f"{organe.name} occupe la place de la piece")
+    # DERRIERE la piece : rien non plus. C'est ce que l'ancien mur barrait.
+    for organe in boites.values():
+        assert not dedans(organe, [0.0, -88.0, 10.0]), (
+            f"{organe.name} barre l'arriere, ou la machine ne porte rien")
+    # sur les COTES, en revanche, il y a de la matiere, des deux cotes.
+    milieu = demi - joue / 2.0
+    assert dedans(boites["joue droite"], [milieu, 0.0, 10.0])
+    assert dedans(boites["joue gauche"], [-milieu, 0.0, 10.0])
+
+
+def test_a_motor_carter_does_not_turn_with_the_part():
+    """Le stator est boulonne sur le bati ; seul le rotor tourne.
+
+    Le piege est discret : un carter place dans le repere du berceau basculerait
+    avec la piece, donc s'ecarterait tout seul des orientations ou il gene le
+    plus — une collision qui disparait precisement quand on en a besoin.
+    """
+    f = FicheMachine.du_kit()
+    organes = {v.name: v for v in f.organes()}
+    assert organes["joue droite"].frame == "cradle_A", "une joue tourne avec A"
+    assert organes["moteur A droite"].frame == "machine", (
+        "un carter de moteur ne tourne pas")
+    assert organes["moteur A gauche"].frame == "machine"
+    # et le carter est centre sur l'axe A, pas sur le plateau.
+    mot = organes["moteur A droite"]
+    assert (mot.lo[2] + mot.hi[2]) / 2.0 == pytest.approx(f.valeur("pivot_a_z_mm"))
+    assert (mot.lo[1] + mot.hi[1]) / 2.0 == pytest.approx(f.valeur("pivot_a_y_mm"))
+
+
+def test_a_square_carter_is_a_box_and_not_a_cylinder_of_the_same_diameter():
+    """Le carre contient le cercle, et non l'inverse.
+
+    Un carter NEMA 17 de 42 mm de cote modelise par un cylindre de 42 mm de
+    DIAMETRE laisse ses quatre coins dehors : la simulation declare degagees
+    des poses ou l'outil touche le coin du carter. L'ecart n'est pas une
+    subtilite — il vaut 8,7 mm sur la diagonale d'un NEMA 17.
+    """
+    f = FicheMachine.du_kit()
+    cote = f.valeur("moteur_a_diametre_mm")
+    mot = {v.name: v for v in f.organes()}["moteur A droite"]
+    assert mot.kind == "box"
+    assert mot.hi[1] - mot.lo[1] == pytest.approx(cote)
+    assert mot.hi[2] - mot.lo[2] == pytest.approx(cote)
+    # le coin du carter est hors d'un cylindre de meme diametre : c'est tout
+    # le propos du choix de forme.
+    coin = (cote / 2.0) * 2.0 ** 0.5
+    assert coin > cote / 2.0 + 8.0
+
+
+def test_the_organs_follow_the_measured_sheet():
+    """Mesurer une cote doit deplacer de la matiere, sinon l'ecran est decoratif.
+
+    C'est la seule chose qui relie les 50 cotes de la fiche aux verdicts
+    d'accessibilite : si une cote mesuree ne change pas les organes, la fiche
+    ne sert a rien le jour ou la machine existe.
+    """
+    f = FicheMachine.du_kit()
+    avant = {v.name: v for v in f.organes()}
+    f.mesurer("moteur_a_diametre_mm", 57.0, moyen="pied à coulisse")
+    f.mesurer("berceau_largeur_mm", 260.0, moyen="mètre ruban")
+    apres = {v.name: v for v in f.organes()}
+
+    assert apres["moteur A droite"].hi[1] - apres["moteur A droite"].lo[1] \
+        == pytest.approx(57.0)
+    assert apres["joue droite"].hi[0] == pytest.approx(130.0)
+    assert avant["joue droite"].hi[0] == pytest.approx(110.0)
+    # et la machine construite porte bien ces organes, pas ceux du defaut.
+    m = f.machine()
+    assert [v.name for v in m.collision_volumes] == list(apres)
+
+
+def _mur_d_avant(fiche):
+    """L'ancien modele : le plateau, et UNE boite pleine a l'arriere."""
+    from xyzac.machine_model.machine import CollisionVolume
+
+    ep = fiche.valeur("plateau_epaisseur_mm")
+    larg = fiche.valeur("berceau_largeur_mm") / 2.0
+    haut = fiche.valeur("berceau_hauteur_mm")
+    prof = fiche.valeur("berceau_profondeur_mm")
+    return [
+        CollisionVolume(name="plateau C", frame="table_C", kind="cylinder",
+                        base=[0.0, 0.0, -ep], axis=[0.0, 0.0, 1.0],
+                        radius=fiche.valeur("plateau_rayon_mm"), height=ep),
+        CollisionVolume(name="berceau A", frame="cradle_A", kind="box",
+                        lo=[-larg, -95.0, -haut + 40.0],
+                        hi=[larg, -95.0 + prof, 40.0]),
+    ]
+
+
+def _garde(fiche, organes, nom):
+    import numpy as np
+
+    from xyzac.collision_engine.machine_guard import MachineGuard
+    from xyzac.tool_model import build_endmill
+
+    m = fiche.machine().model_copy(deep=True)
+    m.machine_id = nom           # la mise en cache des nuages porte dessus
+    m.collision_volumes = organes
+    outil = build_endmill("t", 6.0, 30.0, stickout=40.0, holder_type="ER16")
+    garde = MachineGuard(m, outil)
+    return lambda tcp, a=0.0, c=0.0: garde.check_pose(np.array(tcp, float), a, c).ok
+
+
+def test_the_guard_now_refuses_the_sides_and_frees_the_back():
+    """L'inversion, prouvee par le garde de collision et non par la fiche.
+
+    C'est le test qui justifie tout le changement. Aux MEMES poses, l'ancien
+    mur et le nouveau U rendent des verdicts opposes, et dans les deux cas
+    c'est le nouveau qui a raison sur le dessin de la machine :
+
+      - derriere la piece l'ancien modele voyait un mur sur 220 mm de large ;
+        il n'y a rien. Des orientations etaient refusees pour une matiere
+        imaginaire.
+      - sur les cotes l'ancien modele ne voyait rien ; il y a deux joues de
+        15 mm. Des poses ou l'outil entre dans une joue etaient declarees
+        degagees — exactement la fausse securite que ce projet refuse.
+    """
+    f = FicheMachine.du_kit()
+    avant = _garde(f, _mur_d_avant(f), "avant-mur")
+    apres = _garde(f, f.organes(), "apres-u")
+
+    arriere = [0.0, -88.0, 20.0]
+    joue_droite = [102.0, 0.0, 20.0]
+    joue_gauche = [-102.0, 0.0, 20.0]
+
+    assert not avant(arriere), "temoin : l'ancien mur barrait bien l'arriere"
+    assert apres(arriere), "l'arriere est libre, il n'y a rien derriere la pièce"
+
+    assert avant(joue_droite) and avant(joue_gauche), (
+        "temoin : l'ancien modele laissait les côtés libres")
+    assert not apres(joue_droite), "la joue droite doit arrêter l'outil"
+    assert not apres(joue_gauche), "la joue gauche doit arrêter l'outil"
+
+    # et la place de la piece, au milieu du U, reste libre dans les deux.
+    assert avant([0.0, 0.0, 20.0]) and apres([0.0, 0.0, 20.0])
+
+
+def test_a_cheek_swings_with_A_but_a_carter_stays_put():
+    """La difference de repere, verifiee par ses consequences.
+
+    Une joue tourne avec le berceau : basculer A de 90 degres la fait sortir
+    du chemin de l'outil. Un carter de moteur est boulonne sur le bati : il
+    reste exactement ou il est, quel que soit A. Si le carter avait ete place
+    dans le repere du berceau, il se serait ecarte tout seul des basculements
+    ou il gene le plus — une collision qui s'efface quand on en a besoin.
+    """
+    f = FicheMachine.du_kit()
+    voir = _garde(f, f.organes(), "repere-u")
+
+    joue = [102.0, 0.0, 20.0]
+    carter = [134.0, 0.0, -30.0]
+
+    assert not voir(joue, a=0.0), "berceau droit : la joue est sur le chemin"
+    assert voir(joue, a=-90.0), "berceau basculé : la joue s'est écartée"
+
+    for a in (0.0, -45.0, -90.0):
+        assert not voir(carter, a=a), (
+            f"le carter doit rester là à A = {a:.0f}° : il ne tourne pas")

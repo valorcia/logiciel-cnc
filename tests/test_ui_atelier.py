@@ -2196,3 +2196,42 @@ def test_the_surface_list_is_not_rebuilt_under_the_reader_s_finger():
     # et une pièce sans surfaces doit remettre le repère à zéro, sinon la
     # pièce suivante hériterait de la liste de la précédente
     assert "dernieresSurfaces = null;" in js
+
+
+def test_saving_a_cote_does_not_rebuild_the_sheet_under_the_finger():
+    """Trouvé au navigateur, invisible autrement.
+
+    Le « change » d'un champ de valeur part quand on QUITTE le champ —
+    c'est-à-dire au moment précis où l'on entre dans « mesuré avec ».
+    L'enregistrement redessinait alors toute la fiche : le groupe se refermait
+    (seul « structure » était rouvert), le champ d'arrivée était remplacé par
+    un autre, et la frappe suivante tombait dans le vide. Sur un écran de
+    10 pouces où les 50 cotes tiennent dans sept groupes repliés, saisir une
+    cote de berceau refermait littéralement le panneau sous le doigt.
+
+    Même famille que la liste des surfaces reconstruite en boucle pendant
+    l'analyse : on ne remplace pas le morceau d'écran que quelqu'un est en
+    train d'utiliser.
+    """
+    js = (ATELIER / "static" / "app.js").read_text(encoding="utf-8")
+
+    # l'enregistrement d'une cote met à jour, il ne reconstruit pas
+    i = js.index("async function envoyerCote")
+    corps = js[i:js.index("\n}", i)]
+    assert "majFiche()" in corps
+    assert "dessinerFiche()" not in corps, (
+        "redessiner détruit le champ que l'utilisateur vient d'atteindre")
+
+    # la mise à jour ciblée ne touche pas au champ qui a le focus…
+    j = js.index("function majCote")
+    cible = js[j:js.index("\n}\n", j)]
+    assert "document.activeElement" in cible
+
+    # …sauf sur un REFUS, où laisser la valeur écartée à l'écran l'afficherait
+    # comme retenue.
+    assert "ecraser" in cible
+    assert 'majFiche({ ecraser: true })' in js
+
+    # et les groupes ouverts le restent d'un redessin à l'autre
+    assert "groupesOuverts" in js
+    assert 'groupesOuverts.has(g.cle)' in js

@@ -259,10 +259,16 @@ const PASTILLE_PROVENANCE = {
   calibre: ["faisable", "calibrée"],
 };
 
-async function chargerFiche() {
+// Les groupes que l'utilisateur a ouverts. Redessiner la fiche sans s'en
+// souvenir refermait tout sauf « structure » : on tapait une cote de berceau,
+// et le panneau se repliait sous le doigt.
+const groupesOuverts = new Set(["structure"]);
+
+async function chargerFiche({ force = false } = {}) {
   try {
     fiche = await get("/api/fiche");
-    dessinerFiche();
+    if (force || !$("#machine-groupes").children.length) dessinerFiche();
+    else majFiche({ ecraser: true });
   } catch (e) {
     $("#machine-resume").textContent = `Fiche illisible : ${e.message}`;
   }
@@ -277,14 +283,21 @@ function dessinerFiche() {
   $("#machine-fichier").textContent = `gardée dans ${fiche.fichier}`;
 
   $("#machine-groupes").innerHTML = fiche.groupes.map((g) => `
-    <details class="groupe-cotes" ${g.cle === "structure" ? "open" : ""}>
+    <details class="groupe-cotes" data-groupe="${g.cle}"
+             ${groupesOuverts.has(g.cle) ? "open" : ""}>
       <summary><b>${g.titre}</b>
-        <span class="detail">${g.cotes.filter((c) => c.suffisante).length}
-        / ${g.cotes.length} mesurée(s)</span></summary>
+        <span class="detail groupe-compte">${compteGroupe(g)}</span></summary>
       <div class="cotes">
         ${g.cotes.map((c) => ligneCote(c)).join("")}
       </div>
     </details>`).join("");
+
+  document.querySelectorAll("#machine-groupes .groupe-cotes").forEach((n) => {
+    n.addEventListener("toggle", () => {
+      if (n.open) groupesOuverts.add(n.dataset.groupe);
+      else groupesOuverts.delete(n.dataset.groupe);
+    });
+  });
 
   document.querySelectorAll("#machine-groupes .fiche-cote").forEach((n) => {
     const cle = n.dataset.cote;
@@ -326,13 +339,66 @@ function ligneCote(c) {
       </div>
       <p class="fiche-cote-mesure">${c.comment_mesurer}</p>
       ${c.aide ? `<p class="detail">${c.aide}</p>` : ""}
-      <p class="detail">Change&nbsp;: <b>${c.effet}</b>${
-        c.calibration_seule
-          ? " — <b>calibration</b>&nbsp;: ne se relève pas à la main"
-          : ""}${
-        c.date_mesure ? ` — relevée le ${c.date_mesure}` : ""}${
-        c.incertitude != null ? ` — ± ${c.incertitude} ${c.unite}` : ""}</p>
+      <p class="detail fiche-cote-effet">${ligneEffet(c)}</p>
     </div>`;
+}
+
+function ligneEffet(c) {
+  return `Change&nbsp;: <b>${c.effet}</b>${
+    c.calibration_seule
+      ? " — <b>calibration</b>&nbsp;: ne se relève pas à la main"
+      : ""}${
+    c.date_mesure ? ` — relevée le ${c.date_mesure}` : ""}${
+    c.incertitude != null ? ` — ± ${c.incertitude} ${c.unite}` : ""}`;
+}
+
+function compteGroupe(g) {
+  return `${g.cotes.filter((c) => c.suffisante).length}
+          / ${g.cotes.length} mesurée(s)`;
+}
+
+// Mettre a jour la fiche SANS reconstruire son DOM.
+//
+// Redessiner tout a chaque saisie detruisait la ligne — et donc le champ —
+// sous le doigt : le « change » d'une valeur part au moment ou l'on quitte le
+// champ, c'est-a-dire au moment ou l'on entre dans « mesuré avec ». Le champ
+// d'arrivee etait remplace, et la frappe suivante tombait dans le vide. Meme
+// famille que la liste des surfaces reconstruite en boucle : on ne remplace
+// pas ce que quelqu'un est en train d'utiliser.
+//
+// ``ecraser`` force la valeur du serveur dans le champ meme s'il a le focus :
+// c'est le cas d'un REFUS, ou laisser la valeur refusee a l'ecran serait
+// afficher comme retenu ce que la fiche vient d'ecarter.
+function majFiche({ ecraser = false } = {}) {
+  if (!fiche) return;
+  $("#machine-resume").textContent = fiche.resume;
+  $("#machine-resume").className = "resume " +
+    (fiche.mesuree ? "resume--ok" : "resume--attention");
+
+  fiche.groupes.forEach((g) => {
+    const bloc = document.querySelector(`[data-groupe="${g.cle}"]`);
+    if (bloc) bloc.querySelector(".groupe-compte").textContent = compteGroupe(g);
+    g.cotes.forEach((c) => majCote(c, ecraser));
+  });
+}
+
+function majCote(c, ecraser) {
+  const n = document.querySelector(`#machine-groupes [data-cote="${c.cle}"]`);
+  if (!n) return;
+  const [classe, mot] = PASTILLE_PROVENANCE[c.provenance] ||
+                        ["a-changer", c.provenance];
+  const porte = n.querySelector(".porte-pastille");
+  porte.className = `${classe} porte-pastille`;
+  porte.querySelector(".pastille").textContent = mot;
+  n.querySelector(".fiche-cote-effet").innerHTML = ligneEffet(c);
+
+  const val = n.querySelector(".fiche-cote-valeur");
+  if (val && (ecraser || document.activeElement !== val)) {
+    val.value = c.booleen ? (c.valeur >= 0.5 ? "1" : "0")
+                          : c.valeur.toFixed(c.decimales);
+  }
+  const moy = n.querySelector(".fiche-cote-moyen");
+  if (moy && (ecraser || document.activeElement !== moy)) moy.value = c.moyen;
 }
 
 async function envoyerCote(cle, champValeur, champMoyen) {
@@ -344,7 +410,7 @@ async function envoyerCote(cle, champValeur, champMoyen) {
   // et l'utilisateur voyait sa valeur absurde disparaître sans un mot. Trouvé
   // au navigateur, invisible autrement.
   if (r && r.erreur) {
-    // On redessine D'ABORD depuis le serveur — ce qui remet la valeur refusée
+    // On recharge D'ABORD depuis le serveur — ce qui remet la valeur refusée
     // à ce qu'elle était — PUIS on écrit le motif. L'inverse effaçait le
     // motif aussitôt affiché.
     await chargerFiche();
@@ -354,7 +420,7 @@ async function envoyerCote(cle, champValeur, champMoyen) {
   }
   fiche = r.fiche;
   etat = r.etat;
-  dessinerFiche();
+  majFiche();
   appliquer();
 }
 
@@ -1068,7 +1134,9 @@ async function init() {
   $("#machine-nom").addEventListener("change", async () => {
     const r = await post("/api/machine-nom", { nom: $("#machine-nom").value });
     fiche = r.fiche;
-    dessinerFiche();
+    // Pas de redessin : renommer ne change que le résumé, et reconstruire
+    // reprendrait aussi le champ qu'on vient de quitter.
+    majFiche();
   });
   chargerFiche();
 
