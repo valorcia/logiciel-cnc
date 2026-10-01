@@ -228,7 +228,7 @@ def post_process(
         # au lieu de signer a sa place.
         w("(Approches, liaisons et degagements portes par la trajectoire.)")
         w("(Ce module ne les VERIFIE pas : il emet ce que la gamme lui donne.)")
-        w("(Ce que chacune a ete verifiee est dit operation par operation.)")
+        w("(Ce que chacune a subi est dit operation par operation, ci-dessous.)")
     w("(Ce fichier n'a pas ete envoye a une machine : linuxcnc_gateway est verrouille)")
     w("G21 G90 G94 (mm, absolu, avance par minute)")
     w("G17")

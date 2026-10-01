@@ -941,14 +941,27 @@ manquait :
    liaison, c'est le trajet **horizontal** ; la descente finale rejoint un point
    où il y a de la matière par définition, puisque c'est là qu'on va couper.
 
-Ce qui n'est **pas** vérifié, et qui est écrit noir sur blanc dans l'en-tête :
-le porte-outil contre la **pièce** le long du chemin. Une fraise est censée
-entrer dans la matière qu'elle enlève ; séparer « l'outil coupe » de « le corps
-touche » demande l'état de la matière à chaque instant, et c'est le chantier
-suivant.
+4. **Le corps de l'outil contre la matière**, le long du chemin — porte-outil,
+   tige, col, nez de broche. C'était le dernier trou, et il est comblé : la
+   matière est **suivie au fur et à mesure**, parce que la bonne réponse dépend
+   du moment. À la couche 8, le porte-outil occupe l'endroit où se trouvait du
+   brut avant la couche 1 ; vérifier contre le brut initial refuserait tout
+   usinage profond, vérifier contre la pièce finie laisserait passer un
+   porte-outil traversant 20 mm de brut.
+
+**Et le logiciel répond maintenant à une question qu'on se pose à chaque
+montage : de combien faut-il sortir l'outil ?** Sur la poche de C02, tout tenu
+fixe sauf la longueur sortie de pince : dégagé jusqu'à 21 mm, refusé à partir de
+20 mm — et la poche fait **20 mm de profondeur**. Le refus nomme l'organe (*le
+porte-outil*), l'endroit, et le remède (*sortir l'outil davantage de la pince,
+ou prendre un porte-outil plus élancé*).
+
+Sans état de matière, la gamme **refuse d'être construite** : poster un
+programme dont une des quatre vérifications n'a pas eu lieu reviendrait à la
+présenter comme faite.
 
 Mesuré sur C02 : 859 poses, 893 lignes, 33 rapides et 826 en avance travail,
 11 descentes ramenées en avance travail. Le fichier relu et rejoué sur la
 cinématique réelle retombe à **0,066 µm** du point demandé sur la géométrie
 mesurée, et à **3,1 µm** sur la machine vraie — pour un budget annoncé de
-51,5 µm. Voir l'ADR-020.
+51,5 µm. Voir l'ADR-020 pour la chaîne, l'ADR-021 pour le corps de l'outil.

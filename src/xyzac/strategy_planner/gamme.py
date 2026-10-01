@@ -37,15 +37,22 @@ dominee par une autre, lue comme si elle mesurait ce qu'on voulait.
 **3. Aucune avance n'est inventee.** Une operation sans recette est refusee ici
 comme elle l'est dans l'emetteur.
 
+**4. Le CORPS de l'outil contre la MATIERE.** Porte-outil, tige, col, nez de
+broche — contre la matiere qui est effectivement la a cet instant, et non
+contre le brut initial (qui refuserait tout usinage profond) ni contre la piece
+finie (qui laisserait passer un porte-outil traversant 20 mm de brut). Voir
+``subtractive_slicer.corps``. Cette verification exige un etat de matiere ; sans
+lui, elle n'est pas faite — et l'operation le DIT, au lieu de laisser croire.
+
 Ce que ce module ne fait toujours pas
 -------------------------------------
 
-  - il ne verifie PAS le porte-outil contre la PIECE le long du chemin. La
-    distinction est reelle : une fraise est censee entrer dans la matiere
-    qu'elle enleve, et separer « l'outil coupe » de « le corps touche » demande
-    l'etat de matiere a chaque instant, pas la piece finie. C'est le chantier
-    suivant, et l'en-tete du G-code le dit a l'operateur ;
-  - il n'ordonne pas les creux entre eux autrement que dans l'ordre recu ;
+  - il n'ordonne pas les creux entre eux autrement que dans l'ordre recu, et
+    verifie donc chaque creux contre l'etat de matiere INITIAL. C'est le cote
+    prudent — il y a plus de matiere au depart qu'apres les creux precedents,
+    donc le test peut refuser un peu trop — et c'est volontaire : avancer
+    l'etat d'un creux a l'autre figerait un ordre que personne n'a encore
+    decide ;
   - il n'emet rien. ``post_process`` reste la seule porte, et
     ``linuxcnc_gateway`` reste verrouille.
 """
@@ -196,7 +203,8 @@ def freiner_les_descentes(points, rapide, direction, *, epsilon_mm: float = 1.0e
 
 
 def operation_du_creux(parcours, outil, recette, machine, *,
-                       op_id: str, notes: str = "") -> Operation:
+                       op_id: str, notes: str = "",
+                       corps=None) -> Operation:
     """Un ``ParcoursCreux`` devient une ``Operation`` indexee 3+2.
 
     L'axe outil est CONSTANT sur toute l'operation — c'est la definition du
@@ -228,6 +236,11 @@ def operation_du_creux(parcours, outil, recette, machine, *,
     if n_freinees:
         notes = (f"{n_freinees} descentes de liaison ramenées en avance travail "
                  "(leur dégagement n'est pas démontré). " + notes).strip()
+    # Ce que le corps de l'outil a subi est dit DANS le fichier, a cote de
+    # l'operation. Une verification faite et tue ne protege personne ; une
+    # verification non faite et tue est pire.
+    if corps is not None:
+        notes = (notes + " " + corps.consigne()).strip()
     return Operation(
         op_id=op_id,
         kinematic=Kinematic.MILLING_3PLUS2,
@@ -240,16 +253,35 @@ def operation_du_creux(parcours, outil, recette, machine, *,
     )
 
 
-def gamme_des_creux(setup, elements, *, plan_id: str,
+def gamme_des_creux(setup, elements, *, plan_id: str, material=None,
                     mount_offset=None, work_offset=None) -> tuple[ProcessPlan, list]:
     """Assemble la gamme, en REFUSANT tout creux dont le chemin ne degage pas.
 
     ``elements`` est une suite de ``(parcours, outil, recette)``.
 
+    Deux gardes, et ils ne repondent pas a la meme question :
+
+      - le garde MACHINE, sur toutes les poses : l'outil touche-t-il le
+        berceau, une joue, un carter, ou sort-il des courses ;
+      - le garde MATIERE (``material`` fourni) : le CORPS de l'outil touche-t-il
+        la matiere encore presente a cet instant.
+
+    Sans ``material``, le second n'est pas fait — et chaque operation le dit
+    dans le fichier produit, au lieu de laisser croire qu'il l'a ete.
+
     Rend la gamme ET la liste des verifications, y compris celles qui ont
     echoue : une gamme amputee sans dire de quoi laisserait croire que les
     creux manquants n'existaient pas.
     """
+    from ..subtractive_slicer.corps import verifier_le_corps
+
+    if material is None:
+        raise ValueError(
+            "gamme_des_creux : aucun etat de matiere. Sans lui, le CORPS de "
+            "l'outil — porte-outil, tige, nez de broche — ne peut pas etre "
+            "verifie contre la piece, et poster un programme dont une des "
+            "quatre verifications n'a pas eu lieu reviendrait a la presenter "
+            "comme faite. Passer l'etat du debut de l'operation.")
     machine = setup.machine
     # Les decalages viennent du MONTAGE par defaut, et non de zero.
     #
@@ -265,11 +297,14 @@ def gamme_des_creux(setup, elements, *, plan_id: str,
     for i, (parcours, outil, recette) in enumerate(elements):
         v = verifier_le_parcours(parcours, machine, outil,
                                  mount_offset=mount_offset, work_offset=work_offset)
-        verifs.append((parcours.index, v))
-        if not v.ok:
+        corps = verifier_le_corps(
+            parcours.points, parcours.rapide, material, outil,
+            direction_de(machine, parcours.a_deg, parcours.c_deg))
+        verifs.append((parcours.index, v, corps))
+        if not v.ok or not corps.ok:
             continue
         ops.append(operation_du_creux(
             parcours, outil, recette, machine,
             op_id=f"creux-{parcours.index}",
-            notes=v.consigne()))
+            notes=v.consigne(), corps=corps))
     return ProcessPlan(plan_id=plan_id, setup=setup, operations=ops), verifs

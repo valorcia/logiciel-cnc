@@ -254,9 +254,9 @@ def test_a_refused_cavity_is_left_out_of_the_plan_but_not_out_of_the_report():
                            0.0, 0.0, index=2)
 
     plan, verifs = gamme_des_creux(setup, [(bon, outil, rec), (mauvais, outil, rec)],
-                                   plan_id="partielle")
+                                   plan_id="partielle", material=_matiere(mur=((-30, -30, 0), (-29, -29, 1))))
     assert [o.op_id for o in plan.operations] == ["creux-1"]
-    assert [i for i, _ in verifs] == [1, 2]
+    assert [i for i, _, _ in verifs] == [1, 2]
     assert verifs[0][1].ok and not verifs[1][1].ok
 
 
@@ -385,6 +385,32 @@ def test_nothing_is_emitted_without_the_safety_gates():
 
 # ------------------------------------------------------------- utilitaires
 
+def _matiere(mur=None, pitch=1.0):
+    """Un brut de 60 x 60 x 30 mm centre sur l'origine piece, plein.
+
+    Construit a la main plutot que voxelise depuis un STEP : ce qui est eprouve
+    ici est la REGLE — qui a le droit d'etre dans la matiere, et a quel
+    moment — pas le voxeliseur, qui a ses propres tests.
+
+    ``mur`` vide tout sauf une dalle, pour fabriquer un obstacle a l'endroit
+    voulu.
+    """
+    from xyzac.geometry_core.voxelize import VoxelGrid
+    from xyzac.stock_engine.material import MaterialState
+
+    g = VoxelGrid.covering(np.array([-30.0, -30.0, 0.0]),
+                           np.array([30.0, 30.0, 30.0]), pitch)
+    rem = np.ones(g.shape, dtype=bool)
+    if mur is not None:
+        lo, hi = mur
+        rem[:] = False
+        i0 = np.floor((np.asarray(lo) - g.origin) / pitch).astype(int)
+        i1 = np.ceil((np.asarray(hi) - g.origin) / pitch).astype(int)
+        i0 = np.maximum(i0, 0); i1 = np.minimum(i1, g.shape)
+        rem[i0[0]:i1[0], i0[1]:i1[1], i0[2]:i1[2]] = True
+    return MaterialState(g, rem, np.zeros(g.shape, dtype=bool))
+
+
 def _setup(machine, outil):
     bb = AABB(np.array([-32.0, -32.0, 0.0]), np.array([32.0, 32.0, 25.0]))
     return Setup(setup_id="m21", machine=machine, part_step_path="(aucune)",
@@ -437,7 +463,9 @@ def test_the_plan_verifies_the_machine_it_will_post():
     setup.part_to_table_mm = [demi - 2.0, 0.0, 10.0]
 
     au_centre = FauxParcours([[0, 0, 0], [3, 0, 0]], [False, False], 0.0, 0.0)
-    plan, verifs = gamme_des_creux(setup, [(au_centre, outil, rec)], plan_id="decale")
+    plan, verifs = gamme_des_creux(
+        setup, [(au_centre, outil, rec)], plan_id="decale",
+        material=_matiere(mur=((-30, -30, 0), (-29, -29, 1))))
 
     assert not verifs[0][1].ok, (
         "le chemin est au centre dans le repère PIÈCE, mais le montage le pose "

@@ -27,6 +27,16 @@ from ..geometry_core.voxelize import VoxelGrid, solid_mask
 from .stock import Stock
 
 
+#: Roles de troncon qui ont le DROIT d'etre dans la matiere : l'arete de coupe
+#: et le corps de goujure, qui voyage dans le canal que l'arete vient d'ouvrir.
+#: Tout le reste — col, tige, porte-outil, nez de broche — est une collision.
+#:
+#: Une seule definition, partagee par l'enlevement de matiere et par la
+#: verification du corps de l'outil. En avoir deux est la facon dont elles
+#: finissent par ne plus dire la meme chose.
+ROLES_DANS_LA_COUPE = frozenset({"cutting", "flute"})
+
+
 @dataclass
 class MaterialState:
     """Etat de la matiere restante a un instant de la gamme."""
@@ -112,7 +122,8 @@ class MaterialState:
     # -- enlevement --------------------------------------------------------
 
     def remove_tool_sweep(self, tcps: np.ndarray, axes: np.ndarray, tool,
-                          *, only_cutting: bool = True) -> int:
+                          *, only_cutting: bool = True,
+                          roles: "frozenset[str] | set[str] | None" = None) -> int:
         """Enleve la matiere balayee par l'outil. Retourne le nombre de voxels.
 
         La matiere PROTEGEE n'est jamais enlevee, meme si l'outil la traverse
@@ -131,8 +142,16 @@ class MaterialState:
         axes = np.asarray(axes, float).reshape(-1, 3)
         axes = axes / np.linalg.norm(axes, axis=1, keepdims=True)
 
-        segs = [s for s in tool.segments
-                if (not only_cutting) or s.role.value in ("cutting", "flute")]
+        # ``roles`` prime sur ``only_cutting`` : il sert a balayer le CORPS de
+        # l'outil — tout ce qui n'a pas le droit de toucher la matiere — en
+        # reutilisant exactement cette geometrie-ci. Ecrire un second balayage
+        # pour la verification de collision ferait diverger les deux, et celui
+        # qu'on croirait serait celui qui autorise.
+        if roles is not None:
+            segs = [s for s in tool.segments if s.role.value in roles]
+        else:
+            segs = [s for s in tool.segments
+                    if (not only_cutting) or s.role.value in ROLES_DANS_LA_COUPE]
         if not segs:
             return 0
 
