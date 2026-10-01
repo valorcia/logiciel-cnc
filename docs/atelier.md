@@ -908,3 +908,47 @@ retournement, 3 à changer —, **simulation d'usinage de 36 images** sur
 enlevée), lecture, pose d'axes affichée sous chaque image, puis les 4
 conditions de lancement, toutes non remplies. **Aucune erreur dans la
 console.**
+
+## 7. Du creux au G-code : ce qui sort, et ce qui ne sort pas
+
+Le logiciel sait maintenant produire un **fichier `.ngc` réel** à partir d'un
+creux. Ce qu'il faut comprendre avant de regarder le fichier :
+
+**Rien n'est envoyé à une machine.** La couche `linuxcnc_gateway` reste
+verrouillée, et le fichier produit le dit lui-même, dans son en-tête, avant la
+première ligne de mouvement. Poster un programme et l'exécuter sont deux
+autorisations différentes — c'est la séparation des ateliers, et le logiciel la
+reproduit.
+
+**La calibration utilisée est simulée.** Elle prouve que la chaîne de calcul se
+referme sur elle-même ; elle ne prouve rien sur une machine qui n'existe pas.
+L'en-tête porte l'énoncé de tolérance mot pour mot : « géométrie mesurée,
+machine NON QUALIFIÉE ».
+
+Trois choses ont dû être vérifiées pour que ce fichier puisse exister, et chacune
+manquait :
+
+1. **Tout le parcours est passé au garde machine**, pose par pose, et pas
+   seulement les quelques points de bord qui avaient servi à choisir
+   l'orientation. Deux causes de refus sont distinguées, parce qu'elles n'ont
+   pas le même remède : *hors course* (rapprocher la pièce du centre) et
+   *collision d'organe* (raccourcir la longueur sortie de l'outil).
+2. **L'orientation approuvée est portée jusqu'au fichier** au lieu d'être
+   recalculée à l'arrivée. Deux positions du berceau donnent le même axe d'outil
+   en posant la pièce différemment — et donc avec deux verdicts de collision
+   différents.
+3. **Une descente n'est jamais un rapide.** Ce qui est démontré dégagé dans une
+   liaison, c'est le trajet **horizontal** ; la descente finale rejoint un point
+   où il y a de la matière par définition, puisque c'est là qu'on va couper.
+
+Ce qui n'est **pas** vérifié, et qui est écrit noir sur blanc dans l'en-tête :
+le porte-outil contre la **pièce** le long du chemin. Une fraise est censée
+entrer dans la matière qu'elle enlève ; séparer « l'outil coupe » de « le corps
+touche » demande l'état de la matière à chaque instant, et c'est le chantier
+suivant.
+
+Mesuré sur C02 : 859 poses, 893 lignes, 33 rapides et 826 en avance travail,
+11 descentes ramenées en avance travail. Le fichier relu et rejoué sur la
+cinématique réelle retombe à **0,066 µm** du point demandé sur la géométrie
+mesurée, et à **3,1 µm** sur la machine vraie — pour un budget annoncé de
+51,5 µm. Voir l'ADR-020.

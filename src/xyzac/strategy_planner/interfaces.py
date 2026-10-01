@@ -57,6 +57,20 @@ class Operation:
     feed_mm_min: float = 0.0
     coolant: bool = False
     notes: str = ""
+    #: (A, C) IMPOSE a toute l'operation, en degres, pour une operation indexee.
+    #:
+    #: Sans lui, le post-processeur redemande a l'inverse cinematique quel
+    #: couple donne l'axe outil demande. C'est une AUTRE question que celle a
+    #: laquelle le controle de collision a repondu : les deux branches de
+    #: l'inverse, (a, c) et (-a, c + 180), donnent le meme axe outil dans le
+    #: repere piece en posant la piece de deux facons differentes dans le
+    #: berceau. Tant que les butees n'en laissent passer qu'une, les deux
+    #: reponses coincident ; des qu'elles en laissent deux, l'emetteur
+    #: choisirait une posture que personne n'a verifiee.
+    #:
+    #: Quand il est present, l'emetteur l'utilise ET controle qu'il redonne
+    #: bien l'axe porte par la trajectoire.
+    ac_impose: tuple[float, float] | None = None
 
 
 @dataclass

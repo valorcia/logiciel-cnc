@@ -81,7 +81,7 @@ class MachineGuard:
         self._vols = _volume_cache(machine.machine_id, spacing, payload)
         #: Champ d'obstacles par organe, dans SON repere : statique, donc
         #: construit une fois et partage par toutes les orientations.
-        self._field_cache: dict[str, ObstacleField] = {}
+        self._field_cache: dict[int, ObstacleField] = {}
 
     # -- transport : on deplace le TCP, pas la machine --------------------
 
@@ -153,12 +153,27 @@ class MachineGuard:
             return rz.T @ (q - pc) + pc, rz.T @ (rx.T @ z)
         raise ValueError(f"repere de volume machine inconnu : {frame}")
 
-    def _field_for(self, frame: str, pts: np.ndarray) -> ObstacleField:
-        cache = self._field_cache.get(frame)
+    def _field_for(self, index: int, pts: np.ndarray) -> ObstacleField:
+        """Nuage d'un organe, mis en cache PAR ORGANE et non par repere.
+
+        **Defaut trouve au jalon M21, et il ne detectait pas : il cachait.**
+        Ce cache etait indexe par le nom du REPERE. Tant que chaque repere ne
+        portait qu'un organe — le plateau dans ``table_C``, le berceau dans
+        ``cradle_A`` — la cle etait fidele. L'ADR-019 a remplace le berceau par
+        deux joues, donc DEUX organes dans ``cradle_A``, et deux carters dans
+        ``machine`` : a partir du deuxieme, le cache rendait le nuage du
+        PREMIER. La joue droite et un carter n'etaient jamais testes, et le
+        chemin vectorise — celui du solveur d'accessibilite — declarait degagees
+        des poses que la verification pose par pose refusait.
+
+        Le silence venait de la : les deux chemins ne se comparaient nulle part.
+        Un test les compare desormais sur les memes poses.
+        """
+        cache = self._field_cache.get(index)
         if cache is None:
             cache = ObstacleField(pts, np.full(len(pts), ObstacleClass.MACHINE),
                                   np.full(len(pts), self.spacing + self.clearance))
-            self._field_cache[frame] = cache
+            self._field_cache[index] = cache
         return cache
 
     # -- verification -----------------------------------------------------
@@ -215,10 +230,10 @@ class MachineGuard:
             return (ok, within) if return_travel else ok
 
         live = np.flatnonzero(ok)
-        for frame, pts in self._vols:
+        for i_vol, (frame, pts) in enumerate(self._vols):
             if len(pts) == 0:
                 continue
-            field_ = self._field_for(frame, pts)
+            field_ = self._field_for(i_vol, pts)
             tcps_v = np.empty((len(live), 3))
             axes_v = np.empty((len(live), 3))
             for k, i in enumerate(live):

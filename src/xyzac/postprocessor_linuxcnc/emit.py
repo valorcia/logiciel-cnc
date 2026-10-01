@@ -67,6 +67,14 @@ class EmitReport:
         return s
 
 
+#: Ecart maximal tolere entre l'axe outil demande par une trajectoire et celui
+#: que porte le couple (A, C) impose a son operation. La direction etant
+#: construite depuis ce couple en amont, l'ecart attendu est celui de
+#: l'arithmetique flottante : ce seuil n'absorbe pas une erreur de modele, il
+#: attrape une incoherence entre deux modules.
+_TOLERANCE_AXE_IMPOSE_DEG = 1.0e-3
+
+
 def _fmt(v: float) -> str:
     return f"{v:.4f}".rstrip("0").rstrip(".") or "0"
 
@@ -206,8 +214,21 @@ def post_process(
         w("(Leur trajectoire ne porte aucune liaison : tout y est en avance)")
         w("(travail, et les approches doivent etre ajoutees avant usage reel.)")
     else:
-        w("(Approches, liaisons et degagements portes par la trajectoire et)")
-        w("(valides comme le reste du mouvement.)")
+        # Ce que l'en-tete peut dire, et ce qu'il ne peut PAS dire.
+        #
+        # La phrase precedente — « valides comme le reste du mouvement » —
+        # affirmait une verification que ce module n'a pas faite et ne peut pas
+        # faire : il recoit des points et des drapeaux, pas l'etat de la
+        # matiere. Elle etait vraie du temps ou les seules trajectoires venaient
+        # d'un module qui validait tout ; elle est devenue fausse le jour ou
+        # une gamme par creux est arrivee, dont les liaisons sont demontrees
+        # degagees sur leur COULOIR HORIZONTAL et pas sur leurs descentes.
+        #
+        # L'en-tete renvoie donc a ce que chaque operation declare d'elle-meme,
+        # au lieu de signer a sa place.
+        w("(Approches, liaisons et degagements portes par la trajectoire.)")
+        w("(Ce module ne les VERIFIE pas : il emet ce que la gamme lui donne.)")
+        w("(Ce que chacune a ete verifiee est dit operation par operation.)")
     w("(Ce fichier n'a pas ete envoye a une machine : linuxcnc_gateway est verrouille)")
     w("G21 G90 G94 (mm, absolu, avance par minute)")
     w("G17")
@@ -236,15 +257,53 @@ def post_process(
                 "exactement ce que ce module refusait d'ecrire ; passer une "
                 "recette de recipe_profiles.build_recipe.")
 
+        # (A, C) IMPOSE : on ne re-devine pas une orientation deja approuvee.
+        #
+        # ``ik_best(d)`` repond a « quel couple donne cet axe outil ». Ce n'est
+        # pas la question : la question est « quel couple le controle de
+        # collision a-t-il approuve ». Les deux branches de l'inverse,
+        # (a, c) et (-a, c + 180), donnent le MEME axe outil dans le repere
+        # piece en posant la piece de deux facons differentes dans le berceau.
+        # Tant que les butees n'en laissent passer qu'une, les deux reponses
+        # coincident et personne ne voit rien ; des qu'elles en laissent deux,
+        # cette fonction emettrait une posture que personne n'a verifiee.
+        #
+        # L'operation porte donc son couple, et on le RELIT : la cinematique
+        # directe doit redonner l'axe que la trajectoire demande. Un couple
+        # impose faux serait pire que pas de couple du tout.
+        impose = getattr(op, "ac_impose", None)
+        if impose is not None:
+            a_i, c_i = float(impose[0]), float(impose[1])
+            porte = normalize(np.asarray(machine.tool_axis_in_part(a_i, c_i),
+                                         dtype=np.float64))
+            ecarts = np.degrees(np.arccos(np.clip(
+                np.einsum("ij,j->i", np.array([normalize(n) for n in nrm]), porte),
+                -1.0, 1.0)))
+            pire = float(np.max(ecarts)) if len(ecarts) else 0.0
+            if pire > _TOLERANCE_AXE_IMPOSE_DEG:
+                raise RuntimeError(
+                    f"operation '{op.op_id}' : le couple impose A={a_i:.3f}, "
+                    f"C={c_i:.3f} ne porte pas l'axe outil de sa trajectoire "
+                    f"(ecart max {pire:.4f} deg). Emettre ce couple usinerait "
+                    "dans une autre direction que celle qui a ete verifiee.")
+            if not machine.within_limits(a_i, c_i):
+                raise RuntimeError(
+                    f"operation '{op.op_id}' : le couple impose A={a_i:.3f}, "
+                    f"C={c_i:.3f} est hors des butees de la machine.")
+
         for i, (p, n) in enumerate(zip(pts, nrm)):
             d = normalize(n)
-            sol = ks.ik_best(d, allow_singular=True)
-            if sol is None:
-                rep.skipped.append(
-                    f"{op.op_id} pose {i} : aucune solution (A, C) dans les courses")
-                continue
+            if impose is not None:
+                a_sol, c_sol = a_i, c_i
+            else:
+                sol = ks.ik_best(d, allow_singular=True)
+                if sol is None:
+                    rep.skipped.append(
+                        f"{op.op_id} pose {i} : aucune solution (A, C) dans les courses")
+                    continue
+                a_sol, c_sol = sol.a_deg, sol.c_deg
             mv = compensate_pose(machine, geom, p, d,
-                                 a_nominal=sol.a_deg, c_nominal=sol.c_deg,
+                                 a_nominal=a_sol, c_nominal=c_sol,
                                  mount_offset=mount, work_offset=wo)
             rep.n_points += 1
             rep.worst_orientation_residual_deg = max(

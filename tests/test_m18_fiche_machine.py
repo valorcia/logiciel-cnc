@@ -414,3 +414,61 @@ def test_a_cheek_swings_with_A_but_a_carter_stays_put():
     for a in (0.0, -45.0, -90.0):
         assert not voir(carter, a=a), (
             f"le carter doit rester là à A = {a:.0f}° : il ne tourne pas")
+
+
+def test_the_vectorised_guard_agrees_with_the_pose_by_pose_one():
+    """Deux chemins pour la meme question, et c'est le rapide qui se trompait.
+
+    ``check_pose`` concatene tous les organes dans un seul nuage ;
+    ``check_many`` les teste organe par organe, chacun dans son repere, parce
+    que c'est ce qui rend le solveur d'accessibilite tenable. Les deux doivent
+    repondre la meme chose — et ils ne le faisaient pas.
+
+    Le cache des nuages etait indexe par le nom du REPERE. Tant que chaque
+    repere ne portait qu'un organe la cle etait fidele ; depuis que le berceau
+    est un U, ``cradle_A`` en porte DEUX et ``machine`` deux autres, et a partir
+    du deuxieme le cache rendait le nuage du premier. **La joue droite et un
+    carter n'etaient jamais testes**, et c'est le chemin vectorise — celui qui
+    decide — qui les ignorait.
+
+    Rien ne criait : chaque chemin etait coherent avec lui-meme, et aucun test
+    ne les confrontait. C'est ce que ce test fait, sur des poses choisies pour
+    toucher CHAQUE organe, y compris les seconds de leur repere.
+    """
+    import numpy as np
+
+    from xyzac.collision_engine.machine_guard import MachineGuard
+    from xyzac.tool_model import build_endmill
+
+    f = FicheMachine.du_kit()
+    m = f.machine()
+    demi = f.valeur("berceau_largeur_mm") / 2.0
+    joue = f.valeur("berceau_profondeur_mm")
+    milieu = demi - joue / 2.0
+    pz = f.valeur("pivot_a_z_mm")
+    carter = demi + f.valeur("moteur_a_longueur_mm") / 2.0
+
+    poses = [
+        [0.0, 0.0, 10.0],            # la place de la piece : degagee
+        [0.0, -88.0, 10.0],          # derriere : degagee depuis l'ADR-019
+        [milieu, 0.0, 10.0],         # joue droite  — 2e volume de cradle_A
+        [-milieu, 0.0, 10.0],        # joue gauche  — 1er volume de cradle_A
+        [carter, 0.0, pz],           # carter droit — 2e volume de machine
+        [-carter, 0.0, pz],          # carter gauche
+        [0.0, 0.0, -20.0],           # sous le plateau
+    ]
+    outil = build_endmill("F10", 10.0, 30.0, stickout=45.0, holder_type="ER16")
+    garde = MachineGuard(m, outil)
+    tcps = np.array(poses, dtype=float)
+
+    for a in (0.0, -40.0, -90.0):
+        ac = np.repeat([[a, 0.0]], len(tcps), axis=0)
+        vectorise, _ = garde.check_many(tcps, ac, return_travel=True)
+        un_par_un = np.array([garde.check_pose(t, a, 0.0).ok for t in tcps])
+        assert list(vectorise) == list(un_par_un), (
+            f"A = {a}° : les deux chemins divergent sur "
+            f"{[poses[i] for i in np.flatnonzero(vectorise != un_par_un)]}")
+
+    # et le test ne teste quelque chose que si des poses sont REFUSEES
+    refus = ~np.array([garde.check_pose(t, 0.0, 0.0).ok for t in tcps])
+    assert refus.sum() >= 4, "sans refus, l'accord des deux chemins ne prouve rien"
