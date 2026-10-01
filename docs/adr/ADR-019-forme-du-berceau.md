@@ -109,6 +109,19 @@ de sécurité est donc réel mais **non démontré par ce corpus** ; il est dém
 pose par pose par les tests du garde de collision, qui interrogent les joues là
 où elles sont.
 
+### Cette mesure a dû être refaite, et elle n'a pas bougé
+
+La première exécution de ce tableau a été obtenue avec **la moitié des organes
+invisibles** : le cache de nuages du garde vectorisé était indexé par le nom du
+repère, si bien que la joue droite et un carter n'étaient jamais testés. Le
+défaut est raconté dans l'ADR-020, qui l'a découvert et corrigé.
+
+Le tableau ci-dessus est celui de la mesure **refaite après correction**. Il est
+identique au premier, verdict par verdict et angle par angle — et cela
+*confirme* l'explication plutôt que de l'affaiblir : si le corpus n'approche
+jamais les joues, voir une joue de plus ou de moins ne pouvait rien changer. Le
+premier chiffre était juste par accident ; celui-ci l'est par construction.
+
 ### Ce que cela ne change pas
 
 La machine réelle n'est toujours pas mesurée. Ces cotes sont des cotes de

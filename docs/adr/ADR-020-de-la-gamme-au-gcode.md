@@ -107,7 +107,12 @@ valeurs de A, sur des poses choisies pour toucher **chaque** organe, y compris
 les seconds de leur repère.
 
 Conséquence directe : **la mesure corpus de l'ADR-019 a été refaite**, celle
-d'origine ayant été obtenue avec la moitié des organes invisibles.
+d'origine ayant été obtenue avec la moitié des organes invisibles. Elle rend le
+**même** résultat — 2 creux sur 23 changent de verdict, les mêmes deux, aux
+mêmes angles — parce que le brut le plus large du corpus s'arrête à 72 mm du
+centre quand une joue est à 95 mm : voir une joue de plus ou de moins ne pouvait
+rien y changer. Le chiffre d'origine était juste par accident ; celui-ci l'est
+par construction.
 
 ## Ce que cela produit
 
