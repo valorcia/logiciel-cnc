@@ -222,3 +222,65 @@ def test_the_transcription_matches_the_published_formula_term_by_term():
     assert not np.allclose(ac, ca)
     assert math.isclose(float(np.linalg.norm(ac)), 10.0, abs_tol=1e-12), (
         "une rotation conserve la norme")
+
+
+# ----------------- 4. la convention des colonnes, mesurée et non supposée
+
+def test_the_column_orientation_is_a_sheet_dimension_not_a_constant():
+    """Où sont les colonnes est un fait PHYSIQUE du châssis.
+
+    Il était écrit en dur dans deux endroits qui n'en disaient pas la même
+    chose : 0/120/240 ici, 90/210/330 dans `lineardeltakins`. La fiche le porte
+    désormais, pour que la réponse soit écrite quelque part plutôt que
+    supposée des deux côtés à la fois.
+    """
+    from xyzac.kinematics_solver.delta_ac import accord_avec_lineardeltakins
+
+    f = FicheMachine.du_kit()
+    assert f.delta().angles_deg == (0.0, 120.0, 240.0)
+    assert accord_avec_lineardeltakins(f.delta()), (
+        "par défaut les deux conventions diffèrent, et cela doit se dire")
+
+    f.regler("delta_colonne_0_deg", 90.0)
+    assert f.delta().angles_deg == (90.0, 210.0, 330.0)
+    assert accord_avec_lineardeltakins(f.delta()) == "", (
+        "à 90°, le module standard de LinuxCNC décrit ce châssis")
+
+    # la cote reste un ESSAI : la taper ne la rend pas mesurée
+    assert not f["delta_colonne_0_deg"].suffisante
+
+
+def test_the_refusal_names_the_column_disagreement_too():
+    """Deux obstacles, deux phrases. Le second ne provoque aucun échec de
+    démarrage : il fait usiner faux, et c'est pour cela qu'il doit être dit."""
+    m = _delta()
+    with pytest.raises(RuntimeError) as e:
+        build_config(m)
+    motif = str(e.value)
+    assert "SECOND obstacle" in motif
+    assert "20 mm" in motif
+    assert "broche HAL" in motif
+
+
+def test_a_ninety_degree_error_on_the_columns_costs_centimetres():
+    """Le chiffre qui justifie d'en faire une cote de fiche.
+
+    Une erreur de 90° sur l'orientation des colonnes ne déplace pas la pièce
+    d'un cheveu : elle change les positions de chariot de centimètres, sur une
+    machine dont la tolérance visée est de 0,02 mm. Et rien ne la signale — les
+    deux calculs sont justes, chacun pour SA disposition.
+    """
+    import dataclasses
+
+    f = FicheMachine.du_kit()
+    d0 = f.delta()
+    d90 = dataclasses.replace(d0, angles_deg=(90.0, 210.0, 330.0))
+    pts = np.array([[10.0, 0.0, 0.0], [30.0, 0.0, 5.0], [-20.0, 15.0, -8.0]])
+    ecart = np.nanmax(np.abs(np.asarray(d0.chariots(pts))
+                             - np.asarray(d90.chariots(pts))))
+    assert ecart > 5.0, f"écart {ecart:.2f} mm : l'épreuve ne mesure rien"
+    # au centre, les trois colonnes sont équidistantes : aucun écart. C'est
+    # précisément pourquoi un essai au centre ne révèle RIEN.
+    centre = np.zeros((1, 3))
+    assert np.allclose(np.asarray(d0.chariots(centre)),
+                       np.asarray(d90.chariots(centre)))

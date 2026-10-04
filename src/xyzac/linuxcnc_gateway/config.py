@@ -53,7 +53,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..kinematics_solver.delta_ac import courses_chariots
+from ..kinematics_solver.delta_ac import (accord_avec_lineardeltakins,
+                                          courses_chariots)
 from ..machine_model.machine import CAxisMode, MachineKinematics
 
 #: Module de cinematique de LinuxCNC pour une table/table XYZAC.
@@ -208,6 +209,7 @@ def build_config(
     """
     if getattr(machine, "lineaire_parallele", False):
         mini, maxi = courses_chariots(machine)
+        desaccord = accord_avec_lineardeltakins(machine.delta)
         raise RuntimeError(
             "generation refusee : cette machine est une DELTA, et "
             f"{KINEMATICS_MODULE} decrit un portique.\n"
@@ -229,7 +231,13 @@ def build_config(
             "``kinematics_solver.delta_ac`` : inverse TRT, puis formule des "
             "chariots, sans terme croise — parce que la plateforme de la delta "
             "translate sans tourner. Ce module Python en est la reference "
-            "numerique ; il ne commande rien.")
+            "numerique ; il ne commande rien.\n"
+            + (f"\nSECOND obstacle, mesure : {desaccord}.\n"
+               "Le module a ecrire devra donc exposer l'orientation des "
+               "colonnes en broche HAL, ce que le module standard ne fait pas."
+               if desaccord else
+               "\nL'orientation des colonnes, elle, est compatible avec "
+               "lineardeltakins."))
 
     to_verify: list[str] = []
     provisional: list[str] = []

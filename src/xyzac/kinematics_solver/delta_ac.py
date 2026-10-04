@@ -66,6 +66,50 @@ import numpy as np
 TOLERANCE_ALLER_RETOUR_MM = 1.0e-9
 
 
+#: Position angulaire des colonnes que ``lineardeltakins`` de LinuxCNC IMPOSE.
+#:
+#: Son en-tete le dit : « Tower 0 is at (0,R). (note: this is not at zero
+#: radians!) ». Les trois colonnes sont donc a 90, 210 et 330 degres, et le
+#: module n'expose que deux broches HAL — ``R`` et ``L``. L'orientation n'est
+#: PAS reglable.
+ANGLES_LINEARDELTAKINS = (90.0, 210.0, 330.0)
+
+#: Tolerance angulaire sous laquelle deux dispositions sont la meme.
+TOLERANCE_COLONNE_DEG = 1.0e-6
+
+
+def accord_avec_lineardeltakins(delta) -> str:
+    """Le module standard de LinuxCNC peut-il decrire ce chassis ?
+
+    **Le defaut que cette fonction rend visible, et il vaut 20 mm.** Ce projet
+    place ses colonnes a 0 / 120 / 240 degres ; ``lineardeltakins`` les place a
+    90 / 210 / 330 et n'offre aucun reglage. Sur les cotes du kit — R = 110,
+    L = 250 — les deux calculs de chariot different de **jusqu'a 20 mm**, et
+    aucun des deux ne se plaint : chacun est juste pour SA disposition.
+
+    Mesure, et non estimation : ``tools/delta_bench.c`` compile la cinematique
+    de LinuxCNC depuis sa source et l'appelle. Avec les colonnes a 90/210/330,
+    les deux s'accordent a 2,8e-14 mm.
+
+    Laquelle a raison est une question PHYSIQUE — ou sont les colonnes sur le
+    chassis — a laquelle seule la machine repond. La fiche porte desormais la
+    cote ``delta_colonne_0_deg`` pour que la reponse soit ecrite quelque part
+    plutot que supposee des deux cotes a la fois.
+
+    Rend la chaine vide quand l'accord est possible, et le motif sinon.
+    """
+    angles = tuple(float(a) % 360.0 for a in delta.angles_deg)
+    attendu = tuple(float(a) % 360.0 for a in ANGLES_LINEARDELTAKINS)
+    if all(abs(((a - b + 180.0) % 360.0) - 180.0) <= TOLERANCE_COLONNE_DEG
+           for a, b in zip(sorted(angles), sorted(attendu))):
+        return ""
+    return (f"colonnes a {', '.join(f'{a:.0f}' for a in angles)} degres ; "
+            f"lineardeltakins impose "
+            f"{', '.join(f'{a:.0f}' for a in attendu)} et n'offre aucun "
+            "reglage. L'ecart atteint 20 mm sur les cotes du kit, sans qu'aucun "
+            "controle ne s'en apercoive")
+
+
 def inverse_trt(pos, a_deg: float, c_deg: float, *,
                 x_rp: float, y_rp: float, z_rp: float,
                 dy: float, dz: float, dt: float = 0.0) -> np.ndarray:

@@ -496,13 +496,99 @@ def _executer(linuxcnc, machine, *, attente: float, tolerance: float,
     return pire
 
 
+# --------------------------------------------- etage DELTA : la moitie basse
+#
+# Les etages 1 a 3 portent sur la table A/C. Ils ne disent RIEN de la moitie
+# lineaire, qui sur ce kit est une delta — et c'est la que le desaccord le plus
+# coûteux se cachait : ce projet place ses colonnes a 0/120/240 degres,
+# ``lineardeltakins`` les place a 90/210/330 et n'offre aucun reglage. Vingt
+# millimetres d'ecart sur les cotes du kit, et aucun des deux calculs ne se
+# plaint : chacun est juste pour SA disposition.
+#
+# Cet etage compile la cinematique delta de LinuxCNC depuis sa source et
+# l'appelle, exactement comme l'etage 2 le fait pour la table.
+
+BENCH_DELTA_C = Path(__file__).resolve().parent / "delta_bench.c"
+
+#: Repertoires d'en-tetes du banc delta. ``lineardeltakins-common.h`` tient en
+#: un seul fichier et n'a besoin que de ``emcpos.h``.
+INCLUDES_DELTA = ("src/emc/kinematics", "src/libnml/posemath",
+                  "src/emc/nml_intf", "src/rtapi", "src/hal")
+
+#: Points d'epreuve. Le CENTRE est inclus et il est le piege : les trois
+#: colonnes y sont equidistantes, donc les deux conventions y repondent la meme
+#: chose. Un essai au centre seul ne revelerait rien.
+POINTS_DELTA = [(0.0, 0.0, 0.0), (10.0, 0.0, 0.0), (0.0, 10.0, 0.0),
+                (5.0, -7.0, 12.0), (-20.0, 15.0, -8.0), (30.0, 0.0, 5.0),
+                (-12.0, -22.0, 18.0), (25.0, 25.0, -15.0)]
+
+
+def _compiler_bench_delta(racine: Path, sortie: Path) -> Path:
+    sortie.mkdir(parents=True, exist_ok=True)
+    exe = sortie / "delta_bench"
+    cmd = ["gcc", "-O2", "-o", str(exe), str(BENCH_DELTA_C)]
+    for inc in INCLUDES_DELTA:
+        cmd += ["-I", str(racine / inc)]
+    cmd += ["-DULAPI", "-lm"]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError("compilation du banc delta echouee :\n"
+                           + r.stderr[-2000:])
+    return exe
+
+
+def etage_delta(machine, racine: Path, sortie: Path, *, tolerance: float) -> float:
+    """Compare ``DeltaLineaire`` a la cinematique delta COMPILEE de LinuxCNC."""
+    import dataclasses
+
+    delta = getattr(machine, "delta", None)
+    if delta is None:
+        from xyzac.machine_model.fiche import FicheMachine
+        delta = FicheMachine.du_kit().delta()
+
+    exe = _compiler_bench_delta(racine, sortie)
+    R, L = delta.ecart_rayons_mm, delta.longueur_bras_mm
+    entree = "".join(f"i {x} {y} {z}\n" for x, y, z in POINTS_DELTA)
+    r = subprocess.run([str(exe), str(R), str(L)], input=entree,
+                       capture_output=True, text=True)
+    lignes = [l for l in r.stdout.splitlines() if l.strip()]
+    if len(lignes) != len(POINTS_DELTA):
+        raise RuntimeError(f"{len(lignes)} reponses pour {len(POINTS_DELTA)} "
+                           f"points ; stderr : {r.stderr[-500:]}")
+
+    print(f"  R = {R} mm, L = {L} mm")
+    print(f"  colonnes du modele : "
+          f"{', '.join(f'{a:.0f}' for a in delta.angles_deg)} deg")
+    print(f"  colonnes de lineardeltakins : 90, 210, 330 deg (ecrites en dur)")
+
+    def ecart(d):
+        pire = 0.0
+        for (x, y, z), ligne in zip(POINTS_DELTA, lignes):
+            lu = np.array([float(v) for v in ligne.split()])
+            mien = np.asarray(d.chariots(np.array([[x, y, z]], float)))[0]
+            pire = max(pire, float(np.nanmax(np.abs(lu - mien))))
+        return pire
+
+    tel_quel = ecart(delta)
+    tourne = ecart(dataclasses.replace(delta, angles_deg=(90.0, 210.0, 330.0)))
+    print(f"  tel quel                  : ecart max = {tel_quel:.6g} mm")
+    print(f"  colonnes mises a 90/210/330 : ecart max = {tourne:.6g} mm")
+    if tel_quel > tolerance:
+        print("  >> DESACCORD : la disposition des colonnes n'est pas celle")
+        print("     de lineardeltakins. Ce n'est pas une erreur de calcul —")
+        print("     c'est une question PHYSIQUE sur le chassis, et la cote")
+        print("     ``delta_colonne_0_deg`` de la fiche est la pour y repondre.")
+    return tel_quel
+
+
 # ------------------------------------------------------------------------ main
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--etage",
-                    choices=["formule", "source", "execution", "tous"],
+                    choices=["formule", "source", "delta", "execution",
+                             "tous"],
                     default="tous")
     ap.add_argument("--linuxcnc-source", default="",
                     help="racine d'un arbre source LinuxCNC (requis pour "
@@ -547,6 +633,18 @@ def main() -> int:
                            etage_source(machine, Path(args.linuxcnc_source),
                                         Path(args.out),
                                         tolerance=args.tolerance)))
+        print()
+
+    if args.etage in ("delta", "tous"):
+        print("[D] contre la cinematique DELTA COMPILEE (lineardeltakins)")
+        if not args.linuxcnc_source:
+            print("  IGNORE : --linuxcnc-source non fourni.")
+            ecarts.append(("delta", float("nan")))
+        else:
+            ecarts.append(("delta",
+                           etage_delta(machine, Path(args.linuxcnc_source),
+                                       Path(args.out),
+                                       tolerance=args.tolerance)))
         print()
 
     if args.etage in ("execution", "tous"):

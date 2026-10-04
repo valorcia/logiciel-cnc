@@ -246,6 +246,19 @@ def parametres_du_kit() -> list[Parametre]:
            "course réelle du rail, qui est presque toujours plus courte que "
            "celle du plan une fois les fins de course posées.",
            -500.0, 1500.0),
+        _p("delta_colonne_0_deg", "Position angulaire de la première colonne",
+           0.0, "°", "structure", FAISABILITE,
+           "Se regarde, ne se calcule pas. Debout devant la machine, repérer "
+           "la colonne la plus proche de l'axe X+ (vers la droite) : son angle "
+           "vaut 0. Si une colonne est au contraire vers l'arrière (Y+), il "
+           "vaut 90. Les deux autres suivent à 120° et 240°.",
+           -180.0, 180.0,
+           "Cote CRITIQUE par sa conséquence et invisible à l'écran : une "
+           "erreur de 90° fait calculer des positions de chariot fausses de "
+           "20 mm sans qu'aucun contrôle ne s'en aperçoive. Le module "
+           "lineardeltakins de LinuxCNC impose 90° et n'offre aucun réglage — "
+           "voir l'ADR-025.",
+           decimales=0),
         _p("delta_chariot_vitesse_max_mm_min", "Vitesse maximale d'un chariot",
            4000.0, "mm/min", "structure", TEMPS,
            "Augmenter la vitesse en manuel jusqu'à perdre des pas ou entendre "
@@ -790,6 +803,8 @@ class FicheMachine:
             chariot_max_mm=self.valeur("delta_chariot_max_mm"),
             chariot_max_feed_mm_min=self.valeur(
                 "delta_chariot_vitesse_max_mm_min"),
+            angles_deg=tuple((self.valeur("delta_colonne_0_deg") + 120.0 * i)
+                             % 360.0 for i in range(3)),
             source=("cotes mesurées sur la machine" if not crit else
                     f"cotes PROVISOIRES : {len(crit)} cote(s) critiques pas "
                     f"encore mesurées"))

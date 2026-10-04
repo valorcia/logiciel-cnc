@@ -710,7 +710,7 @@ Un écran à part, **hors du fil des cinq étapes**, et atteignable sans avoir
 chargé la moindre pièce : le jour du montage on relève des cotes, on n'usine
 rien.
 
-Il porte les **50 cotes** de la machine, rangées en sept groupes repliés — la
+Il porte les **52 cotes** de la machine, rangées en sept groupes repliés — la
 structure delta, les axes A et C, le plateau et le berceau, la broche et le
 porte-outil, les courses utiles, les jeux et la précision, les organes de
 sécurité. Chacune affiche quatre choses :
@@ -742,6 +742,13 @@ pièce, deux moteurs qui dépassent latéralement — et non la paroi pleine que
 logiciel plaçait derrière la pièce. On demande donc maintenant la longueur d'une
 joue, sa hauteur au-dessus du plateau, et les deux cotes d'un moteur. Voir
 l'ADR-019 pour ce que cela change aux verdicts.
+
+**Une cote se regarde plutôt qu'elle ne se mesure, et elle coûte 20 mm.**
+`Position angulaire de la première colonne` : debout devant la machine, la
+colonne la plus proche de la droite est-elle à 0° ou à 90° ? Une erreur ne fait
+échouer aucun démarrage, ne se voit pas au centre du plateau — les trois
+colonnes y sont équidistantes — et fausse les positions de chariot de deux
+centimètres dès qu'on s'éloigne. Voir l'ADR-025.
 
 La fiche est **enregistrée à chaque saisie**, dans un `machine.json` lisible au
 Bloc-notes à côté du logiciel. Pas de bouton « enregistrer » : une cote relevée
