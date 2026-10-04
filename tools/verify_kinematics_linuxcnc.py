@@ -187,8 +187,18 @@ BENCH_C = Path(__file__).resolve().parent / "kins_bench.c"
 #: de l'arbre source.
 SOURCES_LINUXCNC = ("src/emc/kinematics/trtfuncs.c",
                     "src/emc/kinematics/kins_util.c")
+#: ``include`` et ``src`` ne contiennent les en-tetes qu'apres un BUILD de
+#: LinuxCNC, qui les y depose en liens. Un clone nu ne les a pas, et l'etage 2
+#: echouait alors sur ``motion.h``, ``emcpose.h``, ``posemath.h``,
+#: ``tp_types.h`` — c'est-a-dire que la verification la plus importante du lot
+#: ne pouvait se faire que la ou elle etait DEJA faite.
+#:
+#: Les repertoires REELS sont donc listes, et l'etage tourne desormais contre un
+#: simple ``git clone --branch 2.9``. Les deux derniers sont gardes : sur un
+#: arbre construit ils suffisent, et les laisser ne coûte rien.
 INCLUDES_LINUXCNC = ("src/emc/kinematics", "src/emc/nml_intf", "src/hal",
-                     "src/rtapi", "include", "src")
+                     "src/rtapi", "src/emc/motion", "src/emc/tp",
+                     "src/libnml/posemath", "include", "src")
 
 
 def _compiler_bench(racine: Path, sortie: Path) -> Path:

@@ -28,8 +28,12 @@ Ce que cela implique sur le degre de confiance, section par section :
   - structure INI, courses, vitesses, acceleration : reprises du modele, et
     leur forme est stable depuis des annees dans LinuxCNC ;
   - module de cinematique : LinuxCNC fournit ``xyzac-trt-kins``, qui est
-    exactement la cinematique de cette machine — table/table avec berceau A et
-    plateau C. C'est une chance, et cela evite d'ecrire un module C ;
+    exactement la cinematique d'une table/table XYZAC **a portique** — berceau
+    A et plateau C sous trois axes cartesiens. C'est une chance pour une telle
+    machine, et cela evite d'ecrire un module C.
+
+    **Ce n'est PAS la cinematique de ce kit, qui est une delta.** Voir le refus
+    ci-dessous ;
   - **noms des broches HAL du module de cinematique** : je ne les garantis pas.
     Ils varient selon la version de LinuxCNC. Le fichier HAL les ecrit donc
     dans un bloc isole, precede de la commande qui permet de les verifier, et
@@ -49,6 +53,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..kinematics_solver.delta_ac import courses_chariots
 from ..machine_model.machine import CAxisMode, MachineKinematics
 
 #: Module de cinematique de LinuxCNC pour une table/table XYZAC.
@@ -201,6 +206,31 @@ def build_config(
     configuration est alors marquee provisoire, parce que sur une cinematique
     table/table une erreur de pivot se propage directement a la piece.
     """
+    if getattr(machine, "lineaire_parallele", False):
+        mini, maxi = courses_chariots(machine)
+        raise RuntimeError(
+            "generation refusee : cette machine est une DELTA, et "
+            f"{KINEMATICS_MODULE} decrit un portique.\n"
+            "\n"
+            "Ce module de LinuxCNC pose que les articulations 0, 1 et 2 SONT "
+            "X, Y et Z. Sur une delta ce sont les trois CHARIOTS : leur course "
+            f"est celle des colonnes — {mini:.0f} a {maxi:.0f} mm, les trois "
+            "identiques — et non les demi-courses cartesiennes, qui decrivent "
+            "un volume atteignable qui n'est meme pas un pave.\n"
+            "\n"
+            "Le fichier produit demarrerait, prendrait son origine, et "
+            "commanderait les chariots comme s'ils etaient des axes "
+            "cartesiens : chaque deplacement serait geometriquement faux, sans "
+            "qu'aucune erreur ne soit signalee. C'est le pire mode d'echec de "
+            "tout ce projet, et c'est pourquoi rien n'est ecrit.\n"
+            "\n"
+            "Ce qui manque est un module de cinematique qui compose les deux. "
+            "La composition est etablie et verifiee dans "
+            "``kinematics_solver.delta_ac`` : inverse TRT, puis formule des "
+            "chariots, sans terme croise — parce que la plateforme de la delta "
+            "translate sans tourner. Ce module Python en est la reference "
+            "numerique ; il ne commande rien.")
+
     to_verify: list[str] = []
     provisional: list[str] = []
 
