@@ -969,6 +969,13 @@ ou prendre un porte-outil plus élancé*).
    **transport**. Elles ne sont pas pondérées : les comparer exigerait un taux
    de change qu'on n'a pas. Voir l'ADR-022.
 
+**Et si le découpage ne laisse aucune place à l'outil choisi, le logiciel
+descend d'un cran et le dit.** Une fraise peut entrer dans une poche sans que le
+découpage y trouve la moindre position : il garde une marge entre l'outil et la
+pièce, et sur une poche à peine plus large que l'outil il ne reste rien. La
+phrase devient alors « la Ø 10 mm y entre, mais le découpage ne lui laisse
+aucune position » — et c'est la Ø 6 qui travaille. Voir l'ADR-023.
+
 Sans état de matière, la gamme **refuse d'être construite** : poster un
 programme dont une des quatre vérifications n'a pas eu lieu reviendrait à la
 présenter comme faite.

@@ -1733,7 +1733,7 @@ class Session:
         from ...stock_engine.stock import stock_from_part
         from ...strategy_planner.creux import (decider_creux,
                                                directions_candidates,
-                                               parcours_creux,
+                                               parcours_du_creux,
                                                vues_par_direction)
         from ...tool_model import build_endmill
 
@@ -1786,8 +1786,13 @@ class Session:
                                echantillon=ECHANTILLON_CREUX)
             par = None
             if vc.usinable:
-                _, outil_creux = fabrique(vc.rayon_mm)
-                par = parcours_creux(v, vc, matiere, outil_creux, banc.machine)
+                # ``parcours_du_creux`` et non ``parcours_creux`` : si le
+                # decoupage ne laisse aucune position au premier outil, il
+                # descend d'un cran et REND le verdict corrige. Annoncer un
+                # outil puis en montrer un autre serait pire que les deux.
+                vc, par = parcours_du_creux(
+                    v, vc, matiere, banc.machine,
+                    fabrique_outil=lambda r: fabrique(r)[1])
                 parcours.append(par)
             else:
                 parcours.append(None)

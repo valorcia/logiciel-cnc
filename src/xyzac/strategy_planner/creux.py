@@ -75,7 +75,7 @@ ne fait que durcir le verdict.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -215,6 +215,16 @@ class VerdictCreux:
     n_en_coupe: int = 0
     #: Rayon de l'outil de reprise, ou ``None`` si l'ebauche suffit.
     reprise_mm: float | None = None
+    #: Rayon du premier outil choisi, quand il a fallu DESCENDRE d'un cran.
+    #:
+    #: Un outil peut entrer dans un creux et n'y recevoir aucune position du
+    #: decoupage : celui-ci garde une marge entre l'outil et la piece, et sur
+    #: une poche a peine plus large que l'outil il ne reste rien. Le choix se
+    #: faisait a l'etape 2, sans connaitre l'orientation, donc sans pouvoir
+    #: poser la question ; il se corrige a l'etape 4, qui la connait.
+    #:
+    #: ``None`` quand le premier outil a suffi — le cas courant.
+    repli_de_mm: float | None = None
     motif: str = ""
 
     @property
@@ -256,6 +266,11 @@ class VerdictCreux:
                   f"A = {self.a_deg:.0f}°, C = {self.c_deg:.0f}°"
                   + (f", dégagement {self.degagement_mm:.1f} mm."
                      if self.degagement_mm is not None else "."))
+        if self.repli_de_mm is not None:
+            phrase += (f" La Ø {_diam(self.repli_de_mm)} mm y entre, mais le "
+                       f"découpage ne lui laisse aucune position : il garde "
+                       f"une marge entre l'outil et la pièce, et ce creux ne "
+                       f"l'offre pas à ce rayon-là.")
         if self.reprise_mm is not None:
             phrase += (f" Reprise à Ø {_diam(self.reprise_mm)} mm pour les "
                        f"{(1 - self.fraction) * 100:.0f} % qu'elle laisse.")
@@ -958,6 +973,87 @@ def parcours_creux(volume, verdict: VerdictCreux, material, outil, machine, *,
                                                else gain.n_abaissees),
                          marge_tranchage_mm=marge_de_tranchage(
                              float(material.grid.pitch)))
+
+
+def parcours_du_creux(volume, verdict: VerdictCreux, material, machine, *,
+                      fabrique_outil, **kw):
+    """Le parcours du creux, en DESCENDANT d'outil si le decoupage le faut.
+
+    Le defaut que cette fonction corrige
+    ------------------------------------
+
+    Deux criteres repondaient a « cet outil entre-t-il », et celui qui
+    DECIDAIT n'etait pas celui qui TRANCHAIT.
+
+      - ``outil_d_ebauche`` (etape 2) retient le plus gros qui entre et atteint
+        le fond : une boule de rayon r qui circule dans l'espace libre ;
+      - le decoupage (etape 4) exige en plus une MARGE entre l'outil et la
+        piece — ``marge_de_tranchage``, 1,87 mm au pas de 1 mm — sans quoi il
+        proposerait des positions que le controle de gouge refuserait ensuite.
+
+    Sur une poche de 12 mm, une Ø 10 entre sans peine et le decoupage ne lui
+    laisse AUCUNE position : le logiciel annoncait un outil, puis rendait un
+    parcours vide. Le message etait exact — il nommait la marge et donnait le
+    levier — mais le logiciel aurait pu prendre la Ø 6 lui-meme.
+
+    Pourquoi ici et pas a l'etape 2
+    --------------------------------
+
+    Parce que la marge est LATERALE, donc mesuree dans le plan de tranchage,
+    donc dependante de l'orientation — qui n'est decidee qu'a l'etape 3.
+
+    Le critere direction-independant a ete essaye et MESURE : exiger
+    ``r + marge <= rayon_au_fond_mm``. Il ecarte bien la Ø 10 des poches de
+    12 mm, mais il ecarte AUSSI la Ø 6 des poches de 9 mm de profondeur, qui
+    la recoivent tres bien — parce que ``rayon_au_fond_mm`` est une boule
+    inscrite en 3D, et qu'une poche peu profonde a une petite boule inscrite
+    et beaucoup de place laterale. Un critere qui refuse des outils qui
+    marchent n'est pas prudent, il est faux.
+
+    On pose donc la question a celui qui sait y repondre : le decoupage
+    lui-meme, une fois la direction connue. Essayer coûte un tranchage par
+    outil ecarte, et seulement pour les creux ou le premier choix echoue.
+
+    Pourquoi l'orientation reste valable
+    -------------------------------------
+
+    Un outil plus fin de la meme famille est CONTENU dans le plus gros :
+    meme porte-outil, meme jauge, arete et tige de rayon plus petit. Toute
+    pose degagee pour le gros l'est donc pour le fin, et la verification
+    d'orientation de l'etape 3 n'a pas a etre refaite. Un test l'exige
+    tronçon par tronçon plutot que de le supposer.
+
+    Rend ``(verdict, parcours)`` : le verdict est RECONSTRUIT quand l'outil a
+    change, sinon l'ecran annoncerait un outil et en montrerait un autre.
+    """
+    outil = fabrique_outil(verdict.rayon_mm)
+    parcours = parcours_creux(volume, verdict, material, outil, machine, **kw)
+    if len(parcours.points) or not verdict.usinable or verdict.rayon_mm is None:
+        return verdict, parcours
+
+    # Les outils plus fins qui entrent, du plus gros au plus petit. On ne
+    # descend que d'un cran a la fois : le premier qui donne un parcours est
+    # le plus gros qui marche, et c'est celui qu'un usineur prendrait.
+    plus_fins = sorted((o for o in volume.par_outil
+                        if o.entre and o.rayon_mm < verdict.rayon_mm),
+                       key=lambda o: -o.rayon_mm)
+    for o in plus_fins:
+        # La REPRISE se recalcule sur le nouvel outil d'ebauche, avec la meme
+        # regle qu'a l'etape 2 : le plus gros, strictement plus fin, qui en
+        # prend davantage. La garder telle quelle produirait « on ebauche a la
+        # Ø 6, reprise a Ø 6 » — une phrase qui se contredit dans sa propre
+        # ligne.
+        fins = [x for x in volume.par_outil
+                if x.entre and x.rayon_mm < o.rayon_mm and x.fraction > o.fraction]
+        essai = replace(verdict, rayon_mm=o.rayon_mm, fraction=o.fraction,
+                        reprise_mm=(max(fins, key=lambda x: x.rayon_mm).rayon_mm
+                                    if fins else None),
+                        repli_de_mm=float(verdict.rayon_mm))
+        p2 = parcours_creux(volume, essai, material,
+                            fabrique_outil(o.rayon_mm), machine, **kw)
+        if len(p2.points):
+            return essai, p2
+    return verdict, parcours
 
 
 def _rayon_fond(volume) -> float:

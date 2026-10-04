@@ -89,6 +89,12 @@ lui (0,7 mm à 0,25 mm de pas). La marge n'a pas été desserrée : la desserrer
 ferait diverger le trancheur et le contrôle de gouge, ce que le projet a déjà
 payé une fois.
 
+> **Depuis l'ADR-023, ce refus n'en est plus un.** Le logiciel prend le premier
+> levier lui-même : quand le découpage ne laisse aucune position à l'outil
+> retenu, il descend d'un cran. Les quatre trous de C09 reçoivent une Ø 3 et
+> environ 390 points chacun. Le message ci-dessous ne sert donc plus qu'au cas
+> où **aucun** outil de la gamme ne passe.
+
 `marge_de_tranchage` **reproduit** un calcul écrit dans `slice_for_direction`,
 qui ne le rend pas. Un test compare les deux, pour que le jour où l'un bouge,
 l'autre ne mente pas en silence.
@@ -106,7 +112,7 @@ en amont (orientation, flanc). Calcul : **0,1 à 0,9 s par creux**.
 | C10 dôme | 58×58×15 | Ø 10 | 3 122 | 9 | 32 % | 67 % (82 %) |
 | C11 cavité sphérique | 40×40×20 | Ø 10 | 1 039 | 11 | 63 % | 77 % (92 %) |
 | C15 révolution hors axe | 66×36×11 | Ø 10 | 1 929 | 16 | 32 % | 57 % (87 %) |
-| C09 quatre trous | 15×10×10 | Ø 6 | **0** | 0 | — | marge de tranchage |
+| C09 quatre trous | 15×10×10 | Ø 6 | **0** | 0 | — | marge de tranchage *(Ø 3 et 391 points depuis l'ADR-023)* |
 | C13 gorge torique | 36×36×10 | Ø 10 | 102 | 4 | 27 % | 2 % (50 %) |
 | C17 face quasi horizontale | 50×52×2 | Ø 10 | 25 | 1 | 100 % | 14 % (54 %) |
 
