@@ -581,14 +581,127 @@ def etage_delta(machine, racine: Path, sortie: Path, *, tolerance: float) -> flo
     return tel_quel
 
 
+# -------------------------------------- etage MODULE : notre cinematique en C
+#
+# Les etages precedents comparent le modele Python a LinuxCNC. Celui-ci porte
+# sur le module C que ce projet ECRIT — ``linuxcnc/deltaac-kins.c`` — et il
+# repond a trois questions distinctes :
+#
+#   [A] fait-il le meme calcul que la reference Python ``delta_ac`` ?
+#   [B] son direct est-il l'exact retour de son inverse ?
+#   [C] son etage delta est-il celui de LinuxCNC, quand on se place dans la
+#       disposition de colonnes que LinuxCNC impose ?
+#
+# [C] est le plus important des trois : c'est le seul qui compare notre code a
+# du code que nous n'avons pas ecrit.
+
+BENCH_DELTAAC_C = Path(__file__).resolve().parent / "deltaac_bench.c"
+MODULE_DELTAAC = Path(__file__).resolve().parents[1] / "linuxcnc"
+
+POSES_MODULE = 80
+
+
+def _compiler_bench_deltaac(racine: Path, sortie: Path) -> Path:
+    sortie.mkdir(parents=True, exist_ok=True)
+    exe = sortie / "deltaac_bench"
+    cmd = ["gcc", "-O2", "-o", str(exe), str(BENCH_DELTAAC_C),
+           "-I", str(MODULE_DELTAAC)]
+    for inc in ("src/emc/kinematics", "src/libnml/posemath", "src/emc/nml_intf",
+                "src/rtapi", "src/hal", "src/emc/motion", "src/emc/tp"):
+        cmd += ["-I", str(racine / inc)]
+    cmd += ["-DULAPI", "-lm"]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError("compilation du banc deltaac echouee :\n"
+                           + r.stderr[-2000:])
+    return exe
+
+
+def etage_module(racine: Path, sortie: Path, *, tolerance: float) -> float:
+    from xyzac.kinematics_solver.delta_ac import correspondance_hal, inverse
+    from xyzac.machine_model.fiche import FicheMachine
+
+    exe = _compiler_bench_deltaac(racine, sortie)
+    fiche = FicheMachine.du_kit()
+    m = fiche.machine()
+    d = m.delta
+    hal = correspondance_hal(m)
+    args = [str(exe), *(str(hal[k]) for k in ("x_rp", "y_rp", "z_rp", "dy", "dz")),
+            str(d.ecart_rayons_mm), str(d.longueur_bras_mm),
+            str(d.angles_deg[0])]
+
+    noms = subprocess.run([str(exe), "--pins"], capture_output=True,
+                          text=True).stdout.split()
+    print(f"  broches publiees par deltaac-kins : {len(noms)}")
+    for n in noms:
+        print(f"    {n}")
+
+    rng = np.random.default_rng(7)
+    brut = rng.uniform([-40, -40, -15, -110, -180], [40, 40, 15, 25, 180],
+                       size=(POSES_MODULE, 5))
+    poses = [((float(a), float(b), float(c)), float(e), float(g))
+             for a, b, c, e, g in brut]
+
+    ent = "".join(f"i {p[0]} {p[1]} {p[2]} {a} {c}\n" for p, a, c in poses)
+    inv = subprocess.run(args, input=ent, capture_output=True,
+                         text=True).stdout.splitlines()
+
+    pire_a, bons = 0.0, []
+    for (p, a, c), ligne in zip(poses, inv):
+        lu = np.array([float(v) for v in ligne.split()])
+        mien = np.asarray(inverse(m, p, a, c).q, float)
+        if not np.all(np.isfinite(lu)):
+            if np.all(np.isfinite(mien)):
+                raise RuntimeError(f"le C refuse et le Python accepte en {p}")
+            continue
+        if not np.all(np.isfinite(mien)):
+            raise RuntimeError(f"le C accepte et le Python refuse en {p}")
+        pire_a = max(pire_a, float(np.max(np.abs(lu - mien))))
+        bons.append(((p, a, c), lu))
+    print(f"  [A] contre la reference Python : {len(bons)}/{len(poses)} poses, "
+          f"ecart max {pire_a:.3e} mm")
+
+    ent_f = "".join(f"f {q[0]} {q[1]} {q[2]} {a} {c}\n" for (p, a, c), q in bons)
+    fwd = subprocess.run(args, input=ent_f, capture_output=True,
+                         text=True).stdout.splitlines()
+    pire_b = 0.0
+    for ((p, a, c), _), lf in zip(bons, fwd):
+        got = np.array([float(v) for v in lf.split()])
+        pire_b = max(pire_b, float(np.linalg.norm(got - np.array(p))))
+    print(f"  [B] aller-retour dans le module : ecart max {pire_b:.3e} mm")
+
+    # [C] meme disposition de colonnes que lineardeltakins, A = C = 0 : notre
+    # etage delta doit alors etre MOT POUR MOT celui de LinuxCNC.
+    args90 = list(args)
+    args90[-1] = "90"
+    pts = POINTS_DELTA
+    e1 = "".join(f"i {x} {y} {z} 0 0\n" for x, y, z in pts)
+    e2 = "".join(f"d {x} {y} {z}\n" for x, y, z in pts)
+    r1 = subprocess.run(args90, input=e1, capture_output=True,
+                        text=True).stdout.splitlines()
+    r2 = subprocess.run(args90, input=e2, capture_output=True,
+                        text=True).stdout.splitlines()
+    pire_c = 0.0
+    for l1, l2 in zip(r1, r2):
+        a1 = np.array([float(v) for v in l1.split()])
+        a2 = np.array([float(v) for v in l2.split()])
+        if not (np.all(np.isfinite(a1)) and np.all(np.isfinite(a2))):
+            continue
+        pire_c = max(pire_c, float(np.max(np.abs(a1 - a2))))
+    print(f"  [C] notre delta contre celle de LinuxCNC : ecart max "
+          f"{pire_c:.3e} mm")
+
+    return max(pire_a, pire_b, pire_c)
+
+
 # ------------------------------------------------------------------------ main
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--etage",
-                    choices=["formule", "source", "delta", "execution",
-                             "tous"],
+                    choices=["formule", "source", "delta", "module",
+                             "execution", "tous"],
                     default="tous")
     ap.add_argument("--linuxcnc-source", default="",
                     help="racine d'un arbre source LinuxCNC (requis pour "
@@ -645,6 +758,18 @@ def main() -> int:
                            etage_delta(machine, Path(args.linuxcnc_source),
                                        Path(args.out),
                                        tolerance=args.tolerance)))
+        print()
+
+    if args.etage in ("module", "tous"):
+        print("[M] notre module C deltaac-kins, compile et appele")
+        if not args.linuxcnc_source:
+            print("  IGNORE : --linuxcnc-source non fourni.")
+            ecarts.append(("module", float("nan")))
+        else:
+            ecarts.append(("module",
+                           etage_module(Path(args.linuxcnc_source),
+                                        Path(args.out),
+                                        tolerance=args.tolerance)))
         print()
 
     if args.etage in ("execution", "tous"):

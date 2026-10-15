@@ -366,3 +366,26 @@ machine qu'on ne peut pas démarrer ne produit rien.**
 - le **HAL matériel** : celui produit est de simulation, articulations bouclées
   sur elles-mêmes, aucun pilote de moteur ;
 - **±0,02 mm**, qui reste un objectif de qualification physique.
+
+
+## 5. Reconstruction de 2026 : trois écarts avec la procédure ci-dessus
+
+La procédure a été rejouée pour éprouver `deltaac-kins`. Elle fonctionne, à
+trois détails près que le conteneur de l'époque masquait :
+
+1. `apt-get update` est **nécessaire** avant l'installation : l'index est
+   périmé et `tclx`, `tk8.6-dev`, `yapps2` sont alors introuvables. Sur
+   Ubuntu 24.04 ce sont `tcl-dev`, `tk-dev` et `python3-yapps` ;
+2. `python3-yapps` fournit le **module** mais pas l'exécutable `yapps2` que le
+   `configure` cherche par son nom. Une enveloppe de trois lignes suffit :
+   `exec python3 -c "from yapps.cli_tool import main; main()" "$@"` ;
+3. `--disable-gtk2` est requis : `libgtk2.0-dev` n'existe plus, et il ne sert
+   qu'à `classicladder`.
+
+`make -k` finit en erreur sur les **pages de manuel** uniquement (asciidoc
+absent) ; `halcompile`, `halcmd`, `rtapi_app` et toute la `rtlib` sont bâtis.
+
+Pour charger un module hors arbre, les chemins doivent être traversables par
+l'UID de repli : `rtapi_app` refuse de tourner en root, et un
+« cannot open shared object file: Permission denied » sur `hal_lib.so` désigne
+un répertoire parent sans `+x` pour cet UID, pas un module mal formé.

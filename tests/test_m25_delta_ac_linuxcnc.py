@@ -56,7 +56,7 @@ def test_a_delta_machine_is_refused_a_gantry_configuration():
     mini, maxi = courses_chariots(m)
     assert f"{mini:.0f} a {maxi:.0f}" in motif
     # et il dit où est la réponse, au lieu de laisser sans suite
-    assert "delta_ac" in motif
+    assert "deltaac-kins.c" in motif, "le refus doit dire où est le module"
 
 
 def test_a_gantry_machine_is_still_configured():
@@ -259,7 +259,7 @@ def test_the_refusal_names_the_column_disagreement_too():
     motif = str(e.value)
     assert "SECOND obstacle" in motif
     assert "20 mm" in motif
-    assert "broche HAL" in motif
+    assert "column-0-deg" in motif
 
 
 def test_a_ninety_degree_error_on_the_columns_costs_centimetres():
