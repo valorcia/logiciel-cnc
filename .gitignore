@@ -16,3 +16,8 @@ demarrage.log
 # a partir du meme kit n'ont pas les memes cotes. La versionner imposerait
 # celles d'une machine a tout le monde.
 machine.json
+
+# Projet SÉPARÉ : la campagne Kickstarter de Milie. Dépôt propre, histoire
+# propre — le logiciel et sa commercialisation n'ont pas le même public, ni le
+# même rythme, ni les mêmes relecteurs.
+milie-kickstarter/
