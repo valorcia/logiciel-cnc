@@ -23,7 +23,7 @@ CREATE TYPE "ChallengeStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
 CREATE TYPE "ChallengeCategory" AS ENUM ('ART_DESIGN', 'ENGINEERING', 'ROBOTICS', 'AUTOMOTIVE', 'AEROSPACE', 'JEWELRY', 'EDUCATION', 'OTHER');
 
 -- CreateEnum
-CREATE TYPE "ArticleCategory" AS ENUM ('CNC_TECHNOLOGY', 'FIVE_AXIS_MACHINING', 'MAKER_PROJECTS', 'ENGINEERING', 'MILI_NEWS');
+CREATE TYPE "ArticleCategory" AS ENUM ('CNC_TECHNOLOGY', 'FIVE_AXIS_MACHINING', 'MAKER_PROJECTS', 'ENGINEERING', 'MILLI_NEWS');
 
 -- CreateEnum
 CREATE TYPE "MediaVisibility" AS ENUM ('PUBLIC', 'REVEAL_ONLY');
@@ -283,7 +283,7 @@ CREATE TABLE "Article" (
     "body" TEXT NOT NULL,
     "category" "ArticleCategory" NOT NULL,
     "coverId" TEXT,
-    "authorName" TEXT NOT NULL DEFAULT 'MILI Team',
+    "authorName" TEXT NOT NULL DEFAULT 'MILLI Team',
     "seoTitle" TEXT,
     "seoDescription" TEXT,
     "status" "PublishStatus" NOT NULL DEFAULT 'DRAFT',

@@ -22,7 +22,7 @@ export default async function InsiderPage({ params }: Props) {
   const e = await getTranslations({ locale, namespace: "errors" });
   const sub = await subscriberFromToken(token);
 
-  if (!sub) return <StatusPage title={t("title")}><p>{t("invalid")}</p><Link href="/#join" className="btn btn-primary mt-9">MILI</Link></StatusPage>;
+  if (!sub) return <StatusPage title={t("title")}><p>{t("invalid")}</p><Link href="/#join" className="btn btn-primary mt-9">MILLI</Link></StatusPage>;
   if (sub.status === "PENDING") return <StatusPage title={t("pendingTitle")}><p>{t("pendingText")}</p></StatusPage>;
 
   const [stats, rewards, settings] = await Promise.all([

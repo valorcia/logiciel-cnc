@@ -99,7 +99,7 @@ export async function saveProofAction(fd: FormData) {
     const existing = id ? await db.proofVideo.findUnique({ where: { id } }) : null;
     const url = videoUrl(fd, true)!;
     const status = publishStatus(fd, null);
-    // Only a Super Admin can certify that the footage shows the MILI prototype and that what it claims is true.
+    // Only a Super Admin can certify that the footage shows the MILLI prototype and that what it claims is true.
     const mayValidate = can(admin.role, "proof.validate");
     const wantsValidated = mayValidate ? bool(fd, "validated") : (existing?.validated ?? false);
     // Changing the footage voids an earlier validation.
@@ -185,7 +185,7 @@ export async function deleteFaqAction(fd: FormData) {
 
 /* ───────────── Journal ───────────── */
 
-const ARTICLE: ArticleCategory[] = ["CNC_TECHNOLOGY", "FIVE_AXIS_MACHINING", "MAKER_PROJECTS", "ENGINEERING", "MILI_NEWS"];
+const ARTICLE: ArticleCategory[] = ["CNC_TECHNOLOGY", "FIVE_AXIS_MACHINING", "MAKER_PROJECTS", "ENGINEERING", "MILLI_NEWS"];
 const slugify = (text: string) => text.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
 
 export async function saveArticleAction(fd: FormData) {
@@ -203,7 +203,7 @@ export async function saveArticleAction(fd: FormData) {
     if (status !== "DRAFT" && (!body || !str(fd, "excerpt"))) throw new FormError("Un article publié ou programmé a besoin d'un résumé et d'un contenu.");
     const data = {
       locale, slug, title, excerpt: str(fd, "excerpt").slice(0, 300), body, category, coverId: optional(fd, "coverId"),
-      authorName: str(fd, "authorName") || "MILI Team", seoTitle: optional(fd, "seoTitle"), seoDescription: optional(fd, "seoDescription"), status, publishAt,
+      authorName: str(fd, "authorName") || "MILLI Team", seoTitle: optional(fd, "seoTitle"), seoDescription: optional(fd, "seoDescription"), status, publishAt,
     };
     try {
       const saved = id ? await db.article.update({ where: { id }, data }) : await db.article.create({ data });

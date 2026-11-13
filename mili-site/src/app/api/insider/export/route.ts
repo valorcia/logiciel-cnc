@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   return new Response(JSON.stringify(data, null, 2), {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      "Content-Disposition": `attachment; filename="mili-data-${sub.publicId}.json"`,
+      "Content-Disposition": `attachment; filename="milli-data-${sub.publicId}.json"`,
       "Cache-Control": "private, no-store",
       "X-Robots-Tag": "noindex",
     },

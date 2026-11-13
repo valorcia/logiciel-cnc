@@ -7,7 +7,7 @@ import { VideoPlayer } from "./video-player";
 type Item = PublicClue & { label: string; lockLabel: string };
 type Props = { items: Item[]; labels: { locked: string; fresh: string; watch: string } };
 
-const KEY = "mili_clues_seen";
+const KEY = "milli_clues_seen";
 
 /** A clue the visitor has not seen yet plays its unlock animation once. */
 export function ClueGrid({ items, labels }: Props) {

@@ -34,7 +34,7 @@ export default async function ProductAdminPage({ searchParams }: { searchParams:
     <>
       <PageTitle
         title="Fiche produit"
-        text={`Tout ce qui est saisi ici est confidentiel : la page /mili n'existe pas pour les visiteurs (erreur 404) et rien de ce contenu ne leur est transmis tant que le site est en mode Mystery. Mode actuel : ${settings.mode === "REVEAL" ? "Reveal — les changements sont publics immédiatement" : "Mystery"}.`}
+        text={`Tout ce qui est saisi ici est confidentiel : la page /milli n'existe pas pour les visiteurs (erreur 404) et rien de ce contenu ne leur est transmis tant que le site est en mode Mystery. Mode actuel : ${settings.mode === "REVEAL" ? "Reveal — les changements sont publics immédiatement" : "Mystery"}.`}
         actions={<Link href="/admin/reveal/preview" className="adm-btn adm-btn-ghost">Prévisualiser la page</Link>}
       />
       <Flash params={await searchParams} />

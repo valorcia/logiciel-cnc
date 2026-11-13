@@ -26,7 +26,7 @@ export async function RevealHome({ locale, settings }: { locale: string; setting
           ) : (
             <span className="btn btn-ghost w-full sm:w-auto" aria-disabled="true">{t("ctaSoon")}</span>
           )}
-          <Link href="/mili" className="btn btn-ghost w-full sm:w-auto">{t("discover")}</Link>
+          <Link href="/milli" className="btn btn-ghost w-full sm:w-auto">{t("discover")}</Link>
         </div>
         {upcoming && (
           <div className="mt-14 flex justify-center"><Countdown target={settings.launchAt!.toISOString()} /></div>
@@ -37,7 +37,7 @@ export async function RevealHome({ locale, settings }: { locale: string; setting
           </div>
         ) : content.heroImageId ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={`/media/${content.heroImageId}`} alt="MILI" fetchPriority="high" className="mx-auto mt-16 aspect-[16/9] w-full max-w-6xl rounded-2xl border border-line object-cover" />
+          <img src={`/media/${content.heroImageId}`} alt="MILLI" fetchPriority="high" className="mx-auto mt-16 aspect-[16/9] w-full max-w-6xl rounded-2xl border border-line object-cover" />
         ) : null}
       </div>
     </section>

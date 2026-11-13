@@ -11,14 +11,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const settings = await getSettings();
   const now = new Date();
   // The product page only exists — and is only announced — once revealed.
-  const paths = ["/", "/challenge", "/journal", "/contact", "/privacy", "/terms", "/cookies", ...(settings.mode === "REVEAL" ? ["/mili"] : [])];
+  const paths = ["/", "/challenge", "/journal", "/contact", "/privacy", "/terms", "/cookies", ...(settings.mode === "REVEAL" ? ["/milli"] : [])];
 
   const entries: MetadataRoute.Sitemap = paths.flatMap((path) =>
     locales.map((locale) => ({
       url: `${base}${localePath(locale, path)}`,
       lastModified: now,
       changeFrequency: path === "/" ? ("daily" as const) : ("weekly" as const),
-      priority: path === "/" ? 1 : path === "/mili" ? 0.9 : 0.5,
+      priority: path === "/" ? 1 : path === "/milli" ? 0.9 : 0.5,
       alternates: { languages: Object.fromEntries(locales.map((l) => [localeTags[l], `${base}${localePath(l, path)}`])) },
     })),
   );

@@ -12,7 +12,7 @@ export default async function PrivacyPage({ params }: Props) {
   const id = await legalIdentity();
   return (
     <LegalPage locale={locale} titleKey="privacyTitle">
-      <p>This policy explains what personal data the MILI website collects, why, for how long, and what you can do about it. It applies to this website only.</p>
+      <p>This policy explains what personal data the MILLI website collects, why, for how long, and what you can do about it. It applies to this website only.</p>
 
       <h2>1. Who is responsible</h2>
       <p>The data controller is:</p>
@@ -26,7 +26,7 @@ export default async function PrivacyPage({ params }: Props) {
         <li>Technical context of the registration: date and time, browser type, and a one-way cryptographic fingerprint of your IP address. We do not store the IP address itself.</li>
         <li>A record of your consent: the exact wording you accepted, when, and when you confirmed or withdrew it.</li>
       </ul>
-      <p>We use this to send you the e-mails you asked for about MILI and its launch, to run the referral programme, to prevent abuse, and to measure which channels bring visitors. The legal basis is your consent for e-mails (GDPR art. 6(1)(a)) and our legitimate interest in securing the service and understanding our audience (art. 6(1)(f)).</p>
+      <p>We use this to send you the e-mails you asked for about MILLI and its launch, to run the referral programme, to prevent abuse, and to measure which channels bring visitors. The legal basis is your consent for e-mails (GDPR art. 6(1)(a)) and our legitimate interest in securing the service and understanding our audience (art. 6(1)(f)).</p>
       <p>Registration uses double opt-in: you receive nothing but a single confirmation e-mail until you click the link in it.</p>
 
       <h3>When you submit a challenge</h3>

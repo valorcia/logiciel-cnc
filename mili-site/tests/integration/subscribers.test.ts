@@ -27,7 +27,7 @@ describe("sign-up with double opt-in", () => {
   it("creates a pending prospect, records consent and issues a confirmation e-mail", async () => {
     const sub = await join("ana@example.com");
     expect(sub.status).toBe("PENDING");
-    expect(sub.publicId).toMatch(/^MILI-[A-Z2-9]{8}$/);
+    expect(sub.publicId).toMatch(/^MILLI-[A-Z2-9]{8}$/);
     expect(sub.confirmTokenHash).toBeTruthy();
     const consents = await db.consentEvent.findMany({ where: { subscriberId: sub.id } });
     expect(consents.map((c) => c.action)).toEqual(["GRANTED"]);
@@ -122,7 +122,7 @@ describe("referral programme", () => {
     const board = await leaderboard();
     expect(board.map((r) => r.points)).toEqual([2, 1]);
     expect(JSON.stringify(board)).not.toMatch(/example\.com|top|second/);
-    expect(board[0].label).toMatch(/^MILI-[A-Z2-9]{3}••••$/);
+    expect(board[0].label).toMatch(/^MILLI-[A-Z2-9]{3}••••$/);
   });
 });
 

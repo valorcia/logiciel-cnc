@@ -31,7 +31,7 @@ export type SubscribeOutcome = { ok: true } | { ok: false; error: "disposable" }
 
 async function uniqueCode(field: "referralCode" | "publicId"): Promise<string> {
   for (let attempt = 0; attempt < 8; attempt++) {
-    const value = field === "publicId" ? `MILI-${randomCode(8)}` : randomCode(7);
+    const value = field === "publicId" ? `MILLI-${randomCode(8)}` : randomCode(7);
     const clash = await db.subscriber.findFirst({ where: { [field]: value }, select: { id: true } });
     if (!clash) return value;
   }
@@ -265,7 +265,7 @@ export async function leaderboard(limit = 10): Promise<LeaderboardRow[]> {
   const publicIds = new Map(owners.map((o) => [o.id, o.publicId]));
   return grouped.map((g, index) => ({
     rank: index + 1,
-    label: `${(publicIds.get(g.referredById!) ?? "MILI-????????").slice(0, 8)}••••`,
+    label: `${(publicIds.get(g.referredById!) ?? "MILLI-????????").slice(0, 9)}••••`,
     points: g._count._all,
   }));
 }

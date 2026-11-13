@@ -19,7 +19,7 @@ export default async function ProofPage({ searchParams }: { searchParams: Promis
     <>
       <PageTitle
         title="Vidéos de preuve"
-        text="Section « DON'T BELIEVE IT? ». Règle absolue : uniquement des pièces réellement usinées sur le prototype MILI, cadrées sans montrer la machine tant que le mystère dure. Une vidéo n'apparaît sur le site que si elle est à la fois validée techniquement (Super Admin) et publiée. Sans aucune vidéo validée, le site affiche un message d'attente neutre."
+        text="Section « DON'T BELIEVE IT? ». Règle absolue : uniquement des pièces réellement usinées sur le prototype MILLI, cadrées sans montrer la machine tant que le mystère dure. Une vidéo n'apparaît sur le site que si elle est à la fois validée techniquement (Super Admin) et publiée. Sans aucune vidéo validée, le site affiche un message d'attente neutre."
       />
       <Flash params={await searchParams} />
       <div className="space-y-3">
@@ -48,7 +48,7 @@ export default async function ProofPage({ searchParams }: { searchParams: Promis
                 <Field label="Ordre d'affichage" name="sortOrder" type="number" defaultValue={v?.sortOrder ?? 0} />
                 <Select label="Statut" name="status" defaultValue={v?.status === "SCHEDULED" ? "DRAFT" : (v?.status ?? "DRAFT")} options={STATUS_OPTIONS.filter(([k]) => k !== "SCHEDULED")} />
                 {mayValidate ? (
-                  <Check label="Validation technique" name="validated" defaultChecked={v?.validated} help="Je certifie que cette vidéo montre une pièce usinée sur le prototype MILI, qu'elle ne dévoile pas la machine, et que ce qu'elle affirme est exact." />
+                  <Check label="Validation technique" name="validated" defaultChecked={v?.validated} help="Je certifie que cette vidéo montre une pièce usinée sur le prototype MILLI, qu'elle ne dévoile pas la machine, et que ce qu'elle affirme est exact." />
                 ) : (
                   <p className="text-sm text-smoke">La validation technique est réservée aux Super Admins. Enregistrez en brouillon, puis demandez la validation.</p>
                 )}

@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
-const KEY = "mili_attr";
+const KEY = "milli_attr";
 const UTM = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"] as const;
 
 export type StoredAttribution = Partial<Record<(typeof UTM)[number], string>> & { referrer?: string; landing?: string };

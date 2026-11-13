@@ -17,7 +17,7 @@ export async function Footer({ locale }: { locale: Locale }) {
       <div className="shell py-14">
         <div className="flex flex-col justify-between gap-10 md:flex-row">
           <div>
-            <p className="text-2xl font-semibold tracking-[0.32em]">MILI</p>
+            <p className="text-2xl font-semibold tracking-[0.32em]">MILLI</p>
             <p className="mt-3 text-sm text-ash">{t("tagline")}</p>
           </div>
           <nav className="flex flex-wrap gap-x-8 gap-y-3 text-sm text-ash" aria-label="Footer">

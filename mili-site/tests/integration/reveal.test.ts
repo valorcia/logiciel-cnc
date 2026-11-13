@@ -14,7 +14,7 @@ async function seedSecrets() {
   await db.productSection.updateMany({ where: { key: "overview" }, data: { body: { en: `Spindle ${SECRET}` }, published: true } });
   await db.productSpec.create({ data: { groupName: { en: "G" }, label: { en: "Validated" }, value: { en: `${SECRET} rpm` }, validated: true } });
   await db.productSpec.create({ data: { groupName: { en: "G" }, label: { en: "Unvalidated" }, value: { en: "NOT-VALIDATED" }, validated: false } });
-  await db.siteSettings.update({ where: { id: 1 }, data: { filmUrl: "https://youtu.be/abcdefghijk", kickstarterUrl: "https://www.kickstarter.com/projects/mili/mili" } });
+  await db.siteSettings.update({ where: { id: 1 }, data: { filmUrl: "https://youtu.be/abcdefghijk", kickstarterUrl: "https://www.kickstarter.com/projects/milli/milli" } });
 }
 
 describe("Mystery / Reveal gate", () => {

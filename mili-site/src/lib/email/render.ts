@@ -133,7 +133,7 @@ export function layout(input: LayoutInput): string {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#050505;">
 <tr><td align="center" style="padding:32px 16px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
-<tr><td style="padding:0 8px 28px;font-size:18px;font-weight:700;letter-spacing:.32em;color:#FFFFFF;">MILI</td></tr>
+<tr><td style="padding:0 8px 28px;font-size:18px;font-weight:700;letter-spacing:.32em;color:#FFFFFF;">MILLI</td></tr>
 <tr><td style="background:#111318;border:1px solid #1F2229;border-radius:12px;padding:36px 32px 22px;">
 ${input.bodyHtml}
 </td></tr>

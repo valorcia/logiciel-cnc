@@ -11,19 +11,19 @@ const SECRET = 'SECRET-SPINDLE-42', BASE = 'http://localhost:3000';
   const anon = await request.newContext();
   const leaks = async label => {
     const out = [];
-    for (const path of ['/', '/fr', '/mili', '/fr/mili', '/sitemap.xml', '/journal', '/challenge']) {
+    for (const path of ['/', '/fr', '/milli', '/fr/milli', '/sitemap.xml', '/journal', '/challenge']) {
       const r = await anon.get(BASE + path); const t = await r.text();
-      out.push(`${path}=${r.status()}${t.includes(SECRET) ? ' [marker present]' : ''}${/\/mili</.test(t) && path === '/sitemap.xml' ? ' (in sitemap)' : ''}`);
+      out.push(`${path}=${r.status()}${t.includes(SECRET) ? ' [marker present]' : ''}${/\/milli</.test(t) && path === '/sitemap.xml' ? ' (in sitemap)' : ''}`);
     }
     // RSC payload (what client-side navigation fetches)
-    const rsc = await anon.get(BASE + '/mili', { headers: { RSC: '1' } });
-    out.push(`rsc/mili=${rsc.status()}${(await rsc.text()).includes(SECRET) ? ' [marker present]' : ''}`);
+    const rsc = await anon.get(BASE + '/milli', { headers: { RSC: '1' } });
+    out.push(`rsc/milli=${rsc.status()}${(await rsc.text()).includes(SECRET) ? ' [marker present]' : ''}`);
     console.log(label.padEnd(26), out.join('  '));
   };
   const flash = async () => (await p.$eval('[role=status], [role=alert]:not(.mb-6.rounded-lg.border-\\[\\#ffc46b\\]\\/40)', e => e.textContent).catch(() => '')).slice(0, 110);
 
   await p.goto(BASE + '/admin/login'); await p.waitForTimeout(1000);
-  await p.fill('#email', process.env.ADMIN_EMAIL || 'admin@mili.example'); await p.fill('#password', process.env.ADMIN_PASSWORD || 'change-me-please-123'); await p.click('button[type=submit]'); await p.waitForURL('**/admin');
+  await p.fill('#email', process.env.ADMIN_EMAIL || 'admin@milli.example'); await p.fill('#password', process.env.ADMIN_PASSWORD || 'change-me-please-123'); await p.click('button[type=submit]'); await p.waitForURL('**/admin');
 
   // 1. confidential image
   await p.goto(BASE + '/admin/media');
@@ -33,8 +33,8 @@ const SECRET = 'SECRET-SPINDLE-42', BASE = 'http://localhost:3000';
   const mediaPath = (await p.$eval('p.select-all', e => e.textContent)).trim();
   console.log('uploaded', mediaPath, '| anon:', (await anon.get(BASE + mediaPath)).status(), '| admin:', (await ctx.request.get(BASE + mediaPath)).status());
   // a non-image renamed .png must be refused
-  require('fs').writeFileSync(require('os').tmpdir() + '/mili-fake.png', '<script>alert(1)</script>');
-  await p.setInputFiles('#media-file', require('os').tmpdir() + '/mili-fake.png'); await p.click('text=Envoyer'); await p.waitForURL('**error=**');
+  require('fs').writeFileSync(require('os').tmpdir() + '/milli-fake.png', '<script>alert(1)</script>');
+  await p.setInputFiles('#media-file', require('os').tmpdir() + '/milli-fake.png'); await p.click('text=Envoyer'); await p.waitForURL('**error=**');
   console.log('fake image:', decodeURIComponent(p.url().split('error=')[1]).slice(0, 60));
 
   // 2. product content: a section and a validated spec carrying the secret marker
@@ -56,13 +56,13 @@ const SECRET = 'SECRET-SPINDLE-42', BASE = 'http://localhost:3000';
   // 3. reveal: wrong confirmation, then right one
   await p.goto(BASE + '/admin/reveal');
   p.on('dialog', d => d.accept());
-  await p.fill('input[name=confirmation]', 'reveal'); await p.check('input[name=understood]'); await p.click('text=Révéler MILI maintenant'); await p.waitForURL('**error=**');
+  await p.fill('input[name=confirmation]', 'reveal'); await p.check('input[name=understood]'); await p.click('text=Révéler MILLI maintenant'); await p.waitForURL('**error=**');
   console.log('wrong word:', decodeURIComponent(p.url().split('error=')[1]).slice(0, 60));
-  await p.fill('input[name=confirmation]', 'REVEAL'); await p.check('input[name=understood]'); await p.click('text=Révéler MILI maintenant'); await p.waitForURL('**ok=saved**');
+  await p.fill('input[name=confirmation]', 'REVEAL'); await p.check('input[name=understood]'); await p.click('text=Révéler MILLI maintenant'); await p.waitForURL('**ok=saved**');
   await leaks('REVEAL');
   console.log('anon media after reveal:', (await anon.get(BASE + mediaPath)).status());
   const pub = await b.newPage({ viewport: { width: 1440, height: 900 } });
-  await pub.goto(BASE + '/mili'); await pub.waitForTimeout(1500);
+  await pub.goto(BASE + '/milli'); await pub.waitForTimeout(1500);
   await pub.goto(BASE + '/'); await pub.waitForTimeout(1500);
   console.log('home h1 in reveal:', await pub.$eval('h1', e => e.textContent));
 

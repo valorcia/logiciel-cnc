@@ -1,16 +1,16 @@
 {
   "meta": {
-    "title": "MILI — Eine 5-Achs-CNC kommt",
-    "description": "MILI ist eine kommende 5-Achs-CNC-Fräse als Bausatz mit einem geplanten Einführungspreis von 1.499 $. Tragen Sie sich in die Insider List ein und erfahren Sie es zuerst.",
-    "ogAlt": "5 ACHSEN. $1,499. UNMÖGLICH? — MILI kommt."
+    "title": "MILLI — Eine 5-Achs-CNC kommt",
+    "description": "MILLI ist eine kommende 5-Achs-CNC-Fräse als Bausatz mit einem geplanten Einführungspreis von 1.499 $. Tragen Sie sich in die Insider List ein und erfahren Sie es zuerst.",
+    "ogAlt": "5 ACHSEN. $1,499. UNMÖGLICH? — MILLI kommt."
   },
   "nav": {
     "mystery": "Das Geheimnis", "proof": "Der Beweis", "clues": "Hinweise", "challenge": "Die Challenge", "journal": "Journal",
-    "product": "Die Maschine", "cta": "Frühen Zugang sichern", "back": "MILI auf Kickstarter unterstützen", "language": "Sprache",
+    "product": "Die Maschine", "cta": "Frühen Zugang sichern", "back": "MILLI auf Kickstarter unterstützen", "language": "Sprache",
     "skip": "Zum Inhalt springen", "menu": "Menü", "close": "Schließen"
   },
   "hero": {
-    "word1": "5 ACHSEN.", "word3": "UNMÖGLICH?", "title": "MILI KOMMT.",
+    "word1": "5 ACHSEN.", "word3": "UNMÖGLICH?", "title": "MILLI KOMMT.",
     "subtitle": "Die Zukunft der 5-Achs-CNC ist näher, als Sie denken.",
     "ctaPrimary": "Frühen Zugang sichern", "ctaSecondary": "Das Geheimnis entdecken",
     "priceNote": "Geplanter Einführungspreis. Vorbehaltlich endgültiger Bestätigung.", "scroll": "Scrollen"
@@ -30,9 +30,9 @@
   },
   "proof": {
     "title": "SIE GLAUBEN ES NICHT?",
-    "subtitle": "Teile, gefräst auf dem MILI-Prototyp. Nichts anderes.",
+    "subtitle": "Teile, gefräst auf dem MILLI-Prototyp. Nichts anderes.",
     "emptyTitle": "Die ersten Schnitte sind unterwegs.",
-    "emptyText": "Demonstrationen erscheinen hier, sobald sie auf dem MILI-Prototyp gefilmt und technisch validiert wurden. Etwas anderes zeigen wir nicht.",
+    "emptyText": "Demonstrationen erscheinen hier, sobald sie auf dem MILLI-Prototyp gefilmt und technisch validiert wurden. Etwas anderes zeigen wir nicht.",
     "validated": "Technisch validiert", "play": "Video abspielen", "recorded": "Aufgenommen am {date}", "all": "Alle",
     "categories": {
       "PRECISION": "Präzision", "COMPLEX_GEOMETRY": "Komplexe Geometrie", "FIVE_AXIS": "5-Achs-Bearbeitung",
@@ -54,24 +54,24 @@
     "descriptionHelp": "Mindestens 20 Zeichen. Was ist es, und warum braucht es fünf Achsen?",
     "category": "Kategorie", "file": "Datei (optional)",
     "fileHelp": "STEP, STL, OBJ, PDF, JPG oder PNG — max. {max} MB. Privat gespeichert, nie unverändert veröffentlicht.",
-    "consent": "Ich bin einverstanden, dass MILI mich zu dieser Idee kontaktiert und eine moderierte Zusammenfassung veröffentlicht, nur mit meinem Vornamen.",
+    "consent": "Ich bin einverstanden, dass MILLI mich zu dieser Idee kontaktiert und eine moderierte Zusammenfassung veröffentlicht, nur mit meinem Vornamen.",
     "submit": "Idee einreichen", "sending": "Wird gesendet…", "successTitle": "Idee erhalten.",
     "successText": "Jeder Vorschlag wird vor der Veröffentlichung geprüft. Danke.",
     "galleryTitle": "Ausgewählte Challenges", "galleryEmpty": "Die ersten ausgewählten Challenges erscheinen hier.",
     "by": "von {name}", "vote": "Abstimmen", "voted": "Abgestimmt",
     "votes": "{count, plural, =0 {Noch keine Stimmen} one {# Stimme} other {# Stimmen}}",
-    "seeAll": "Alle Challenges ansehen", "pageTitle": "Die MILI Challenge",
+    "seeAll": "Alle Challenges ansehen", "pageTitle": "Die MILLI Challenge",
     "categories": {
       "ART_DESIGN": "Kunst & Design", "ENGINEERING": "Ingenieurwesen", "ROBOTICS": "Robotik", "AUTOMOTIVE": "Automobil",
       "AEROSPACE": "Luft- und Raumfahrt", "JEWELRY": "Schmuck", "EDUCATION": "Bildung", "OTHER": "Sonstiges"
     }
   },
   "join": {
-    "title": "SEIEN SIE DIE ERSTEN.", "text": "Treten Sie der MILI Insider List bei.",
+    "title": "SEIEN SIE DIE ERSTEN.", "text": "Treten Sie der MILLI Insider List bei.",
     "points": "Hinweise vor allen anderen. Der Launch-Link in dem Moment, in dem er öffnet. Nichts, was Sie nicht angefordert haben.",
     "email": "E-Mail", "firstName": "Vorname (optional)", "country": "Land (optional)",
     "countryPlaceholder": "Land auswählen",
-    "consent": "Ich bin einverstanden, E-Mails von MILI zum Projekt und zum Launch zu erhalten. Ich kann mich jederzeit abmelden.",
+    "consent": "Ich bin einverstanden, E-Mails von MILLI zum Projekt und zum Launch zu erhalten. Ich kann mich jederzeit abmelden.",
     "privacy": "Datenschutzerklärung", "submit": "Der Revolution beitreten", "sending": "Wird eingetragen…",
     "successTitle": "Prüfen Sie Ihr Postfach.",
     "successText": "Wir haben einen Bestätigungslink an {email} gesendet. Klicken Sie darauf, um die Anmeldung abzuschließen.",
@@ -93,10 +93,10 @@
     "tagline": "Eine 5-Achs-CNC kommt.", "privacy": "Datenschutzerklärung", "terms": "Nutzungsbedingungen",
     "cookies": "Cookie-Richtlinie", "contact": "Kontakt", "journal": "Journal",
     "priceNote": "1.499 $ ist ein geplanter Einführungspreis für den Kickstarter-Start, vorbehaltlich endgültiger Bestätigung. Unterstützt werden kann ausschließlich auf Kickstarter: Diese Website nimmt keine Zahlungen an.",
-    "rights": "© {year} MILI. Alle Rechte vorbehalten.", "follow": "Folgen"
+    "rights": "© {year} MILLI. Alle Rechte vorbehalten.", "follow": "Folgen"
   },
   "confirm": {
-    "title": "SIE SIND DABEI.", "text": "Ihre Adresse ist bestätigt. Willkommen auf der MILI Insider List.",
+    "title": "SIE SIND DABEI.", "text": "Ihre Adresse ist bestätigt. Willkommen auf der MILLI Insider List.",
     "already": "Diese Adresse war bereits bestätigt. Sie stehen auf der Liste.", "cta": "Meinen Insider-Bereich öffnen",
     "invalidTitle": "Dieser Link ist ungültig.",
     "invalidText": "Er wurde möglicherweise bereits verwendet oder unvollständig kopiert. Melden Sie sich erneut an, um einen neuen zu erhalten.",
@@ -105,9 +105,9 @@
     "back": "Zurück zur Website"
   },
   "unsubscribe": {
-    "title": "Abmelden", "question": "Keine E-Mails von MILI mehr an {email} erhalten?",
+    "title": "Abmelden", "question": "Keine E-Mails von MILLI mehr an {email} erhalten?",
     "confirm": "Abmelden", "doneTitle": "Sie sind abgemeldet.",
-    "doneText": "Sie erhalten keine E-Mails mehr von MILI. Sie können jederzeit wieder beitreten.",
+    "doneText": "Sie erhalten keine E-Mails mehr von MILLI. Sie können jederzeit wieder beitreten.",
     "invalid": "Dieser Abmeldelink ist ungültig.", "keep": "Auf der Liste bleiben"
   },
   "insider": {
@@ -121,8 +121,8 @@
     "linkTitle": "Ihr Einladungslink",
     "linkText": "Ein Freund zählt, sobald er über Ihren Link beigetreten ist und seine E-Mail bestätigt hat.",
     "copy": "Link kopieren", "copied": "Kopiert", "share": "Teilen",
-    "shareText": "Eine 5-Achs-CNC mit einem geplanten Einführungspreis von 1.499 $? MILI kommt.",
-    "shareSubject": "Schon gesehen? MILI kommt", "rewards": "Insider-Ränge",
+    "shareText": "Eine 5-Achs-CNC mit einem geplanten Einführungspreis von 1.499 $? MILLI kommt.",
+    "shareSubject": "Schon gesehen? MILLI kommt", "rewards": "Insider-Ränge",
     "rewardsNote": "Ränge sind eine Anerkennung. Damit verbundene Vorteile werden vor dem Launch bekannt gegeben.",
     "reached": "Erreicht", "leaderboard": "Top-Insider", "data": "Ihre Daten",
     "dataText": "Sie bestimmen, was wir über Sie speichern.", "export": "Meine Daten herunterladen",
@@ -130,7 +130,7 @@
     "deleteConfirm": "Alles löschen, was wir über Sie gespeichert haben? Das kann nicht rückgängig gemacht werden.",
     "deleteYes": "Ja, alles löschen", "deleteNo": "Abbrechen", "deletedTitle": "Ihre Daten wurden gelöscht.",
     "deletedText": "In unseren Systemen ist nichts mehr über Sie gespeichert.",
-    "unsubscribed": "Sie sind von MILI-E-Mails abgemeldet.", "clues": "Neueste Hinweise"
+    "unsubscribed": "Sie sind von MILLI-E-Mails abgemeldet.", "clues": "Neueste Hinweise"
   },
   "journal": {
     "title": "JOURNAL", "subtitle": "Notizen zu CNC, fünf Achsen und dem Machen.",
@@ -138,7 +138,7 @@
     "published": "Veröffentlicht am {date}", "by": "Von {author}", "all": "Alle",
     "categories": {
       "CNC_TECHNOLOGY": "CNC-Technologie", "FIVE_AXIS_MACHINING": "5-Achs-Bearbeitung", "MAKER_PROJECTS": "Maker-Projekte",
-      "ENGINEERING": "Ingenieurwesen", "MILI_NEWS": "MILI-News"
+      "ENGINEERING": "Ingenieurwesen", "MILLI_NEWS": "MILLI-News"
     }
   },
   "contact": {
@@ -160,12 +160,12 @@
   },
   "notFound": { "title": "404", "text": "Diese Seite existiert nicht. Oder noch nicht.", "back": "Zurück zur Website" },
   "reveal": {
-    "heroTitle": "DIE MILI 5-ACHS-CNC.", "heroSubtitle": "Das Geheimnis ist gelüftet.", "cta": "MILI auf Kickstarter unterstützen",
+    "heroTitle": "DIE MILLI 5-ACHS-CNC.", "heroSubtitle": "Das Geheimnis ist gelüftet.", "cta": "MILLI auf Kickstarter unterstützen",
     "ctaSoon": "Kickstarter-Link folgt in Kürze", "watch": "Film ansehen", "gallery": "Galerie",
-    "specs": "Technische Daten", "specsNote": "Jeder Wert in dieser Tabelle wurde von den MILI-Gründern validiert.",
+    "specs": "Technische Daten", "specsNote": "Jeder Wert in dieser Tabelle wurde von den MILLI-Gründern validiert.",
     "kit": "Inhalt des Bausatzes", "rewards": "Kickstarter-Belohnungen",
     "rewardsNote": "Unterstützt werden kann ausschließlich auf Kickstarter. Versandkosten und anfallende Steuern sind, sofern nicht anders angegeben, nicht enthalten und auf der Kampagnenseite aufgeführt.",
     "limited": "Limitiert auf {count}", "faq": "FAQ", "discover": "Die Maschine entdecken",
-    "homeTitle": "DAS GEHEIMNIS IST GELÜFTET.", "homeText": "Das ist die MILI 5-Achs-CNC."
+    "homeTitle": "DAS GEHEIMNIS IST GELÜFTET.", "homeText": "Das ist die MILLI 5-Achs-CNC."
   }
 }

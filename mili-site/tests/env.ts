@@ -6,7 +6,7 @@ export function applyTestEnv(): void {
   Object.assign(process.env, {
     NODE_ENV: "test",
     DATABASE_URL: TEST_DATABASE_URL,
-    NEXT_PUBLIC_SITE_URL: "https://mili.test",
+    NEXT_PUBLIC_SITE_URL: "https://milli.test",
     APP_SECRET: "test-app-secret-0123456789abcdef0123456789",
     BETTER_AUTH_SECRET: "test-auth-secret-0123456789abcdef0123456789",
     CRON_SECRET: "test-cron-secret",

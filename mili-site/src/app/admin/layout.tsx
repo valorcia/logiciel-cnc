@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import "../globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "Administration — MILI", template: "%s — Administration MILI" },
+  title: { default: "Administration — MILLI", template: "%s — Administration MILLI" },
   robots: { index: false, follow: false, nocache: true },
   referrer: "same-origin",
 };

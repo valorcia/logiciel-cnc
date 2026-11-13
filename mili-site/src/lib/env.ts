@@ -14,7 +14,7 @@ const schema = z.object({
   CRON_SECRET: z.string().min(12).optional(),
   RESEND_API_KEY: z.string().optional(),
   RESEND_WEBHOOK_SECRET: z.string().optional(),
-  EMAIL_FROM: z.string().default("MILI <hello@mili.example>"),
+  EMAIL_FROM: z.string().default("MILLI <hello@milli.example>"),
   EMAIL_REPLY_TO: z.string().optional(),
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   STORAGE_LOCAL_DIR: z.string().default(".storage"),

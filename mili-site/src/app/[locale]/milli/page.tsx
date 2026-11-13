@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // In Mystery mode this URL is a plain 404 and says nothing, not even in its metadata.
   if (settings.mode !== "REVEAL") return { robots: { index: false, follow: false } };
   const t = await getTranslations({ locale, namespace: "reveal" });
-  return pageMetadata({ locale: locale as Locale, path: "/mili", title: t("heroTitle"), description: t("homeText") });
+  return pageMetadata({ locale: locale as Locale, path: "/milli", title: t("heroTitle"), description: t("homeText") });
 }
 
 export default async function ProductPage({ params }: Props) {

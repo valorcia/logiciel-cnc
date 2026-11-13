@@ -29,8 +29,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     metadataBase: new URL(baseUrl()),
     ...pageMetadata({ locale: locale as Locale, path: "/", title: t("title"), description: t("description") }),
-    title: { default: t("title"), template: "%s — MILI" },
-    applicationName: "MILI",
+    title: { default: t("title"), template: "%s — MILLI" },
+    applicationName: "MILLI",
     keywords: [
       "5 axis CNC", "affordable 5 axis CNC", "DIY CNC", "CNC kit", "desktop CNC", "CNC machining",
       "5 axis milling machine", "Kickstarter CNC",
@@ -40,7 +40,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /** Runs before first paint: skips the hero intro for visitors who already saw it this session. */
-const introScript = `try{document.documentElement.classList.remove('no-js');if(sessionStorage.getItem('mili_intro')){document.documentElement.dataset.intro='skip'}else{sessionStorage.setItem('mili_intro','1')}}catch(e){}`;
+const introScript = `try{document.documentElement.classList.remove('no-js');if(sessionStorage.getItem('milli_intro')){document.documentElement.dataset.intro='skip'}else{sessionStorage.setItem('milli_intro','1')}}catch(e){}`;
 
 export default async function LocaleLayout({ children, params }: Props) {
   const { locale } = await params;

@@ -30,7 +30,7 @@ export default async function RevealPage({ searchParams }: { searchParams: Promi
   const checks: [boolean, string, string, boolean][] = [
     [sections > 0, "Fiche produit", `${sections} section(s) publiée(s), ${emptySections} masquée(s)`, true],
     [specs > 0, "Caractéristiques validées", `${specs} validée(s)${pendingSpecs ? `, ${pendingSpecs} en attente de validation (non affichées)` : ""}`, false],
-    [Boolean(settings.kickstarterUrl), "Lien Kickstarter", settings.kickstarterUrl ?? "Absent : les boutons « Back MILI on Kickstarter » resteront inactifs et les e-mails de lancement ne partiront pas", false],
+    [Boolean(settings.kickstarterUrl), "Lien Kickstarter", settings.kickstarterUrl ?? "Absent : les boutons « Back MILLI on Kickstarter » resteront inactifs et les e-mails de lancement ne partiront pas", false],
     [tiers > 0, "Récompenses confirmées", `${tiers} active(s)`, false],
     [hero > 0 || Boolean(settings.filmUrl), "Film ou image principale", `${settings.filmUrl ? "Film renseigné" : "Pas de film"} · ${hero} image principale · ${gallery} image(s) de galerie`, false],
     [revealFaq > 0, "FAQ après révélation", `${revealFaq} question(s)`, false],
@@ -90,7 +90,7 @@ export default async function RevealPage({ searchParams }: { searchParams: Promi
             <input type="hidden" name="target" value="REVEAL" />
             <Field label="Saisissez REVEAL pour confirmer" name="confirmation" required mono />
             <Check label="J'ai prévisualisé la page produit et je confirme que tout ce qu'elle affiche est exact et peut être rendu public." name="understood" />
-            <div><Submit className="adm-btn" confirm="Révéler MILI au public maintenant ?">Révéler MILI maintenant</Submit></div>
+            <div><Submit className="adm-btn" confirm="Révéler MILLI au public maintenant ?">Révéler MILLI maintenant</Submit></div>
           </form>
         </Card>
       )}

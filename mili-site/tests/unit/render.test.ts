@@ -10,12 +10,12 @@ describe("email rendering", () => {
   });
 
   it("renders headings, emphasis, lists and links", () => {
-    const html = renderMarkdown("# Title\n\n**bold** and *italic*\n\n- one\n- two\n\n[site](https://mili.test)");
+    const html = renderMarkdown("# Title\n\n**bold** and *italic*\n\n- one\n- two\n\n[site](https://milli.test)");
     expect(html).toContain("<h1");
     expect(html).toContain("<strong>bold</strong>");
     expect(html).toContain("<em>italic</em>");
     expect(html.match(/<li/g)).toHaveLength(2);
-    expect(html).toContain('href="https://mili.test"');
+    expect(html).toContain('href="https://milli.test"');
   });
 
   it("refuses dangerous link and button schemes", () => {
@@ -29,8 +29,8 @@ describe("email rendering", () => {
   });
 
   it("neutralises markup characters in free-text variables but keeps URLs intact", () => {
-    const out = interpolate("{{name}} {{url}}", { name: "**[x](http://e.vil)**", url: "https://mili.test/i/A_B*C" }, { markdownSafe: true });
-    expect(out).toBe("x(http://e.vil) https://mili.test/i/A_B*C");
+    const out = interpolate("{{name}} {{url}}", { name: "**[x](http://e.vil)**", url: "https://milli.test/i/A_B*C" }, { markdownSafe: true });
+    expect(out).toBe("x(http://e.vil) https://milli.test/i/A_B*C");
   });
 
   it("produces a plain-text alternative", () => {
@@ -42,10 +42,10 @@ describe("email rendering", () => {
   it("puts the unsubscribe link and the legal identity in the footer", () => {
     const html = layout({
       locale: "en", subject: "S", preheader: "P", bodyHtml: "<p>x</p>", reason: "Because.",
-      unsubscribeLabel: "Unsubscribe", unsubscribeUrl: "https://mili.test/u?t=1", legalName: "MILI SAS", postalAddress: "1 rue <X>",
+      unsubscribeLabel: "Unsubscribe", unsubscribeUrl: "https://milli.test/u?t=1", legalName: "MILLI SAS", postalAddress: "1 rue <X>",
     });
-    expect(html).toContain('href="https://mili.test/u?t=1"');
-    expect(html).toContain("MILI SAS");
+    expect(html).toContain('href="https://milli.test/u?t=1"');
+    expect(html).toContain("MILLI SAS");
     expect(html).toContain("1 rue &lt;X&gt;");
     expect(escapeHtml("'")).toBe("&#39;");
   });

@@ -22,7 +22,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <Field label="Date et heure du lancement (UTC)" name="launchAt" type="datetime-local" defaultValue={toInputDateTime(s.launchAt)}
               help="Saisie en temps universel (UTC) ; chaque visiteur la voit dans son fuseau. Elle pilote le compte à rebours et le calendrier des e-mails de pré-lancement. Arrivé à zéro, le compte à rebours ne révèle rien : la bascule en mode Reveal reste une action manuelle." />
             <Field label="Lien de la campagne Kickstarter" name="kickstarterUrl" type="url" defaultValue={s.kickstarterUrl} placeholder="https://www.kickstarter.com/projects/…"
-              help="Tant qu'il est vide, les boutons « Back MILI on Kickstarter » restent inactifs et les e-mails de lancement ne partent pas." />
+              help="Tant qu'il est vide, les boutons « Back MILLI on Kickstarter » restent inactifs et les e-mails de lancement ne partent pas." />
             <Check label="Afficher le compte à rebours" name="countdownEnabled" defaultChecked={s.countdownEnabled} help="Sans date de lancement, il reste masqué." />
           </div>
         </Card>

@@ -1,4 +1,4 @@
-// MILI — database schema (PostgreSQL).
+// MILLI — database schema (PostgreSQL).
 // Localised content is stored as JSON maps: { "en": "...", "fr": "..." }.
 // English is the mandatory fallback locale.
 
@@ -243,7 +243,7 @@ enum ProofCategory {
   MATERIALS
 }
 
-/// A machining demonstration filmed on the MILI prototype. It can only be
+/// A machining demonstration filmed on the MILLI prototype. It can only be
 /// published once a founder has marked it technically validated.
 model ProofVideo {
   id            String        @id @default(cuid())
@@ -335,7 +335,7 @@ enum ArticleCategory {
   FIVE_AXIS_MACHINING
   MAKER_PROJECTS
   ENGINEERING
-  MILI_NEWS
+  MILLI_NEWS
 }
 
 model Article {
@@ -348,7 +348,7 @@ model Article {
   category       ArticleCategory
   coverId        String?
   cover          MediaAsset?     @relation(fields: [coverId], references: [id], onDelete: SetNull)
-  authorName     String          @default("MILI Team")
+  authorName     String          @default("MILLI Team")
   seoTitle       String?
   seoDescription String?
   status         PublishStatus   @default(DRAFT)

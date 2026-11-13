@@ -36,7 +36,7 @@ export async function ProductView({ locale, content, kickstarterUrl }: Props) {
           </div>
           {content.heroImageId && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={`/media/${content.heroImageId}`} alt="MILI" fetchPriority="high" className="mx-auto mt-16 aspect-[16/9] w-full max-w-6xl rounded-2xl border border-line object-cover" />
+            <img src={`/media/${content.heroImageId}`} alt="MILLI" fetchPriority="high" className="mx-auto mt-16 aspect-[16/9] w-full max-w-6xl rounded-2xl border border-line object-cover" />
           )}
           {content.filmUrl && (
             <div className="mx-auto mt-10 max-w-5xl">
@@ -60,7 +60,7 @@ export async function ProductView({ locale, content, kickstarterUrl }: Props) {
         <section key={section.key} id={section.key} className="section hairline scroll-mt-28">
           <div className="shell grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
             <h2 className="display display-lg" data-reveal>{section.title}</h2>
-            <div className="prose-mili" data-reveal dangerouslySetInnerHTML={{ __html: renderSiteMarkdown(section.body) }} />
+            <div className="prose-milli" data-reveal dangerouslySetInnerHTML={{ __html: renderSiteMarkdown(section.body) }} />
           </div>
         </section>
       ))}

@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* ───────── MILI design tokens ───────── */
+/* ───────── MILLI design tokens ───────── */
 @theme {
   --color-void: #050505;
   --color-carbon: #111318;
@@ -202,19 +202,19 @@ html.no-js [data-reveal] { opacity: 1; transform: none; }
 @keyframes draw { to { stroke-dashoffset: 0; } }
 
 /* ───────── Prose (journal, legal, product sections) ───────── */
-.prose-mili { color: #d4d4d8; font-size: 1.0625rem; line-height: 1.75; max-width: 68ch; }
-.prose-mili h2 { color: #fff; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; margin: 2.6em 0 0.7em; }
-.prose-mili h3 { color: #fff; font-size: 1.2rem; font-weight: 600; margin: 2em 0 0.5em; }
-.prose-mili p, .prose-mili ul, .prose-mili ol, .prose-mili blockquote, .prose-mili table { margin: 0 0 1.25em; }
-.prose-mili ul { list-style: disc; padding-left: 1.3em; }
-.prose-mili ol { list-style: decimal; padding-left: 1.3em; }
-.prose-mili li { margin-bottom: 0.4em; }
-.prose-mili a { color: var(--color-cyan); text-decoration: underline; text-underline-offset: 3px; }
-.prose-mili strong { color: #fff; font-weight: 600; }
-.prose-mili blockquote { border-left: 2px solid var(--color-violet); padding-left: 1.1em; color: var(--color-ash); }
-.prose-mili code { font-family: var(--font-mono); font-size: 0.9em; background: var(--color-carbon); padding: 0.15em 0.4em; border-radius: 4px; }
-.prose-mili table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
-.prose-mili th, .prose-mili td { text-align: left; padding: 0.6em 0.8em 0.6em 0; border-bottom: 1px solid var(--color-line); }
+.prose-milli { color: #d4d4d8; font-size: 1.0625rem; line-height: 1.75; max-width: 68ch; }
+.prose-milli h2 { color: #fff; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; margin: 2.6em 0 0.7em; }
+.prose-milli h3 { color: #fff; font-size: 1.2rem; font-weight: 600; margin: 2em 0 0.5em; }
+.prose-milli p, .prose-milli ul, .prose-milli ol, .prose-milli blockquote, .prose-milli table { margin: 0 0 1.25em; }
+.prose-milli ul { list-style: disc; padding-left: 1.3em; }
+.prose-milli ol { list-style: decimal; padding-left: 1.3em; }
+.prose-milli li { margin-bottom: 0.4em; }
+.prose-milli a { color: var(--color-cyan); text-decoration: underline; text-underline-offset: 3px; }
+.prose-milli strong { color: #fff; font-weight: 600; }
+.prose-milli blockquote { border-left: 2px solid var(--color-violet); padding-left: 1.1em; color: var(--color-ash); }
+.prose-milli code { font-family: var(--font-mono); font-size: 0.9em; background: var(--color-carbon); padding: 0.15em 0.4em; border-radius: 4px; }
+.prose-milli table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+.prose-milli th, .prose-milli td { text-align: left; padding: 0.6em 0.8em 0.6em 0; border-bottom: 1px solid var(--color-line); }
 
 /* ───────── Motion preferences ───────── */
 @media (prefers-reduced-motion: reduce) {

@@ -1,6 +1,6 @@
-# MILI — plateforme de pré-lancement
+# MILLI — plateforme de pré-lancement
 
-Site officiel de la campagne **THE MILI MYSTERY** : page d'accueil cinématographique,
+Site officiel de la campagne **THE MILLI MYSTERY** : page d'accueil cinématographique,
 liste d'attente avec double opt-in, parrainage, indices programmés, défis de la
 communauté, séquences d'e-mails, journal, et un back-office complet avec la bascule
 contrôlée **Mystery → Reveal**.
@@ -12,13 +12,13 @@ contrôlée **Mystery → Reveal**.
 
 | Côté visiteur | Côté équipe (`/admin`) |
 |---|---|
-| Accueil : 5 AXES → $1,499 → IMPOSSIBLE? → MILI IS COMING | Tableau de bord : visiteurs, inscriptions, conversion, sources, pays, campagnes UTM, e-mails |
+| Accueil : 5 AXES → $1,499 → IMPOSSIBLE? → MILLI IS COMING | Tableau de bord : visiteurs, inscriptions, conversion, sources, pays, campagnes UTM, e-mails |
 | Inscription à la *Insider List* (double opt-in) | Prospects : recherche, filtres, export CSV, suppression, parrainages à vérifier |
 | Espace Insider : lien de parrainage, rangs, partage, export / suppression de ses données | Textes du site modifiables dans les 5 langues |
 | Indices qui s'ouvrent à date fixe | Indices, vidéos de preuve, FAQ, journal, médias |
 | Défis : proposition avec fichier joint, galerie modérée, votes | Modération des défis |
 | Journal (SEO), pages légales, contact | E-mails : modèles, calendrier, aperçu, envoi de test, historique, statistiques |
-| Page produit `/mili` — **inexistante (404) tant que le site est en mode Mystery** | Fiche produit, caractéristiques validées une à une, récompenses, **procédure de révélation** |
+| Page produit `/milli` — **inexistante (404) tant que le site est en mode Mystery** | Fiche produit, caractéristiques validées une à une, récompenses, **procédure de révélation** |
 
 Langues : anglais (principale, à la racine), français `/fr`, allemand `/de`, espagnol `/es`, japonais `/ja`.
 

@@ -22,8 +22,8 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   const schema = {
     "@context": "https://schema.org",
     "@graph": [
-      { "@type": "Organization", "@id": `${baseUrl()}/#org`, name: "MILI", url: baseUrl(), sameAs: Object.values(socialLinks(settings)) },
-      { "@type": "WebSite", "@id": `${baseUrl()}/#site`, name: "MILI", url: baseUrl(), description: meta("description"), publisher: { "@id": `${baseUrl()}/#org` }, inLanguage: locale },
+      { "@type": "Organization", "@id": `${baseUrl()}/#org`, name: "MILLI", url: baseUrl(), sameAs: Object.values(socialLinks(settings)) },
+      { "@type": "WebSite", "@id": `${baseUrl()}/#site`, name: "MILLI", url: baseUrl(), description: meta("description"), publisher: { "@id": `${baseUrl()}/#org` }, inLanguage: locale },
     ],
   };
 

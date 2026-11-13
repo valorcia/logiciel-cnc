@@ -31,6 +31,6 @@ export const auth = betterAuth({
     updateAge: 60 * 60,
   },
   rateLimit: { enabled: true, window: 60, max: 20, storage: "memory" },
-  advanced: { cookiePrefix: "mili_admin", useSecureCookies: env().NODE_ENV === "production" },
+  advanced: { cookiePrefix: "milli_admin", useSecureCookies: env().NODE_ENV === "production" },
   plugins: [nextCookies()],
 });

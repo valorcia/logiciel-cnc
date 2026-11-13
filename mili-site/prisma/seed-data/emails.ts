@@ -19,13 +19,13 @@ const PRICE_NOTE = "*$1,499 is a planned introductory price and remains subject 
 const transactional: TemplateSeed[] = [
   {
     key: "confirm", series: "TRANSACTIONAL", name: "Double opt-in confirmation", locale: "en",
-    subject: "Confirm your e-mail to join the MILI Insider List",
+    subject: "Confirm your e-mail to join the MILLI Insider List",
     preheader: "One click and you are in.",
     body: `# One click left.
 
 {{greeting}}
 
-Someone — hopefully you — asked to join the **MILI Insider List** with this address. Confirm it and you will be among the first to know.
+Someone — hopefully you — asked to join the **MILLI Insider List** with this address. Confirm it and you will be among the first to know.
 
 [[Confirm my e-mail|{{confirmUrl}}]]
 
@@ -33,13 +33,13 @@ This link is valid for 7 days. If you did not ask for this, ignore this message:
   },
   {
     key: "confirm", series: "TRANSACTIONAL", name: "Confirmation double opt-in", locale: "fr",
-    subject: "Confirmez votre e-mail pour rejoindre la MILI Insider List",
+    subject: "Confirmez votre e-mail pour rejoindre la MILLI Insider List",
     preheader: "Un clic et vous y êtes.",
     body: `# Plus qu'un clic.
 
 {{greeting}}
 
-Quelqu'un — vous, espérons-le — a demandé à rejoindre la **MILI Insider List** avec cette adresse. Confirmez-la et vous serez parmi les premiers informés.
+Quelqu'un — vous, espérons-le — a demandé à rejoindre la **MILLI Insider List** avec cette adresse. Confirmez-la et vous serez parmi les premiers informés.
 
 [[Confirmer mon e-mail|{{confirmUrl}}]]
 
@@ -47,13 +47,13 @@ Ce lien est valable 7 jours. Si vous n'êtes pas à l'origine de cette demande, 
   },
   {
     key: "confirm", series: "TRANSACTIONAL", name: "Double-Opt-in-Bestätigung", locale: "de",
-    subject: "Bestätigen Sie Ihre E-Mail für die MILI Insider List",
+    subject: "Bestätigen Sie Ihre E-Mail für die MILLI Insider List",
     preheader: "Ein Klick, und Sie sind dabei.",
     body: `# Nur noch ein Klick.
 
 {{greeting}}
 
-Jemand – hoffentlich Sie – möchte mit dieser Adresse der **MILI Insider List** beitreten. Bestätigen Sie die Adresse und Sie erfahren es als Erste.
+Jemand – hoffentlich Sie – möchte mit dieser Adresse der **MILLI Insider List** beitreten. Bestätigen Sie die Adresse und Sie erfahren es als Erste.
 
 [[E-Mail bestätigen|{{confirmUrl}}]]
 
@@ -61,13 +61,13 @@ Dieser Link ist 7 Tage gültig. Falls Sie das nicht angefordert haben, ignoriere
   },
   {
     key: "confirm", series: "TRANSACTIONAL", name: "Confirmación de doble opt-in", locale: "es",
-    subject: "Confirma tu correo para unirte a la MILI Insider List",
+    subject: "Confirma tu correo para unirte a la MILLI Insider List",
     preheader: "Un clic y estás dentro.",
     body: `# Solo falta un clic.
 
 {{greeting}}
 
-Alguien — esperamos que tú — ha pedido unirse a la **MILI Insider List** con esta dirección. Confírmala y estarás entre los primeros en enterarte.
+Alguien — esperamos que tú — ha pedido unirse a la **MILLI Insider List** con esta dirección. Confírmala y estarás entre los primeros en enterarte.
 
 [[Confirmar mi correo|{{confirmUrl}}]]
 
@@ -75,13 +75,13 @@ Este enlace es válido durante 7 días. Si no lo has solicitado, ignora este men
   },
   {
     key: "confirm", series: "TRANSACTIONAL", name: "ダブルオプトイン確認", locale: "ja",
-    subject: "MILI Insider List への登録を確認してください",
+    subject: "MILLI Insider List への登録を確認してください",
     preheader: "ワンクリックで登録完了です。",
     body: `# あとワンクリックです。
 
 {{greeting}}
 
-このアドレスで **MILI Insider List** への登録リクエストがありました。確認すると、最新情報をいち早くお届けします。
+このアドレスで **MILLI Insider List** への登録リクエストがありました。確認すると、最新情報をいち早くお届けします。
 
 [[メールアドレスを確認する|{{confirmUrl}}]]
 
@@ -89,13 +89,13 @@ Este enlace es válido durante 7 días. Si no lo has solicitado, ignora este men
   },
   {
     key: "already-subscribed", series: "TRANSACTIONAL", name: "Already on the list", locale: "en",
-    subject: "You are already on the MILI Insider List",
+    subject: "You are already on the MILLI Insider List",
     preheader: "Here is your personal link again.",
     body: `# You are already in.
 
 {{greeting}}
 
-This address is already confirmed on the **MILI Insider List** — nothing else to do.
+This address is already confirmed on the **MILLI Insider List** — nothing else to do.
 
 Your Insider space, with your invitation link and your progress, is here:
 
@@ -103,13 +103,13 @@ Your Insider space, with your invitation link and your progress, is here:
   },
   {
     key: "already-subscribed", series: "TRANSACTIONAL", name: "Déjà inscrit", locale: "fr",
-    subject: "Vous êtes déjà sur la MILI Insider List",
+    subject: "Vous êtes déjà sur la MILLI Insider List",
     preheader: "Voici à nouveau votre lien personnel.",
     body: `# Vous y êtes déjà.
 
 {{greeting}}
 
-Cette adresse est déjà confirmée sur la **MILI Insider List** — rien d'autre à faire.
+Cette adresse est déjà confirmée sur la **MILLI Insider List** — rien d'autre à faire.
 
 Votre espace Insider, avec votre lien d'invitation et votre progression, est ici :
 
@@ -119,14 +119,14 @@ Votre espace Insider, avec votre lien d'invitation et votre progression, est ici
 
 const welcome: TemplateSeed[] = [
   {
-    key: "welcome-1", series: "WELCOME", name: "Welcome 1 — Welcome to the MILI Mystery", locale: "en",
-    subject: "Welcome to the MILI Mystery",
+    key: "welcome-1", series: "WELCOME", name: "Welcome 1 — Welcome to the MILLI Mystery", locale: "en",
+    subject: "Welcome to the MILLI Mystery",
     preheader: "You are in. Here is what happens next.",
-    body: `# Welcome to the MILI Mystery.
+    body: `# Welcome to the MILLI Mystery.
 
 {{greeting}}
 
-You are now on the **MILI Insider List**. Here is what we can tell you today:
+You are now on the **MILLI Insider List**. Here is what we can tell you today:
 
 - A 5-axis CNC is coming, sold as a kit.
 - Its planned introductory price is **$1,499**.
@@ -139,14 +139,14 @@ Everything else arrives clue by clue. Insiders see each clue first.
 ${PRICE_NOTE}`,
   },
   {
-    key: "welcome-1", series: "WELCOME", name: "Bienvenue 1 — Bienvenue dans le mystère MILI", locale: "fr",
-    subject: "Bienvenue dans le mystère MILI",
+    key: "welcome-1", series: "WELCOME", name: "Bienvenue 1 — Bienvenue dans le mystère MILLI", locale: "fr",
+    subject: "Bienvenue dans le mystère MILLI",
     preheader: "Vous y êtes. Voici la suite.",
-    body: `# Bienvenue dans le mystère MILI.
+    body: `# Bienvenue dans le mystère MILLI.
 
 {{greeting}}
 
-Vous faites maintenant partie de la **MILI Insider List**. Voici ce que nous pouvons vous dire aujourd'hui :
+Vous faites maintenant partie de la **MILLI Insider List**. Voici ce que nous pouvons vous dire aujourd'hui :
 
 - Une CNC 5 axes arrive, vendue en kit.
 - Son prix de lancement envisagé est de **1 499 $**.
@@ -160,13 +160,13 @@ Tout le reste arrive indice par indice. Les Insiders voient chaque indice en pre
   },
   {
     key: "welcome-1", series: "WELCOME", name: "Willkommen 1", locale: "de",
-    subject: "Willkommen beim MILI Mystery",
+    subject: "Willkommen beim MILLI Mystery",
     preheader: "Sie sind dabei. So geht es weiter.",
-    body: `# Willkommen beim MILI Mystery.
+    body: `# Willkommen beim MILLI Mystery.
 
 {{greeting}}
 
-Sie stehen jetzt auf der **MILI Insider List**. Das können wir Ihnen heute sagen:
+Sie stehen jetzt auf der **MILLI Insider List**. Das können wir Ihnen heute sagen:
 
 - Eine 5-Achs-CNC kommt, als Bausatz.
 - Der geplante Einführungspreis liegt bei **1.499 $**.
@@ -180,13 +180,13 @@ Alles Weitere folgt Hinweis für Hinweis. Insider sehen jeden Hinweis zuerst.
   },
   {
     key: "welcome-1", series: "WELCOME", name: "Bienvenida 1", locale: "es",
-    subject: "Bienvenido al misterio MILI",
+    subject: "Bienvenido al misterio MILLI",
     preheader: "Ya estás dentro. Esto es lo que viene.",
-    body: `# Bienvenido al misterio MILI.
+    body: `# Bienvenido al misterio MILLI.
 
 {{greeting}}
 
-Ya formas parte de la **MILI Insider List**. Esto es lo que podemos contarte hoy:
+Ya formas parte de la **MILLI Insider List**. Esto es lo que podemos contarte hoy:
 
 - Llega una CNC de 5 ejes, vendida en kit.
 - Su precio de lanzamiento previsto es de **1.499 $**.
@@ -200,13 +200,13 @@ Todo lo demás llegará pista a pista. Los Insiders ven cada pista primero.
   },
   {
     key: "welcome-1", series: "WELCOME", name: "ウェルカム 1", locale: "ja",
-    subject: "MILI Mystery へようこそ",
+    subject: "MILLI Mystery へようこそ",
     preheader: "登録が完了しました。これからの流れをご案内します。",
-    body: `# MILI Mystery へようこそ。
+    body: `# MILLI Mystery へようこそ。
 
 {{greeting}}
 
-**MILI Insider List** へのご登録ありがとうございます。現時点でお伝えできることは次のとおりです。
+**MILLI Insider List** へのご登録ありがとうございます。現時点でお伝えできることは次のとおりです。
 
 - 5軸CNCがキットとして登場します。
 - 予定している導入価格は **1,499ドル** です。
@@ -248,7 +248,7 @@ More soon.`,
 
 Five-axis machines have stayed expensive for simple reasons: more axes, more mechanics, more software, more things that have to be right at the same time.
 
-MILI started from a different question: what would a 5-axis CNC look like if it was designed from day one to be built by its owner, as a kit?
+MILLI started from a different question: what would a 5-axis CNC look like if it was designed from day one to be built by its owner, as a kit?
 
 We are not going to answer that today. The answer is the machine, and the machine stays hidden until launch day.
 
@@ -258,7 +258,7 @@ ${PRICE_NOTE}`,
   },
   {
     key: "welcome-4", series: "WELCOME", name: "Welcome 4 — Invite your friends", locale: "en",
-    subject: "Your personal MILI invitation link",
+    subject: "Your personal MILLI invitation link",
     preheader: "Bring your friends in. Climb the Insider ranks.",
     body: `# Bring someone in.
 
@@ -266,9 +266,9 @@ ${PRICE_NOTE}`,
 
 You have a personal invitation link. Every person who joins through it **and confirms their e-mail** counts for you:
 
-- **3** confirmed friends — MILI Insider
-- **10** confirmed friends — MILI Pioneer
-- **25** confirmed friends — MILI Founding Member
+- **3** confirmed friends — MILLI Insider
+- **10** confirmed friends — MILLI Pioneer
+- **25** confirmed friends — MILLI Founding Member
 
 These are recognition ranks. If perks are attached to them, we will announce them before launch — we do not promise what we have not validated.
 
@@ -283,17 +283,17 @@ function prelaunch(days: number, subject: string, preheader: string, body: strin
 }
 
 const prelaunchSeries: TemplateSeed[] = [
-  prelaunch(90, "90 days. The countdown is real.", "MILI launches on Kickstarter on {{launchDate}}.",
+  prelaunch(90, "90 days. The countdown is real.", "MILLI launches on Kickstarter on {{launchDate}}.",
     `# 90 days.
 
 {{greeting}}
 
-The date is set: MILI launches on Kickstarter on **{{launchDate}}**.
+The date is set: MILLI launches on Kickstarter on **{{launchDate}}**.
 
 Between now and then, clues will be unlocked on the site. Insiders get them first.
 
 [[Open my Insider space|{{insiderLink}}]]`),
-  prelaunch(60, "60 days to MILI", "Two months. More clues are unlocking.",
+  prelaunch(60, "60 days to MILLI", "Two months. More clues are unlocking.",
     `# 60 days.
 
 {{greeting}}
@@ -303,7 +303,7 @@ Two months until **{{launchDate}}**.
 New clues are unlocking on the site, and demonstrations are published as soon as they are validated.
 
 [[See the latest clues|{{siteUrl}}]]`),
-  prelaunch(30, "30 days to MILI", "One month left before the reveal.",
+  prelaunch(30, "30 days to MILLI", "One month left before the reveal.",
     `# One month.
 
 {{greeting}}
@@ -315,15 +315,15 @@ If someone you know should see this, now is the time to bring them in.
 Your link: {{referralLink}}
 
 [[See my progress|{{insiderLink}}]]`),
-  prelaunch(14, "Two weeks to MILI", "14 days. Mark the date.",
+  prelaunch(14, "Two weeks to MILLI", "14 days. Mark the date.",
     `# Two weeks.
 
 {{greeting}}
 
-MILI launches on Kickstarter on **{{launchDate}}**.
+MILLI launches on Kickstarter on **{{launchDate}}**.
 
 Launch-day pricing on Kickstarter is usually limited in quantity. Insiders receive the link the moment the campaign opens.`),
-  prelaunch(7, "One week to MILI", "7 days until the reveal.",
+  prelaunch(7, "One week to MILLI", "7 days until the reveal.",
     `# One week.
 
 {{greeting}}
@@ -331,7 +331,7 @@ Launch-day pricing on Kickstarter is usually limited in quantity. Insiders recei
 Seven days until **{{launchDate}}**.
 
 On launch day you will receive one e-mail with the Kickstarter link. That is the one to open.`),
-  prelaunch(3, "3 days to MILI", "Almost there.",
+  prelaunch(3, "3 days to MILLI", "Almost there.",
     `# Three days.
 
 {{greeting}}
@@ -341,12 +341,12 @@ On **{{launchDate}}** the mystery ends.
 The planned introductory price is **$1,499**.
 
 ${PRICE_NOTE}`),
-  prelaunch(1, "Tomorrow.", "MILI launches tomorrow.",
+  prelaunch(1, "Tomorrow.", "MILLI launches tomorrow.",
     `# Tomorrow.
 
 {{greeting}}
 
-MILI launches on Kickstarter **tomorrow, {{launchDate}}**.
+MILLI launches on Kickstarter **tomorrow, {{launchDate}}**.
 
 Watch your inbox: the link arrives the moment the campaign is live.`),
 ];
@@ -356,48 +356,48 @@ function launch(key: string, name: string, subject: string, preheader: string, b
 }
 
 const launchSeries: TemplateSeed[] = [
-  launch("launch-day", "Launch — Day 0", "MILI is live on Kickstarter", "The mystery is over. See the machine.",
-    `# MILI is live.
+  launch("launch-day", "Launch — Day 0", "MILLI is live on Kickstarter", "The mystery is over. See the machine.",
+    `# MILLI is live.
 
 {{greeting}}
 
 The mystery is over. The machine, the full specifications and the contents of the kit are now public.
 
-[[Back MILI on Kickstarter|{{kickstarterUrl}}]]
+[[Back MILLI on Kickstarter|{{kickstarterUrl}}]]
 
 Pledges are made on Kickstarter only. Prices, shipping costs and applicable taxes are detailed on the campaign page.`),
-  launch("launch-plus-1", "Launch — Day +1", "MILI: the first 24 hours", "The campaign is open.",
+  launch("launch-plus-1", "Launch — Day +1", "MILLI: the first 24 hours", "The campaign is open.",
     `# The first day.
 
 {{greeting}}
 
-MILI has been live on Kickstarter for a day. If you have not seen the machine yet, everything is on the campaign page.
+MILLI has been live on Kickstarter for a day. If you have not seen the machine yet, everything is on the campaign page.
 
 [[See the campaign|{{kickstarterUrl}}]]`),
-  launch("launch-plus-7", "Launch — Day +7", "MILI: one week in", "The campaign is still open.",
+  launch("launch-plus-7", "Launch — Day +7", "MILLI: one week in", "The campaign is still open.",
     `# One week in.
 
 {{greeting}}
 
-The MILI campaign has been open for a week. Questions come up every day — the answers are in the campaign FAQ and on our site.
+The MILLI campaign has been open for a week. Questions come up every day — the answers are in the campaign FAQ and on our site.
 
 [[See the campaign|{{kickstarterUrl}}]]`),
-  launch("launch-plus-30", "Launch — Day +30", "MILI: the campaign continues", "Still live on Kickstarter.",
+  launch("launch-plus-30", "Launch — Day +30", "MILLI: the campaign continues", "Still live on Kickstarter.",
     `# The campaign continues.
 
 {{greeting}}
 
-MILI is still live on Kickstarter.
+MILLI is still live on Kickstarter.
 
 [[See the campaign|{{kickstarterUrl}}]]`),
-  launch("launch-plus-55", "Launch — Day +55", "MILI: the final days", "The campaign is closing soon.",
+  launch("launch-plus-55", "Launch — Day +55", "MILLI: the final days", "The campaign is closing soon.",
     `# The final days.
 
 {{greeting}}
 
-The MILI Kickstarter campaign is entering its final days. After it closes, campaign pricing ends.
+The MILLI Kickstarter campaign is entering its final days. After it closes, campaign pricing ends.
 
-[[Back MILI on Kickstarter|{{kickstarterUrl}}]]`),
+[[Back MILLI on Kickstarter|{{kickstarterUrl}}]]`),
 ];
 
 export const emailTemplates: TemplateSeed[] = [...transactional, ...welcome, ...prelaunchSeries, ...launchSeries];

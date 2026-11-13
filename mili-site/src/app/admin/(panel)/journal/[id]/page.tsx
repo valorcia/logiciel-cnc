@@ -10,7 +10,7 @@ import { toInputDateTime } from "../../../_lib/form";
 import { deleteArticleAction, saveArticleAction } from "../../../actions/content";
 
 export const metadata = { title: "Article" };
-const CATEGORIES = [["CNC_TECHNOLOGY", "CNC Technology"], ["FIVE_AXIS_MACHINING", "5-Axis Machining"], ["MAKER_PROJECTS", "Maker Projects"], ["ENGINEERING", "Engineering"], ["MILI_NEWS", "MILI News"]] as const;
+const CATEGORIES = [["CNC_TECHNOLOGY", "CNC Technology"], ["FIVE_AXIS_MACHINING", "5-Axis Machining"], ["MAKER_PROJECTS", "Maker Projects"], ["ENGINEERING", "Engineering"], ["MILLI_NEWS", "MILLI News"]] as const;
 
 export default async function ArticleEditPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; error?: string }> }) {
   await requireAdmin("journal.edit");
@@ -46,8 +46,8 @@ export default async function ArticleEditPage({ params, searchParams }: { params
               <Select label="Statut" name="status" defaultValue={article?.status ?? "DRAFT"} options={STATUS_OPTIONS} />
               <Field label="Date de publication (UTC)" name="publishAt" type="datetime-local" defaultValue={toInputDateTime(article?.publishAt)} help="Requise pour « Programmé » : l'article apparaît seul à cette date." />
               <Select label="Langue" name="locale" defaultValue={article?.locale ?? "en"} options={locales.map((l) => [l, localeNames[l]] as const)} />
-              <Select label="Catégorie" name="category" defaultValue={article?.category ?? "MILI_NEWS"} options={CATEGORIES} />
-              <Field label="Auteur affiché" name="authorName" defaultValue={article?.authorName ?? "MILI Team"} />
+              <Select label="Catégorie" name="category" defaultValue={article?.category ?? "MILLI_NEWS"} options={CATEGORIES} />
+              <Field label="Auteur affiché" name="authorName" defaultValue={article?.authorName ?? "MILLI Team"} />
               <MediaSelect label="Image de couverture" name="coverId" value={article?.coverId} media={media} publicOnly />
             </div>
           </Card>

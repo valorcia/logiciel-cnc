@@ -30,7 +30,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ code: st
   if (!limit.allowed) return res;
   const owner = await db.subscriber.findFirst({ where: { referralCode: normalized, status: "CONFIRMED" }, select: { id: true } });
   if (owner) {
-    res.cookies.set("mili_ref", normalized, {
+    res.cookies.set("milli_ref", normalized, {
       httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 60 * 60 * 24 * 30, path: "/",
     });
   }

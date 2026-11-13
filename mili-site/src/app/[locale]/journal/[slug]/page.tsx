@@ -44,7 +44,7 @@ export default async function ArticlePage({ params }: Props) {
   const schema = {
     "@context": "https://schema.org", "@type": "Article", headline: article.title, description: article.excerpt,
     datePublished: date.toISOString(), dateModified: article.updatedAt.toISOString(), inLanguage: locale,
-    author: { "@type": "Organization", name: article.authorName }, publisher: { "@type": "Organization", name: "MILI", url: baseUrl() },
+    author: { "@type": "Organization", name: article.authorName }, publisher: { "@type": "Organization", name: "MILLI", url: baseUrl() },
     ...(article.coverId ? { image: `${baseUrl()}/media/${article.coverId}` } : {}),
   };
 
@@ -53,7 +53,7 @@ export default async function ArticlePage({ params }: Props) {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(schema) }} />
       <div className="mx-auto max-w-3xl">
         <Link href="/journal" className="text-sm text-ash underline underline-offset-4 hover:text-white">← {t("back")}</Link>
-        <p className="eyebrow mb-5 mt-10">{t(`categories.${article.category}` as "categories.MILI_NEWS")}</p>
+        <p className="eyebrow mb-5 mt-10">{t(`categories.${article.category}` as "categories.MILLI_NEWS")}</p>
         <h1 className="display display-lg">{article.title}</h1>
         <p className="mt-6 text-sm text-smoke">
           {t("by", { author: article.authorName })} · {t("published", { date: format.dateTime(date, { dateStyle: "long", timeZone: "UTC" }) })}
@@ -62,9 +62,9 @@ export default async function ArticlePage({ params }: Props) {
           // eslint-disable-next-line @next/next/no-img-element
           <img src={`/media/${article.coverId}`} alt="" fetchPriority="high" className="mt-10 aspect-[16/9] w-full rounded-2xl border border-line object-cover" />
         )}
-        <div className="prose-mili mt-12" dangerouslySetInnerHTML={{ __html: renderSiteMarkdown(article.body) }} />
+        <div className="prose-milli mt-12" dangerouslySetInnerHTML={{ __html: renderSiteMarkdown(article.body) }} />
         <div className="mt-16 border-t border-line pt-10">
-          <Link href="/#join" className="btn btn-primary">MILI Insider List</Link>
+          <Link href="/#join" className="btn btn-primary">MILLI Insider List</Link>
         </div>
       </div>
     </article>

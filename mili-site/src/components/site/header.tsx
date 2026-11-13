@@ -7,7 +7,7 @@ export async function Header({ locale }: { locale: Locale }) {
   const [t, settings] = await Promise.all([getTranslations({ locale, namespace: "nav" }), getSettings()]);
   const revealed = settings.mode === "REVEAL";
   const links = [
-    ...(revealed ? [{ href: "/mili", label: t("product") }] : [{ href: "/#mystery", label: t("mystery") }]),
+    ...(revealed ? [{ href: "/milli", label: t("product") }] : [{ href: "/#mystery", label: t("mystery") }]),
     { href: "/#proof", label: t("proof") },
     ...(revealed ? [] : [{ href: "/#clues", label: t("clues") }]),
     { href: "/#challenge", label: t("challenge") },

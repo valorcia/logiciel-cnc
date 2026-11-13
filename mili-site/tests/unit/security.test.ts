@@ -30,17 +30,17 @@ describe("tokens and hashes", () => {
 });
 
 describe("personal links", () => {
-  const sub = { id: "sub_1", publicId: "MILI-ABCD2345", tokenVersion: 1 };
+  const sub = { id: "sub_1", publicId: "MILLI-ABCD2345", tokenVersion: 1 };
   it("round-trips and verifies a personal token", () => {
     const parsed = parseInsiderToken(insiderToken(sub));
-    expect(parsed?.publicId).toBe("MILI-ABCD2345");
+    expect(parsed?.publicId).toBe("MILLI-ABCD2345");
     expect(verifyManageSignature(sub, parsed!.signature)).toBe(true);
   });
   it("is invalidated by a token version bump and rejects forgeries", () => {
     const parsed = parseInsiderToken(insiderToken(sub))!;
     expect(verifyManageSignature({ ...sub, tokenVersion: 2 }, parsed.signature)).toBe(false);
     expect(verifyManageSignature({ ...sub, id: "sub_2" }, parsed.signature)).toBe(false);
-    expect(parseInsiderToken("MILI-ABCD2345")).toBeNull();
+    expect(parseInsiderToken("MILLI-ABCD2345")).toBeNull();
     expect(parseInsiderToken("../../etc/passwd")).toBeNull();
   });
   it("tags shared referral links with UTM parameters", () => {
@@ -71,7 +71,7 @@ describe("Resend webhook signature", () => {
 
 describe("validation", () => {
   it("normalises e-mail aliases to detect duplicates", () => {
-    expect(normalizeEmail("John.Doe+mili@GoogleMail.com")).toBe("johndoe@gmail.com");
+    expect(normalizeEmail("John.Doe+milli@GoogleMail.com")).toBe("johndoe@gmail.com");
     expect(normalizeEmail("a.b+x@proton.me")).toBe("a.b@proton.me");
   });
   it("flags disposable domains", () => {
@@ -89,10 +89,10 @@ describe("validation", () => {
     expect(parseUtm((k) => params.get(k))).toEqual({ utmSource: "reddit", utmMedium: "social post" });
   });
   it("attributes a visit to its channel", () => {
-    expect(attributeSource("Reddit", "https://x.com", "mili.test")).toBe("reddit");
-    expect(attributeSource(undefined, "https://www.youtube.com/watch", "mili.test")).toBe("youtube.com");
-    expect(attributeSource(undefined, "https://mili.test/journal", "mili.test")).toBe("direct");
-    expect(attributeSource(undefined, null, "mili.test")).toBe("direct");
+    expect(attributeSource("Reddit", "https://x.com", "milli.test")).toBe("reddit");
+    expect(attributeSource(undefined, "https://www.youtube.com/watch", "milli.test")).toBe("youtube.com");
+    expect(attributeSource(undefined, "https://milli.test/journal", "milli.test")).toBe("direct");
+    expect(attributeSource(undefined, null, "milli.test")).toBe("direct");
   });
 });
 

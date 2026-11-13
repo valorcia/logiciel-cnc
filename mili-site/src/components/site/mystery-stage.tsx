@@ -65,7 +65,7 @@ export function MysteryStage({ hint, classified, known, axisLabels }: Props) {
       style={{ "--mx": "50%", "--my": "38%" } as React.CSSProperties}
     >
       <div className="mb-6 flex items-center justify-between text-[0.6875rem] uppercase tracking-[0.22em] text-smoke">
-        <span>MILI / 000</span>
+        <span>MILLI / 000</span>
         <span className="text-cyan">{classified}</span>
       </div>
 

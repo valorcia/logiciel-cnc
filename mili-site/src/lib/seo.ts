@@ -31,7 +31,7 @@ export function pageMetadata(input: {
     openGraph: {
       type: input.type ?? "website",
       url,
-      siteName: "MILI",
+      siteName: "MILLI",
       title: input.title,
       description: input.description,
       locale: localeTags[input.locale].replace("-", "_"),

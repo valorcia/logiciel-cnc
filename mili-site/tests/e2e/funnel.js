@@ -21,7 +21,7 @@ const subjects = to => fs.readdirSync(OUT).filter(n => n.includes(to) && n.endsW
     return p;
   }
   const stamp = Date.now();
-  const a = `ref-${stamp}@mili-test.dev`, f = `friend-${stamp}@mili-test.dev`;
+  const a = `ref-${stamp}@milli-test.dev`, f = `friend-${stamp}@milli-test.dev`;
   const ctxA = await b.newContext({ viewport: { width: 1440, height: 900 } });
   const pA = await signup(ctxA, a, 'http://localhost:3000/fr');
   const confirmA = mail(a, /http\S+\/confirm\?token=[\w-]+/);
@@ -31,7 +31,7 @@ const subjects = to => fs.readdirSync(OUT).filter(n => n.includes(to) && n.endsW
   await pA.goto(confirmA); await pA.waitForTimeout(800);
   console.log('A confirm again:', await pA.$eval('main, body', e => e.innerText.replace(/\s+/g, ' ').slice(0, 160)));
   await pA.click('a[href*="/insider/"]'); await pA.waitForTimeout(2000);
-  console.log('A insider url ok:', /\/insider\/MILI-/.test(pA.url()), '| h1:', await pA.$eval('h1', e => e.textContent));
+  console.log('A insider url ok:', /\/insider\/MILLI-/.test(pA.url()), '| h1:', await pA.$eval('h1', e => e.textContent));
   const invite = await pA.$eval('#insider-link', e => e.value);
   console.log('invite:', invite);
   const insiderUrl = pA.url();

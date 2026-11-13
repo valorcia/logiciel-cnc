@@ -4,7 +4,7 @@ import { formatUsd, getSettings } from "@/lib/settings";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "MILI is coming.";
+export const alt = "MILLI is coming.";
 export const revalidate = 3600;
 
 /** Social preview. Mystery mode: words only — never an image of the machine. */

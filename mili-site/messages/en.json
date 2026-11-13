@@ -1,8 +1,8 @@
 {
   "meta": {
-    "title": "MILI — A 5-axis CNC is coming",
-    "description": "MILI is an upcoming 5-axis CNC milling machine sold as a kit, with a planned introductory price of $1,499. Join the Insider List to be first.",
-    "ogAlt": "5 AXES. $1,499. IMPOSSIBLE? — MILI is coming."
+    "title": "MILLI — A 5-axis CNC is coming",
+    "description": "MILLI is an upcoming 5-axis CNC milling machine sold as a kit, with a planned introductory price of $1,499. Join the Insider List to be first.",
+    "ogAlt": "5 AXES. $1,499. IMPOSSIBLE? — MILLI is coming."
   },
   "nav": {
     "mystery": "The Mystery",
@@ -12,7 +12,7 @@
     "journal": "Journal",
     "product": "The Machine",
     "cta": "Get early access",
-    "back": "Back MILI on Kickstarter",
+    "back": "Back MILLI on Kickstarter",
     "language": "Language",
     "skip": "Skip to content",
     "menu": "Menu",
@@ -21,7 +21,7 @@
   "hero": {
     "word1": "5 AXES.",
     "word3": "IMPOSSIBLE?",
-    "title": "MILI IS COMING.",
+    "title": "MILLI IS COMING.",
     "subtitle": "The future of 5-axis CNC is closer than you think.",
     "ctaPrimary": "Get early access",
     "ctaSecondary": "Discover the mystery",
@@ -51,9 +51,9 @@
   },
   "proof": {
     "title": "DON'T BELIEVE IT?",
-    "subtitle": "Parts machined on the MILI prototype. Nothing else.",
+    "subtitle": "Parts machined on the MILLI prototype. Nothing else.",
     "emptyTitle": "The first cuts are on their way.",
-    "emptyText": "Demonstrations appear here once they have been filmed on the MILI prototype and technically validated. We will not show anything else.",
+    "emptyText": "Demonstrations appear here once they have been filmed on the MILLI prototype and technically validated. We will not show anything else.",
     "validated": "Technically validated",
     "play": "Play video",
     "recorded": "Recorded {date}",
@@ -87,7 +87,7 @@
     "category": "Category",
     "file": "File (optional)",
     "fileHelp": "STEP, STL, OBJ, PDF, JPG or PNG — {max} MB max. Stored privately, never published as is.",
-    "consent": "I agree that MILI may contact me about this idea and publish a moderated summary of it, credited with my first name only.",
+    "consent": "I agree that MILLI may contact me about this idea and publish a moderated summary of it, credited with my first name only.",
     "submit": "Submit my idea",
     "sending": "Sending…",
     "successTitle": "Idea received.",
@@ -99,7 +99,7 @@
     "voted": "Voted",
     "votes": "{count, plural, =0 {No votes yet} one {# vote} other {# votes}}",
     "seeAll": "See all challenges",
-    "pageTitle": "The MILI Challenge",
+    "pageTitle": "The MILLI Challenge",
     "categories": {
       "ART_DESIGN": "Art & Design",
       "ENGINEERING": "Engineering",
@@ -113,13 +113,13 @@
   },
   "join": {
     "title": "BE FIRST.",
-    "text": "Join the MILI Insider List.",
+    "text": "Join the MILLI Insider List.",
     "points": "Clues before everyone else. The launch link the moment it opens. Nothing you did not ask for.",
     "email": "E-mail",
     "firstName": "First name (optional)",
     "country": "Country (optional)",
     "countryPlaceholder": "Select a country",
-    "consent": "I agree to receive e-mails from MILI about the project and its launch. I can unsubscribe at any time.",
+    "consent": "I agree to receive e-mails from MILLI about the project and its launch. I can unsubscribe at any time.",
     "privacy": "Privacy Policy",
     "submit": "Join the revolution",
     "sending": "Joining…",
@@ -154,12 +154,12 @@
     "contact": "Contact",
     "journal": "Journal",
     "priceNote": "$1,499 is a planned introductory price for the Kickstarter launch, subject to final confirmation. Pledges will be made on Kickstarter only: this site takes no payment.",
-    "rights": "© {year} MILI. All rights reserved.",
+    "rights": "© {year} MILLI. All rights reserved.",
     "follow": "Follow"
   },
   "confirm": {
     "title": "YOU ARE IN.",
-    "text": "Your address is confirmed. Welcome to the MILI Insider List.",
+    "text": "Your address is confirmed. Welcome to the MILLI Insider List.",
     "already": "This address was already confirmed. You are on the list.",
     "cta": "Open my Insider space",
     "invalidTitle": "This link is not valid.",
@@ -170,10 +170,10 @@
   },
   "unsubscribe": {
     "title": "Unsubscribe",
-    "question": "Stop receiving e-mails from MILI at {email}?",
+    "question": "Stop receiving e-mails from MILLI at {email}?",
     "confirm": "Unsubscribe",
     "doneTitle": "You are unsubscribed.",
-    "doneText": "You will not receive any more e-mails from MILI. You can join again at any time.",
+    "doneText": "You will not receive any more e-mails from MILLI. You can join again at any time.",
     "invalid": "This unsubscribe link is not valid.",
     "keep": "Keep me on the list"
   },
@@ -199,8 +199,8 @@
     "copy": "Copy link",
     "copied": "Copied",
     "share": "Share",
-    "shareText": "A 5-axis CNC with a planned introductory price of $1,499? MILI is coming.",
-    "shareSubject": "Have you seen this? MILI is coming",
+    "shareText": "A 5-axis CNC with a planned introductory price of $1,499? MILLI is coming.",
+    "shareSubject": "Have you seen this? MILLI is coming",
     "rewards": "Insider ranks",
     "rewardsNote": "Ranks are recognition. Any perk attached to them will be announced before launch.",
     "reached": "Reached",
@@ -215,7 +215,7 @@
     "deleteNo": "Cancel",
     "deletedTitle": "Your data has been deleted.",
     "deletedText": "Nothing about you remains in our systems.",
-    "unsubscribed": "You are unsubscribed from MILI e-mails.",
+    "unsubscribed": "You are unsubscribed from MILLI e-mails.",
     "clues": "Latest clues"
   },
   "journal": {
@@ -232,7 +232,7 @@
       "FIVE_AXIS_MACHINING": "5-Axis Machining",
       "MAKER_PROJECTS": "Maker Projects",
       "ENGINEERING": "Engineering",
-      "MILI_NEWS": "MILI News"
+      "MILLI_NEWS": "MILLI News"
     }
   },
   "contact": {
@@ -270,14 +270,14 @@
     "back": "Back to the site"
   },
   "reveal": {
-    "heroTitle": "THE MILI 5-AXIS CNC.",
+    "heroTitle": "THE MILLI 5-AXIS CNC.",
     "heroSubtitle": "The mystery is over.",
-    "cta": "Back MILI on Kickstarter",
+    "cta": "Back MILLI on Kickstarter",
     "ctaSoon": "Kickstarter link coming soon",
     "watch": "Watch the film",
     "gallery": "Gallery",
     "specs": "Specifications",
-    "specsNote": "Every figure in this table has been validated by the MILI founders.",
+    "specsNote": "Every figure in this table has been validated by the MILLI founders.",
     "kit": "What's in the Kit",
     "rewards": "Kickstarter rewards",
     "rewardsNote": "Pledges are made on Kickstarter only. Shipping costs and applicable taxes are not included unless stated and are detailed on the campaign page.",
@@ -285,6 +285,6 @@
     "faq": "FAQ",
     "discover": "Discover the machine",
     "homeTitle": "THE MYSTERY IS OVER.",
-    "homeText": "Meet the MILI 5-axis CNC."
+    "homeText": "Meet the MILLI 5-axis CNC."
   }
 }

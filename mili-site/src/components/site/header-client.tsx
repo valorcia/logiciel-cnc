@@ -52,8 +52,8 @@ export function HeaderClient({ links, cta, labels }: Props) {
       }`}
     >
       <div className="shell flex h-16 items-center justify-between gap-6">
-        <Link href="/" className="text-lg font-semibold tracking-[0.32em]" aria-label="MILI">
-          MILI
+        <Link href="/" className="text-lg font-semibold tracking-[0.32em]" aria-label="MILLI">
+          MILLI
         </Link>
 
         <nav className="hidden items-center gap-8 lg:flex" aria-label="Primary">

@@ -7,7 +7,7 @@ import type { Locale } from "@/lib/i18n/config";
 import { pageMetadata } from "@/lib/seo";
 
 export const revalidate = 60;
-const CATEGORIES = ["CNC_TECHNOLOGY", "FIVE_AXIS_MACHINING", "MAKER_PROJECTS", "ENGINEERING", "MILI_NEWS"] as const;
+const CATEGORIES = ["CNC_TECHNOLOGY", "FIVE_AXIS_MACHINING", "MAKER_PROJECTS", "ENGINEERING", "MILLI_NEWS"] as const;
 type Props = { params: Promise<{ locale: string }>; searchParams: Promise<{ category?: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -50,7 +50,7 @@ export default async function JournalPage({ params, searchParams }: Props) {
                     <div aria-hidden className="panel glow-cyan aspect-[16/10] w-full" />
                   )}
                   <p className="mt-5 text-[0.6875rem] uppercase tracking-[0.18em] text-smoke">
-                    {t(`categories.${a.category}` as "categories.MILI_NEWS")} · {format.dateTime(a.publishAt ?? a.createdAt, { dateStyle: "medium", timeZone: "UTC" })}
+                    {t(`categories.${a.category}` as "categories.MILLI_NEWS")} · {format.dateTime(a.publishAt ?? a.createdAt, { dateStyle: "medium", timeZone: "UTC" })}
                   </p>
                   <h2 className="mt-2 text-2xl font-semibold leading-snug tracking-tight transition group-hover:text-cyan">{a.title}</h2>
                   <p className="mt-2 text-sm leading-relaxed text-ash">{a.excerpt}</p>

@@ -63,7 +63,7 @@ export async function subscribeAction(_prev: FormState, formData: FormData): Pro
     ipHash: meta.ipHash,
     userAgent: meta.userAgent,
     utm: parseUtm((key) => text(formData, key)),
-    referralCode: jar.get("mili_ref")?.value ?? null,
+    referralCode: jar.get("milli_ref")?.value ?? null,
     referrerHost: safeHost(text(formData, "referrer")),
     landingPath: text(formData, "landing") || null,
   });
@@ -146,10 +146,10 @@ export async function voteAction(challengeId: string): Promise<VoteResult> {
   if (!limit.allowed) return { ok: false, code: "rate" };
 
   const jar = await cookies();
-  let voter = verify<{ v: string }>("voter", jar.get("mili_voter")?.value)?.v;
+  let voter = verify<{ v: string }>("voter", jar.get("milli_voter")?.value)?.v;
   if (!voter) {
     voter = randomToken(16);
-    jar.set("mili_voter", sign("voter", { v: voter }), {
+    jar.set("milli_voter", sign("voter", { v: voter }), {
       httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 60 * 60 * 24 * 365, path: "/",
     });
   }

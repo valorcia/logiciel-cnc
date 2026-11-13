@@ -14,7 +14,7 @@ export type LegalIdentity = { name: string; address: string; email: string };
 export async function legalIdentity(): Promise<LegalIdentity> {
   const s = await getSettings();
   return {
-    name: s.legalName?.trim() || "the publisher of the MILI website",
+    name: s.legalName?.trim() || "the publisher of the MILLI website",
     address: s.postalAddress?.trim() || "",
     email: s.contactEmail?.trim() || "",
   };
@@ -34,7 +34,7 @@ export async function LegalPage({ locale, titleKey, children }: { locale: string
         <h1 className="display display-lg">{t(titleKey)}</h1>
         <p className="mt-6 text-sm text-smoke">{t("updated", { date: LEGAL_UPDATED })}</p>
         {locale !== "en" && <p className="mt-2 text-sm text-smoke">{t("englishOnly")}</p>}
-        <div className="prose-mili mt-12" lang="en">{children}</div>
+        <div className="prose-milli mt-12" lang="en">{children}</div>
       </div>
     </article>
   );

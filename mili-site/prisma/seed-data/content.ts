@@ -50,13 +50,13 @@ export function clueSeeds(now: Date) {
 export const faqSeeds = [
   {
     sortOrder: 1, scope: "MYSTERY",
-    question: { en: "What is MILI?", fr: "Qu'est-ce que MILI ?", de: "Was ist MILI?", es: "¿Qué es MILI?", ja: "MILI とは何ですか？" },
+    question: { en: "What is MILLI?", fr: "Qu'est-ce que MILLI ?", de: "Was ist MILLI?", es: "¿Qué es MILLI?", ja: "MILLI とは何ですか？" },
     answer: {
-      en: "MILI is an upcoming 5-axis CNC milling machine sold as a kit. The machine itself stays hidden until launch day.",
-      fr: "MILI est une future fraiseuse CNC 5 axes vendue en kit. La machine elle-même reste cachée jusqu'au jour du lancement.",
-      de: "MILI ist eine kommende 5-Achs-CNC-Fräse, die als Bausatz verkauft wird. Die Maschine selbst bleibt bis zum Launch-Tag verborgen.",
-      es: "MILI es una próxima fresadora CNC de 5 ejes vendida en kit. La máquina permanece oculta hasta el día del lanzamiento.",
-      ja: "MILI は、キットとして販売予定の5軸CNCフライス盤です。マシン本体は発売日まで公開しません。",
+      en: "MILLI is an upcoming 5-axis CNC milling machine sold as a kit. The machine itself stays hidden until launch day.",
+      fr: "MILLI est une future fraiseuse CNC 5 axes vendue en kit. La machine elle-même reste cachée jusqu'au jour du lancement.",
+      de: "MILLI ist eine kommende 5-Achs-CNC-Fräse, die als Bausatz verkauft wird. Die Maschine selbst bleibt bis zum Launch-Tag verborgen.",
+      es: "MILLI es una próxima fresadora CNC de 5 ejes vendida en kit. La máquina permanece oculta hasta el día del lanzamiento.",
+      ja: "MILLI は、キットとして販売予定の5軸CNCフライス盤です。マシン本体は発売日まで公開しません。",
     },
   },
   {
@@ -85,30 +85,30 @@ export const faqSeeds = [
     sortOrder: 4, scope: "MYSTERY",
     question: { en: "How do I buy one?", fr: "Comment en acheter une ?", de: "Wie kann ich eine kaufen?", es: "¿Cómo puedo comprar una?", ja: "購入方法は？" },
     answer: {
-      en: "MILI will launch on Kickstarter, and pledges will be made there only. This site takes no payment and no paid reservation. Join the Insider List to receive the link the moment the campaign opens.",
-      fr: "MILI sera lancée sur Kickstarter, et les contributions se feront uniquement là-bas. Ce site ne prend aucun paiement ni aucune réservation payante. Rejoignez l'Insider List pour recevoir le lien dès l'ouverture de la campagne.",
-      de: "MILI startet auf Kickstarter, und nur dort kann unterstützt werden. Diese Website nimmt keine Zahlungen und keine kostenpflichtigen Reservierungen an. Tragen Sie sich in die Insider List ein, um den Link beim Start zu erhalten.",
-      es: "MILI se lanzará en Kickstarter y las aportaciones se harán únicamente allí. Este sitio no acepta pagos ni reservas de pago. Únete a la Insider List para recibir el enlace en cuanto se abra la campaña.",
-      ja: "MILI は Kickstarter で発売され、支援はそこでのみ受け付けます。このサイトでは支払いや有料予約は一切行いません。Insider List に登録すると、キャンペーン開始と同時にリンクをお届けします。",
+      en: "MILLI will launch on Kickstarter, and pledges will be made there only. This site takes no payment and no paid reservation. Join the Insider List to receive the link the moment the campaign opens.",
+      fr: "MILLI sera lancée sur Kickstarter, et les contributions se feront uniquement là-bas. Ce site ne prend aucun paiement ni aucune réservation payante. Rejoignez l'Insider List pour recevoir le lien dès l'ouverture de la campagne.",
+      de: "MILLI startet auf Kickstarter, und nur dort kann unterstützt werden. Diese Website nimmt keine Zahlungen und keine kostenpflichtigen Reservierungen an. Tragen Sie sich in die Insider List ein, um den Link beim Start zu erhalten.",
+      es: "MILLI se lanzará en Kickstarter y las aportaciones se harán únicamente allí. Este sitio no acepta pagos ni reservas de pago. Únete a la Insider List para recibir el enlace en cuanto se abra la campaña.",
+      ja: "MILLI は Kickstarter で発売され、支援はそこでのみ受け付けます。このサイトでは支払いや有料予約は一切行いません。Insider List に登録すると、キャンペーン開始と同時にリンクをお届けします。",
     },
   },
   {
     sortOrder: 5, scope: "MYSTERY",
     question: { en: "What do you do with my e-mail address?", fr: "Que faites-vous de mon adresse e-mail ?", de: "Was passiert mit meiner E-Mail-Adresse?", es: "¿Qué hacéis con mi correo?", ja: "メールアドレスはどのように使われますか？" },
     answer: {
-      en: "We use it to send you MILI news, and only after you confirm it. You can unsubscribe, export or delete your data at any time from your Insider space. We do not sell or share the list.",
-      fr: "Nous l'utilisons pour vous envoyer les actualités MILI, et seulement après votre confirmation. Vous pouvez vous désinscrire, exporter ou supprimer vos données à tout moment depuis votre espace Insider. Nous ne vendons ni ne partageons la liste.",
-      de: "Wir nutzen sie, um Ihnen MILI-Neuigkeiten zu senden – erst nach Ihrer Bestätigung. Sie können sich jederzeit in Ihrem Insider-Bereich abmelden, Ihre Daten exportieren oder löschen. Wir verkaufen oder teilen die Liste nicht.",
-      es: "La usamos para enviarte novedades de MILI, y solo después de que la confirmes. Puedes darte de baja, exportar o eliminar tus datos en cualquier momento desde tu espacio Insider. No vendemos ni compartimos la lista.",
-      ja: "確認後にのみ、MILI の最新情報をお送りするために使用します。Insider スペースからいつでも配信停止、データのエクスポート、削除が可能です。リストを販売・共有することはありません。",
+      en: "We use it to send you MILLI news, and only after you confirm it. You can unsubscribe, export or delete your data at any time from your Insider space. We do not sell or share the list.",
+      fr: "Nous l'utilisons pour vous envoyer les actualités MILLI, et seulement après votre confirmation. Vous pouvez vous désinscrire, exporter ou supprimer vos données à tout moment depuis votre espace Insider. Nous ne vendons ni ne partageons la liste.",
+      de: "Wir nutzen sie, um Ihnen MILLI-Neuigkeiten zu senden – erst nach Ihrer Bestätigung. Sie können sich jederzeit in Ihrem Insider-Bereich abmelden, Ihre Daten exportieren oder löschen. Wir verkaufen oder teilen die Liste nicht.",
+      es: "La usamos para enviarte novedades de MILLI, y solo después de que la confirmes. Puedes darte de baja, exportar o eliminar tus datos en cualquier momento desde tu espacio Insider. No vendemos ni compartimos la lista.",
+      ja: "確認後にのみ、MILLI の最新情報をお送りするために使用します。Insider スペースからいつでも配信停止、データのエクスポート、削除が可能です。リストを販売・共有することはありません。",
     },
   },
 ];
 
 export const rewardSeeds = [
-  { threshold: 3, name: "MILI Insider", description: { en: "Recognition rank. Any perk attached to it will be announced before launch.", fr: "Rang de reconnaissance. Tout avantage associé sera annoncé avant le lancement." } },
-  { threshold: 10, name: "MILI Pioneer", description: { en: "Recognition rank. Any perk attached to it will be announced before launch.", fr: "Rang de reconnaissance. Tout avantage associé sera annoncé avant le lancement." } },
-  { threshold: 25, name: "MILI Founding Member", description: { en: "Recognition rank. Any perk attached to it will be announced before launch.", fr: "Rang de reconnaissance. Tout avantage associé sera annoncé avant le lancement." } },
+  { threshold: 3, name: "MILLI Insider", description: { en: "Recognition rank. Any perk attached to it will be announced before launch.", fr: "Rang de reconnaissance. Tout avantage associé sera annoncé avant le lancement." } },
+  { threshold: 10, name: "MILLI Pioneer", description: { en: "Recognition rank. Any perk attached to it will be announced before launch.", fr: "Rang de reconnaissance. Tout avantage associé sera annoncé avant le lancement." } },
+  { threshold: 25, name: "MILLI Founding Member", description: { en: "Recognition rank. Any perk attached to it will be announced before launch.", fr: "Rang de reconnaissance. Tout avantage associé sera annoncé avant le lancement." } },
 ];
 
 /** Planned Kickstarter tiers. Seeded INACTIVE: a founder must review and activate them. */

@@ -52,7 +52,7 @@ export default async function PanelLayout({ children }: { children: ReactNode })
     <div className="lg:grid lg:min-h-svh lg:grid-cols-[15.5rem_1fr]">
       <aside className="border-b border-line bg-carbon/60 p-4 lg:sticky lg:top-0 lg:h-svh lg:overflow-y-auto lg:border-b-0 lg:border-r">
         <div className="mb-6 flex items-center justify-between px-3">
-          <span className="font-semibold tracking-[0.28em]">MILI</span>
+          <span className="font-semibold tracking-[0.28em]">MILLI</span>
           <span className={`adm-badge ${settings.mode === "REVEAL" ? "adm-badge-ok" : "adm-badge-warn"}`}>{settings.mode === "REVEAL" ? "Reveal" : "Mystery"}</span>
         </div>
         <Nav groups={visible} />

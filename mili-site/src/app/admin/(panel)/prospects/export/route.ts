@@ -39,7 +39,7 @@ export async function GET(req: Request) {
   return new Response(`﻿${header.join(",")}\r\n${lines.join("\r\n")}\r\n`, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="mili-prospects-${new Date().toISOString().slice(0, 10)}.csv"`,
+      "Content-Disposition": `attachment; filename="milli-prospects-${new Date().toISOString().slice(0, 10)}.csv"`,
       "Cache-Control": "private, no-store",
     },
   });
