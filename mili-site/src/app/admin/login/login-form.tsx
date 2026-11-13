@@ -11,7 +11,7 @@ export function LoginForm() {
     <form action={action} className="adm-card space-y-5">
       <div>
         <label htmlFor="email" className="field-label">Adresse e-mail</label>
-        <input id="email" name="email" type="email" required autoComplete="username" className="field" />
+        <input id="email" name="email" type="email" required autoComplete="username" defaultValue={state.email ?? ""} className="field" />
       </div>
       <div>
         <label htmlFor="password" className="field-label">Mot de passe</label>

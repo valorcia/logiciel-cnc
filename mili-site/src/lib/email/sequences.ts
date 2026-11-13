@@ -1,4 +1,5 @@
 import "server-only";
+import { emailProviderConfigured } from "./provider";
 import { db } from "../db";
 import { oneClickUnsubscribeUrl, unsubscribeUrl } from "../links";
 import { getSettings } from "../settings";
@@ -58,6 +59,12 @@ export async function processDueEmails(now = new Date(), maxPerStep = 1000): Pro
     orderBy: [{ series: "asc" }, { sortOrder: "asc" }],
   });
   const reports: SequenceReport[] = [];
+
+  // Without a provider nothing can leave. Do not claim deliveries: they must stay due
+  // so that they go out once a provider is configured (within each step's grace window).
+  if (!emailProviderConfigured()) {
+    return steps.map((step) => ({ step: `${step.series}:${step.templateKey}`, due: 0, sent: 0, failed: 0, notSent: 0, skippedReason: "No e-mail provider configured" }));
+  }
 
   for (const step of steps) {
     const report: SequenceReport = { step: `${step.series}:${step.templateKey}`, due: 0, sent: 0, failed: 0, notSent: 0 };

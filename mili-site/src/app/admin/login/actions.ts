@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { requestMeta } from "@/lib/request";
 
-export type LoginState = { error?: string };
+export type LoginState = { error?: string; email?: string };
 
 export async function loginAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -19,9 +19,9 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
     rateLimit(`login:${meta.ipHash}`, 10, 900),
     rateLimit(`login-account:${email.slice(0, 120)}`, 5, 900),
   ]);
-  if (!byNetwork.allowed || !byAccount.allowed) return { error: "Trop de tentatives. Réessayez dans quinze minutes." };
+  if (!byNetwork.allowed || !byAccount.allowed) return { error: "Trop de tentatives. Réessayez dans quinze minutes.", email };
 
-  const generic = { error: "Adresse e-mail ou mot de passe incorrect." };
+  const generic = { error: "Adresse e-mail ou mot de passe incorrect.", email };
   if (!email || !password) return generic;
   const user = await db.user.findUnique({ where: { email } });
   if (!user || !user.active) {
