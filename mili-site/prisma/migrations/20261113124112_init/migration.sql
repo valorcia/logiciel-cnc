@@ -101,6 +101,7 @@ CREATE TABLE "SiteSettings" (
     "launchAt" TIMESTAMP(3),
     "countdownEnabled" BOOLEAN NOT NULL DEFAULT true,
     "kickstarterUrl" TEXT,
+    "filmUrl" TEXT,
     "plannedPriceCents" INTEGER NOT NULL DEFAULT 149900,
     "showPlannedPrice" BOOLEAN NOT NULL DEFAULT true,
     "leaderboardEnabled" BOOLEAN NOT NULL DEFAULT false,

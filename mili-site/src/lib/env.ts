@@ -23,7 +23,7 @@ const schema = z.object({
   S3_BUCKET: z.string().optional(),
   S3_ACCESS_KEY_ID: z.string().optional(),
   S3_SECRET_ACCESS_KEY: z.string().optional(),
-  UPLOAD_MAX_MB: z.coerce.number().positive().default(25),
+  UPLOAD_MAX_MB: z.coerce.number().positive().max(4).default(4),
 });
 
 export type Env = z.infer<typeof schema>;

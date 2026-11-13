@@ -98,6 +98,8 @@ model SiteSettings {
   launchAt           DateTime?
   countdownEnabled   Boolean   @default(true)
   kickstarterUrl     String?
+  /// Official film shown on the product page. Confidential until the reveal.
+  filmUrl            String?
   plannedPriceCents  Int       @default(149900)
   showPlannedPrice   Boolean   @default(true)
   leaderboardEnabled Boolean   @default(false)

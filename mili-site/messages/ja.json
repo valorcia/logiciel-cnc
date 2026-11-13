@@ -1,0 +1,171 @@
+{
+  "meta": {
+    "title": "MILI — 5軸CNC、まもなく登場",
+    "description": "MILI は、キットとして販売予定の5軸CNCフライス盤です。予定導入価格は1,499ドル。Insider List に登録して、最新情報をいち早く受け取りましょう。",
+    "ogAlt": "5軸。$1,499。不可能？ — MILI、まもなく登場。"
+  },
+  "nav": {
+    "mystery": "ミステリー", "proof": "証明", "clues": "ヒント", "challenge": "チャレンジ", "journal": "ジャーナル",
+    "product": "マシン", "cta": "先行アクセス", "back": "Kickstarter で MILI を支援", "language": "言語",
+    "skip": "本文へスキップ", "menu": "メニュー", "close": "閉じる"
+  },
+  "hero": {
+    "word1": "5軸。", "word3": "不可能？", "title": "MILI、まもなく登場。",
+    "subtitle": "5軸CNCの未来は、思っているより近くにあります。",
+    "ctaPrimary": "先行アクセスを取得", "ctaSecondary": "ミステリーを見る",
+    "priceNote": "予定の導入価格です。最終確定前のものです。", "scroll": "スクロール"
+  },
+  "countdown": {
+    "caption": "公開まで", "days": "日", "hours": "時間", "minutes": "分", "seconds": "秒",
+    "localTime": "{date}（現地時間）", "zeroTitle": "その時が来ました。",
+    "zeroText": "もう少しお待ちください。公開の準備を進めています。"
+  },
+  "mystery": {
+    "title": "大きな何かが、やって来る。",
+    "text": "5つの軸。予想外の価格。CNCのまったく新しい考え方。",
+    "final": "すべてが明かされるわけではありません。今はまだ。",
+    "hint": "動かして、近くで見てみましょう。", "axis": "軸 {number}",
+    "classified": "発売日まで非公開", "known1": "5軸", "known2": "キットで販売",
+    "known3": "予定価格 {price} から"
+  },
+  "proof": {
+    "title": "信じられませんか？",
+    "subtitle": "MILI の試作機で加工したパーツだけを掲載します。",
+    "emptyTitle": "最初の切削映像を準備中です。",
+    "emptyText": "MILI の試作機で撮影し、技術的に検証されたデモのみをここに掲載します。それ以外は一切掲載しません。",
+    "validated": "技術検証済み", "play": "動画を再生", "recorded": "撮影日 {date}", "all": "すべて",
+    "categories": {
+      "PRECISION": "精度", "COMPLEX_GEOMETRY": "複雑形状", "FIVE_AXIS": "5軸加工",
+      "SURFACE_FINISH": "表面仕上げ", "MATERIALS": "素材"
+    }
+  },
+  "clues": {
+    "title": "ミステリーを解き明かせ。",
+    "subtitle": "ヒントはひとつずつ。Insider には最初にお届けします。",
+    "label": "ヒント {number}", "locked": "ロック中", "unlocksOn": "{date} に公開",
+    "unlocksIn": "{days, plural, =0 {本日公開} other {あと#日で公開}}",
+    "new": "新着", "watch": "見る"
+  },
+  "challenge": {
+    "title": "あなたなら、何をつくる？",
+    "subtitle": "5つの軸でつくれるものを想像してください。",
+    "intro": "加工してみたいパーツのアイデアをお送りください。優れたアイデアは選考のうえ公開され、投票の対象になります。",
+    "name": "お名前", "email": "メールアドレス", "description": "プロジェクトの説明",
+    "descriptionHelp": "20文字以上。どんなものか、なぜ5軸が必要かを教えてください。",
+    "category": "カテゴリー", "file": "ファイル（任意）",
+    "fileHelp": "STEP、STL、OBJ、PDF、JPG、PNG — 最大 {max} MB。非公開で保管され、そのまま公開されることはありません。",
+    "consent": "このアイデアについて MILI から連絡を受けること、および名（ファーストネーム）のみを添えた編集済みの概要が公開されることに同意します。",
+    "submit": "アイデアを送信", "sending": "送信中…", "successTitle": "アイデアを受け付けました。",
+    "successText": "すべての提案は公開前に確認されます。ありがとうございます。",
+    "galleryTitle": "選ばれたチャレンジ", "galleryEmpty": "選ばれたチャレンジがここに表示されます。",
+    "by": "{name} さん", "vote": "投票する", "voted": "投票済み",
+    "votes": "{count, plural, =0 {まだ投票はありません} other {#票}}",
+    "seeAll": "すべてのチャレンジを見る", "pageTitle": "MILI チャレンジ",
+    "categories": {
+      "ART_DESIGN": "アート＆デザイン", "ENGINEERING": "エンジニアリング", "ROBOTICS": "ロボティクス", "AUTOMOTIVE": "自動車",
+      "AEROSPACE": "航空宇宙", "JEWELRY": "ジュエリー", "EDUCATION": "教育", "OTHER": "その他"
+    }
+  },
+  "join": {
+    "title": "誰よりも早く。", "text": "MILI Insider List に参加しましょう。",
+    "points": "誰よりも早いヒント。開始と同時に届くローンチリンク。ご希望以外のメールは送りません。",
+    "email": "メールアドレス", "firstName": "名（任意）", "country": "国（任意）",
+    "countryPlaceholder": "国を選択",
+    "consent": "MILI からプロジェクトとローンチに関するメールを受け取ることに同意します。いつでも配信停止できます。",
+    "privacy": "プライバシーポリシー", "submit": "革命に参加する", "sending": "登録中…",
+    "successTitle": "受信トレイをご確認ください。",
+    "successText": "{email} に確認リンクを送信しました。クリックして登録を完了してください。",
+    "successNote": "届いていませんか？迷惑メールフォルダをご確認ください。リンクの有効期限は7日間です。"
+  },
+  "errors": {
+    "generic": "問題が発生しました。もう一度お試しください。", "invalid": "入力内容をご確認ください。",
+    "email": "有効なメールアドレスを入力してください。", "consent": "同意が必要です。",
+    "disposable": "恒久的なメールアドレスをご利用ください。",
+    "rate": "試行回数が多すぎます。数分後にもう一度お試しください。",
+    "spam": "送信内容を確認できませんでした。ページを再読み込みしてもう一度お試しください。",
+    "fileTooLarge": "ファイルが大きすぎます。", "fileType": "このファイル形式は受け付けていません。",
+    "fileMismatch": "ファイルの内容が拡張子と一致しません。",
+    "description": "説明が短すぎます。", "name": "お名前を入力してください。",
+    "message": "メッセージが短すぎます。", "alreadyVoted": "このチャレンジにはすでに投票済みです。"
+  },
+  "faq": { "title": "よくある質問" },
+  "footer": {
+    "tagline": "5軸CNC、まもなく登場。", "privacy": "プライバシーポリシー", "terms": "利用規約",
+    "cookies": "クッキーポリシー", "contact": "お問い合わせ", "journal": "ジャーナル",
+    "priceNote": "1,499ドルは Kickstarter での発売時に予定している導入価格であり、最終確定前のものです。支援は Kickstarter でのみ受け付けます。このサイトでは一切の支払いを受け付けません。",
+    "rights": "© {year} MILI. All rights reserved.", "follow": "フォロー"
+  },
+  "confirm": {
+    "title": "登録が完了しました。", "text": "メールアドレスが確認されました。MILI Insider List へようこそ。",
+    "already": "このアドレスはすでに確認済みです。リストに登録されています。", "cta": "Insider スペースを開く",
+    "invalidTitle": "このリンクは無効です。",
+    "invalidText": "すでに使用済みか、リンクが正しくコピーされていない可能性があります。もう一度登録して新しいリンクを受け取ってください。",
+    "expiredTitle": "このリンクは期限切れです。",
+    "expiredText": "確認リンクの有効期限は7日間です。もう一度登録して新しいリンクを受け取ってください。",
+    "back": "サイトに戻る"
+  },
+  "unsubscribe": {
+    "title": "配信停止", "question": "{email} への MILI からのメール配信を停止しますか？",
+    "confirm": "配信を停止する", "doneTitle": "配信を停止しました。",
+    "doneText": "今後 MILI からメールが届くことはありません。いつでも再登録できます。",
+    "invalid": "この配信停止リンクは無効です。", "keep": "登録を続ける"
+  },
+  "insider": {
+    "title": "INSIDER スペース", "hello": "{name} さん、ようこそ。", "helloAnon": "Insider の皆さま、ようこそ。", "id": "Insider ID",
+    "invalid": "この個人用リンクは無効か、置き換えられています。", "pendingTitle": "あと一歩です。",
+    "pendingText": "お送りしたリンクからメールアドレスを確認すると、Insider スペースが有効になります。",
+    "referrals": "確認済みの友達", "pending": "確認待ち", "review": "審査中",
+    "rank": "あなたの順位", "rankNone": "—", "next": "次の目標",
+    "nextText": "{remaining, plural, other {あと#人}}で {name} に到達",
+    "allDone": "最高ランクに到達しました。", "progress": "進捗",
+    "linkTitle": "あなたの招待リンク",
+    "linkText": "友達があなたのリンクから登録し、メールアドレスを確認するとカウントされます。",
+    "copy": "リンクをコピー", "copied": "コピーしました", "share": "シェア",
+    "shareText": "予定導入価格1,499ドルの5軸CNC？MILI、まもなく登場。",
+    "shareSubject": "これ見た？MILI がまもなく登場", "rewards": "Insider ランク",
+    "rewardsNote": "ランクは称号です。特典がある場合は、ローンチ前に発表します。",
+    "reached": "達成", "leaderboard": "トップ Insider", "data": "あなたのデータ",
+    "dataText": "当社が保有するあなたのデータは、ご自身で管理できます。", "export": "データをダウンロード",
+    "unsubscribe": "配信を停止する", "delete": "データを削除",
+    "deleteConfirm": "当社が保有するあなたのデータをすべて削除しますか？この操作は取り消せません。",
+    "deleteYes": "はい、すべて削除します", "deleteNo": "キャンセル", "deletedTitle": "データを削除しました。",
+    "deletedText": "当社のシステムにあなたに関する情報は残っていません。",
+    "unsubscribed": "MILI からのメール配信は停止されています。", "clues": "最新のヒント"
+  },
+  "journal": {
+    "title": "ジャーナル", "subtitle": "CNC、5軸、ものづくりについてのノート。",
+    "empty": "最初の記事を執筆中です。", "read": "読む", "back": "すべての記事",
+    "published": "{date} 公開", "by": "{author}", "all": "すべて",
+    "categories": {
+      "CNC_TECHNOLOGY": "CNCテクノロジー", "FIVE_AXIS_MACHINING": "5軸加工", "MAKER_PROJECTS": "メイカープロジェクト",
+      "ENGINEERING": "エンジニアリング", "MILI_NEWS": "MILI ニュース"
+    }
+  },
+  "contact": {
+    "title": "お問い合わせ",
+    "text": "ご質問、取材のご依頼、個人データに関するご請求は、こちらからお送りください。",
+    "kind": "件名", "name": "お名前（任意）", "email": "メールアドレス", "message": "メッセージ", "submit": "送信",
+    "sending": "送信中…", "successTitle": "メッセージを送信しました。", "successText": "ご入力いただいたアドレスに返信いたします。",
+    "gdprNote": "データに関するご請求の場合、対応前にアドレスの所有確認をお願いすることがあります。",
+    "kinds": {
+      "GENERAL": "一般的なご質問", "PRESS": "報道関係", "PARTNERSHIP": "パートナーシップ",
+      "GDPR_ACCESS": "個人データ — 開示・写しの請求", "GDPR_DELETION": "個人データ — 削除",
+      "GDPR_RECTIFICATION": "個人データ — 訂正", "GDPR_OBJECTION": "個人データ — 異議"
+    }
+  },
+  "legal": {
+    "updated": "最終更新日：{date}",
+    "englishOnly": "本書は英語で提供されており、英語版が正文です。",
+    "privacyTitle": "プライバシーポリシー", "termsTitle": "利用規約", "cookiesTitle": "クッキーポリシー"
+  },
+  "notFound": { "title": "404", "text": "このページは存在しません。あるいは、まだ存在しません。", "back": "サイトに戻る" },
+  "reveal": {
+    "heroTitle": "MILI 5軸CNC。", "heroSubtitle": "ミステリーは、ここまで。", "cta": "Kickstarter で MILI を支援",
+    "ctaSoon": "Kickstarter のリンクは近日公開", "watch": "フィルムを見る", "gallery": "ギャラリー",
+    "specs": "仕様", "specsNote": "この表の数値はすべて、MILI の創業者によって検証されています。",
+    "kit": "キットの内容", "rewards": "Kickstarter リワード",
+    "rewardsNote": "支援は Kickstarter でのみ受け付けます。送料および適用される税金は、明記のない限り含まれておらず、キャンペーンページに記載されています。",
+    "limited": "限定 {count} 個", "faq": "FAQ", "discover": "マシンを見る",
+    "homeTitle": "ミステリーは、ここまで。", "homeText": "これが MILI 5軸CNC です。"
+  }
+}
