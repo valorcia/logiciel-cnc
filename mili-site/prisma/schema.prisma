@@ -1,0 +1,567 @@
+// MILI — database schema (PostgreSQL).
+// Localised content is stored as JSON maps: { "en": "...", "fr": "..." }.
+// English is the mandatory fallback locale.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Admin authentication (better-auth) ─────────────
+
+enum Role {
+  SUPER_ADMIN
+  MARKETING_ADMIN
+  CONTENT_EDITOR
+  READ_ONLY
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          Role      @default(READ_ONLY)
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ───────────────────────────── Site state ─────────────────────────────────────
+
+enum SiteMode {
+  MYSTERY
+  REVEAL
+}
+
+/// Singleton row (id = 1). The mode switch is the single source of truth for
+/// what the public site is allowed to disclose.
+model SiteSettings {
+  id                 Int       @id @default(1)
+  mode               SiteMode  @default(MYSTERY)
+  launchAt           DateTime?
+  countdownEnabled   Boolean   @default(true)
+  kickstarterUrl     String?
+  plannedPriceCents  Int       @default(149900)
+  showPlannedPrice   Boolean   @default(true)
+  leaderboardEnabled Boolean   @default(false)
+  contactEmail       String?
+  /// Legal identity shown in e-mail footers and legal pages (required by CAN-SPAM / GDPR).
+  legalName          String?
+  postalAddress      String?
+  socialLinks        Json      @default("{}")
+  revealedAt         DateTime?
+  revealedById       String?
+  updatedAt          DateTime  @updatedAt
+}
+
+/// Admin-editable override of a translation key (falls back to messages/*.json).
+model ContentOverride {
+  id        String   @id @default(cuid())
+  key       String
+  locale    String
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@unique([key, locale])
+}
+
+// ───────────────────────────── Prospects ──────────────────────────────────────
+
+enum SubscriberStatus {
+  PENDING
+  CONFIRMED
+  UNSUBSCRIBED
+  BOUNCED
+  COMPLAINED
+}
+
+model Subscriber {
+  id               String           @id @default(cuid())
+  publicId         String           @unique
+  email            String           @unique
+  emailNormalized  String
+  firstName        String?
+  country          String?
+  locale           String           @default("en")
+  status           SubscriberStatus @default(PENDING)
+  marketingConsent Boolean          @default(false)
+
+  confirmTokenHash String?          @unique
+  confirmSentAt    DateTime?
+  confirmedAt      DateTime?
+  /// Bumping this invalidates every personal link previously e-mailed to the subscriber.
+  tokenVersion     Int              @default(1)
+  unsubscribedAt   DateTime?
+
+  referralCode     String           @unique
+  referredById     String?
+  referredBy       Subscriber?      @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals        Subscriber[]     @relation("Referrals")
+  referralFlagged  Boolean          @default(false)
+  referralFlagNote String?
+
+  ipHash           String?
+  userAgent        String?
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  utmTerm          String?
+  utmContent       String?
+  referrerHost     String?
+  landingPath      String?
+
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  consents         ConsentEvent[]
+  emailSends       EmailSend[]
+
+  @@index([status, createdAt])
+  @@index([emailNormalized])
+  @@index([referredById])
+  @@index([country])
+  @@index([utmSource, utmCampaign])
+}
+
+enum ConsentAction {
+  GRANTED
+  CONFIRMED
+  WITHDRAWN
+}
+
+/// Append-only consent history (GDPR accountability).
+model ConsentEvent {
+  id           String        @id @default(cuid())
+  subscriberId String
+  subscriber   Subscriber    @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  purpose      String        @default("marketing_email")
+  action       ConsentAction
+  textVersion  String
+  source       String
+  ipHash       String?
+  userAgent    String?
+  createdAt    DateTime      @default(now())
+
+  @@index([subscriberId, createdAt])
+}
+
+model ReferralReward {
+  id          String  @id @default(cuid())
+  threshold   Int     @unique
+  name        String
+  description Json    @default("{}")
+  active      Boolean @default(true)
+}
+
+// ───────────────────────────── Mystery content ────────────────────────────────
+
+enum PublishStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+model Clue {
+  id        String        @id @default(cuid())
+  number    Int           @unique
+  title     Json
+  content   Json
+  imageId   String?
+  image     MediaAsset?   @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  videoUrl  String?
+  publishAt DateTime?
+  status    PublishStatus @default(DRAFT)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+enum ProofCategory {
+  PRECISION
+  COMPLEX_GEOMETRY
+  FIVE_AXIS
+  SURFACE_FINISH
+  MATERIALS
+}
+
+/// A machining demonstration filmed on the MILI prototype. It can only be
+/// published once a founder has marked it technically validated.
+model ProofVideo {
+  id            String        @id @default(cuid())
+  title         Json
+  description   Json
+  category      ProofCategory
+  videoUrl      String
+  posterId      String?
+  poster        MediaAsset?   @relation(fields: [posterId], references: [id], onDelete: SetNull)
+  durationSec   Int?
+  recordedAt    DateTime?
+  validated     Boolean       @default(false)
+  validatedById String?
+  validatedAt   DateTime?
+  status        PublishStatus @default(DRAFT)
+  sortOrder     Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+enum ChallengeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ChallengeCategory {
+  ART_DESIGN
+  ENGINEERING
+  ROBOTICS
+  AUTOMOTIVE
+  AEROSPACE
+  JEWELRY
+  EDUCATION
+  OTHER
+}
+
+model Challenge {
+  id                String            @id @default(cuid())
+  name              String
+  email             String
+  description       String
+  category          ChallengeCategory
+  locale            String            @default("en")
+  fileKey           String?
+  fileName          String?
+  fileMime          String?
+  fileSize          Int?
+  status            ChallengeStatus   @default(PENDING)
+  /// Public fields are written by the moderator; the raw submission is never shown.
+  publicTitle       String?
+  publicDescription String?
+  displayName       String?
+  voteCount         Int               @default(0)
+  ipHash            String?
+  moderatedById     String?
+  moderatedAt       DateTime?
+  createdAt         DateTime          @default(now())
+  votes             ChallengeVote[]
+
+  @@index([status, voteCount])
+}
+
+model ChallengeVote {
+  id          String    @id @default(cuid())
+  challengeId String
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  voterHash   String
+  ipHash      String
+  createdAt   DateTime  @default(now())
+
+  @@unique([challengeId, voterHash])
+  @@index([challengeId, ipHash])
+}
+
+model Faq {
+  id        String  @id @default(cuid())
+  question  Json
+  answer    Json
+  scope     String  @default("MYSTERY") // MYSTERY | REVEAL | BOTH
+  sortOrder Int     @default(0)
+  published Boolean @default(true)
+}
+
+// ───────────────────────────── Journal ────────────────────────────────────────
+
+enum ArticleCategory {
+  CNC_TECHNOLOGY
+  FIVE_AXIS_MACHINING
+  MAKER_PROJECTS
+  ENGINEERING
+  MILI_NEWS
+}
+
+model Article {
+  id             String          @id @default(cuid())
+  locale         String          @default("en")
+  slug           String
+  title          String
+  excerpt        String
+  body           String
+  category       ArticleCategory
+  coverId        String?
+  cover          MediaAsset?     @relation(fields: [coverId], references: [id], onDelete: SetNull)
+  authorName     String          @default("MILI Team")
+  seoTitle       String?
+  seoDescription String?
+  status         PublishStatus   @default(DRAFT)
+  publishAt      DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([locale, slug])
+  @@index([status, publishAt])
+}
+
+// ───────────────────────────── Reveal-only product content ────────────────────
+
+enum MediaVisibility {
+  PUBLIC
+  REVEAL_ONLY
+}
+
+/// Files live in private storage and are only reachable through /media/[id],
+/// which enforces `visibility` against the site mode on the server.
+model MediaAsset {
+  id          String          @id @default(cuid())
+  storageKey  String          @unique
+  fileName    String
+  mime        String
+  size        Int
+  alt         Json            @default("{}")
+  visibility  MediaVisibility @default(REVEAL_ONLY)
+  placement   String          @default("OTHER") // GALLERY | HERO_VIDEO | HERO_IMAGE | CLUE | POSTER | ARTICLE | OTHER
+  sortOrder   Int             @default(0)
+  uploadedById String?
+  createdAt   DateTime        @default(now())
+  clues       Clue[]
+  proofVideos ProofVideo[]
+  articles    Article[]
+
+  @@index([placement, visibility])
+}
+
+model ProductSection {
+  id        String  @id @default(cuid())
+  key       String  @unique // overview | performance | materials | kit | assembly | software | applications | shipping
+  title     Json
+  body      Json
+  published Boolean @default(false)
+  sortOrder Int     @default(0)
+}
+
+/// A technical figure. Shown only when `validated` by a Super Admin.
+model ProductSpec {
+  id            String    @id @default(cuid())
+  groupName     Json
+  label         Json
+  value         Json
+  validated     Boolean   @default(false)
+  validatedById String?
+  validatedAt   DateTime?
+  sortOrder     Int       @default(0)
+}
+
+model KitItem {
+  id          String @id @default(cuid())
+  name        Json
+  description Json   @default("{}")
+  quantity    String?
+  sortOrder   Int    @default(0)
+}
+
+model PledgeTier {
+  id            String  @id @default(cuid())
+  name          String
+  priceCents    Int
+  description   Json    @default("{}")
+  conditions    Json    @default("{}")
+  quantityLimit Int?
+  active        Boolean @default(false)
+  sortOrder     Int     @default(0)
+}
+
+// ───────────────────────────── E-mail automation ──────────────────────────────
+
+enum EmailSeries {
+  TRANSACTIONAL
+  WELCOME
+  PRELAUNCH
+  LAUNCH
+}
+
+model EmailTemplate {
+  id        String      @id @default(cuid())
+  key       String
+  locale    String      @default("en")
+  series    EmailSeries
+  name      String
+  subject   String
+  preheader String      @default("")
+  body      String
+  updatedAt DateTime    @updatedAt
+
+  @@unique([key, locale])
+}
+
+/// WELCOME steps are relative to the confirmation time, PRELAUNCH and LAUNCH
+/// steps are relative to SiteSettings.launchAt (negative = before launch).
+model EmailStep {
+  id            String      @id @default(cuid())
+  series        EmailSeries
+  templateKey   String
+  offsetMinutes Int
+  active        Boolean     @default(true)
+  sortOrder     Int         @default(0)
+  sends         EmailSend[]
+
+  @@unique([series, templateKey])
+}
+
+enum EmailSendStatus {
+  QUEUED
+  SENT
+  FAILED
+  NOT_SENT_NO_PROVIDER
+}
+
+model EmailSend {
+  id           String          @id @default(cuid())
+  subscriberId String?
+  subscriber   Subscriber?     @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+  stepId       String?
+  step         EmailStep?      @relation(fields: [stepId], references: [id], onDelete: SetNull)
+  templateKey  String
+  locale       String
+  subject      String
+  kind         String          @default("AUTOMATION") // AUTOMATION | TRANSACTIONAL | TEST
+  status       EmailSendStatus
+  providerId   String?         @unique
+  error        String?
+  createdAt    DateTime        @default(now())
+  events       EmailEvent[]
+
+  @@unique([subscriberId, stepId])
+  @@index([templateKey, createdAt])
+}
+
+/// Only events actually reported by the e-mail provider's webhooks.
+model EmailEvent {
+  id         String    @id @default(cuid())
+  sendId     String?
+  send       EmailSend? @relation(fields: [sendId], references: [id], onDelete: SetNull)
+  providerId String
+  type       String
+  occurredAt DateTime
+  createdAt  DateTime  @default(now())
+
+  @@unique([providerId, type, occurredAt])
+  @@index([type, occurredAt])
+}
+
+// ───────────────────────────── Analytics, inbox, audit, limits ────────────────
+
+/// Cookieless audience measurement: one row per anonymous visitor per day.
+/// `visitorHash` is salted with a secret that includes the day, so it cannot be
+/// linked across days or back to an IP address.
+model Visit {
+  id          String   @id @default(cuid())
+  day         DateTime @db.Date
+  visitorHash String
+  path        String
+  locale      String?
+  source      String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  country     String?
+  createdAt   DateTime @default(now())
+
+  @@unique([day, visitorHash])
+  @@index([day])
+  @@index([utmSource, utmCampaign])
+}
+
+model Inquiry {
+  id          String    @id @default(cuid())
+  kind        String // GENERAL | PRESS | PARTNERSHIP | GDPR_ACCESS | GDPR_DELETION | GDPR_RECTIFICATION | GDPR_OBJECTION
+  name        String?
+  email       String
+  message     String
+  locale      String    @default("en")
+  status      String    @default("OPEN") // OPEN | IN_PROGRESS | DONE | REJECTED
+  note        String?
+  handledById String?
+  handledAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([status, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorEmail String?
+  action     String
+  entity     String
+  entityId   String?
+  meta       Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+model RateLimit {
+  key         String   @id
+  count       Int
+  windowStart DateTime
+  expiresAt   DateTime
+
+  @@index([expiresAt])
+}
