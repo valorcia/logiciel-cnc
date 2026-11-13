@@ -4,6 +4,7 @@ import { Card, Field, Flash, fmtDate, LocalizedField, PageTitle, Select, StatusB
 import { requireAdmin } from "@/lib/admin-session";
 import { db } from "@/lib/db";
 import { pickText } from "@/lib/i18n/config";
+import { nowMs } from "@/lib/time";
 import { toInputDateTime } from "../../_lib/form";
 import { deleteClueAction, saveClueAction } from "../../actions/content";
 
@@ -13,7 +14,7 @@ export default async function CluesPage({ searchParams }: { searchParams: Promis
   await requireAdmin("clues.edit");
   const [clues, media] = await Promise.all([db.clue.findMany({ orderBy: { number: "asc" } }), mediaOptions()]);
   const next = (clues.at(-1)?.number ?? 0) + 1;
-  const now = Date.now();
+  const now = nowMs();
   return (
     <>
       <PageTitle title="Indices" text="Un indice « Programmé » s'ouvre tout seul à sa date. Avant cette date, ni son titre ni son contenu ne sont envoyés au navigateur des visiteurs. Un indice doit intriguer sans rien dévoiler : aucune caractéristique technique, aucune image de la machine." />

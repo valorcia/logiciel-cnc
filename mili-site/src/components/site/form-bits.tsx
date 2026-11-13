@@ -30,7 +30,10 @@ export function SpamGuard() {
 /** First-touch UTM parameters, referrer and landing page of this session. */
 export function AttributionFields() {
   const [attr, setAttr] = useState<Record<string, string | undefined>>({});
-  useEffect(() => setAttr(readAttribution()), []);
+  useEffect(() => {
+    // Session storage only exists in the browser: read it after hydration.
+    queueMicrotask(() => setAttr(readAttribution()));
+  }, []);
   return (
     <>
       {Object.entries(attr).map(([key, value]) => (value ? <input key={key} type="hidden" name={key} value={value} /> : null))}

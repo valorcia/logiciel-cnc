@@ -1,3 +1,4 @@
+import { Link } from "@/i18n/navigation";
 import type { Metadata } from "next";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
@@ -45,7 +46,7 @@ export function ContactLine({ id }: { id: LegalIdentity }) {
       {id.name}
       {id.address && <><br />{id.address}</>}
       {id.email && <><br /><a href={`mailto:${id.email}`}>{id.email}</a></>}
-      <br />You can also use the <a href="/contact">contact form</a>.
+      <br />You can also use the <Link href="/contact">contact form</Link>.
     </p>
   );
 }

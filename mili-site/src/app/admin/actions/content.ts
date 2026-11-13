@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { checkUpload, IMAGE_FILE_TYPES } from "@/lib/files";
-import { isLocale, locales } from "@/lib/i18n/config";
+import { isLocale } from "@/lib/i18n/config";
 import { flatMessages } from "@/lib/i18n/messages";
 import { createId } from "@/lib/ids";
 import { can } from "@/lib/permissions";

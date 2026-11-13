@@ -1,3 +1,4 @@
+import { Link } from "@/i18n/navigation";
 import { ContactLine, legalIdentity, legalMetadata, LegalPage } from "@/components/site/legal-page";
 
 export const revalidate = 300;
@@ -58,7 +59,7 @@ export default async function PrivacyPage({ params }: Props) {
       </ul>
 
       <h2>5. Your rights</h2>
-      <p>You can access, correct, export or delete your data, withdraw your consent, and object to processing at any time. Every e-mail contains an unsubscribe link, and your Insider space lets you download or delete your data immediately, without asking us. For anything else, use the <a href="/contact">contact form</a>.</p>
+      <p>You can access, correct, export or delete your data, withdraw your consent, and object to processing at any time. Every e-mail contains an unsubscribe link, and your Insider space lets you download or delete your data immediately, without asking us. For anything else, use the <Link href="/contact">contact form</Link>.</p>
       <p>If you live in the European Economic Area, the United Kingdom or Switzerland, you may lodge a complaint with your data protection authority. California residents have the right to know, delete and correct their personal information and are not discriminated against for exercising these rights; we do not sell or share personal information as defined by the CCPA/CPRA.</p>
 
       <h2>6. Security</h2>

@@ -47,3 +47,6 @@ next-env.d.ts
 /test-results
 /playwright-report
 /.shots
+
+# Fichier d exemple : le seul .env versionné
+!.env.example

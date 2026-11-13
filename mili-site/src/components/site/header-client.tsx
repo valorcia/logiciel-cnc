@@ -34,7 +34,7 @@ export function HeaderClient({ links, cta, labels }: Props) {
     };
   }, [open]);
 
-  const Cta = ({ className }: { className: string }) =>
+  const renderCta = (className: string) =>
     cta.external ? (
       <a href={cta.href} target="_blank" rel="noopener noreferrer" className={className} onClick={() => setOpen(false)}>
         {cta.label}
@@ -69,7 +69,7 @@ export function HeaderClient({ links, cta, labels }: Props) {
             <span className="sr-only">{labels.language}</span>
             <LanguageSelect pathname={pathname} locale={locale} />
           </label>
-          <Cta className="btn btn-primary btn-sm hidden sm:inline-flex" />
+          {renderCta("btn btn-primary btn-sm hidden sm:inline-flex")}
           <button
             type="button"
             className="grid h-10 w-10 place-items-center rounded-full border border-line lg:hidden"
@@ -113,7 +113,7 @@ export function HeaderClient({ links, cta, labels }: Props) {
                 </Link>
               ))}
             </div>
-            <Cta className="btn btn-primary mt-6 w-full" />
+            {renderCta("btn btn-primary mt-6 w-full")}
           </nav>
         </div>
       )}

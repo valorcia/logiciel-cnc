@@ -87,7 +87,9 @@ export function storage(): StorageDriver {
     }
     driver = new S3Storage(e.S3_BUCKET);
   } else {
-    driver = new LocalStorage(path.resolve(process.cwd(), e.STORAGE_LOCAL_DIR));
+    // Serverless hosts have no persistent disk: refuse loudly rather than lose files silently.
+    if (process.env.VERCEL) throw new Error("File storage is not configured: set S3_BUCKET, S3_ENDPOINT, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY.");
+    driver = new LocalStorage(path.resolve(/* turbopackIgnore: true */ process.cwd(), e.STORAGE_LOCAL_DIR));
   }
   return driver;
 }

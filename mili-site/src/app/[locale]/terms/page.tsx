@@ -1,3 +1,4 @@
+import { Link } from "@/i18n/navigation";
 import { ContactLine, legalIdentity, legalMetadata, LegalPage } from "@/components/site/legal-page";
 
 export const revalidate = 300;
@@ -38,7 +39,7 @@ export default async function TermsPage({ params }: Props) {
       <p>The website is provided as is. We do our best to keep it accurate and available but cannot guarantee that it will be free of errors or interruptions. Nothing in these terms limits rights that the law of your country of residence gives you as a consumer.</p>
 
       <h2>9. Changes and contact</h2>
-      <p>We may update these terms; the date at the top of the page shows the current version. Questions can be sent through the <a href="/contact">contact form</a>.</p>
+      <p>We may update these terms; the date at the top of the page shows the current version. Questions can be sent through the <Link href="/contact">contact form</Link>.</p>
     </LegalPage>
   );
 }

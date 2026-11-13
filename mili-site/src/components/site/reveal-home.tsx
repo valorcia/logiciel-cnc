@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import { revealContent } from "@/lib/content";
 import type { SiteSettings } from "@/generated/prisma/client";
+import { nowMs } from "@/lib/time";
 import { Countdown } from "./countdown";
 import { VideoPlayer } from "./video-player";
 
@@ -10,7 +11,7 @@ export async function RevealHome({ locale, settings }: { locale: string; setting
   const t = await getTranslations({ locale, namespace: "reveal" });
   const content = await revealContent(locale);
   if (!content) return null;
-  const upcoming = settings.countdownEnabled && settings.launchAt && settings.launchAt.getTime() > Date.now();
+  const upcoming = settings.countdownEnabled && settings.launchAt && settings.launchAt.getTime() > nowMs();
 
   return (
     <section className="relative isolate flex min-h-svh flex-col justify-center overflow-hidden bg-void pb-16 pt-28">

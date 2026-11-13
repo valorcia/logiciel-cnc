@@ -20,7 +20,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (asset.visibility === "REVEAL_ONLY") {
     const settings = await getSettings();
     if (settings.mode === "REVEAL") {
-      cache = "public, max-age=300";
+      cache = "public, max-age=60";
     } else {
       const admin = await currentAdmin();
       if (!admin || !can(admin.role, "product.edit")) return new Response("Not found", { status: 404 });

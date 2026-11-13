@@ -21,7 +21,10 @@ export function ClueGrid({ items, labels }: Props) {
       seen = raw ? (JSON.parse(raw) as number[]) : null;
     } catch {}
     // First visit: everything currently open is simply "the state of things", not news.
-    if (seen) setFresh(unlocked.filter((n) => !seen.includes(n)));
+    if (seen) {
+      const known = seen;
+      queueMicrotask(() => setFresh(unlocked.filter((n) => !known.includes(n))));
+    }
     try {
       localStorage.setItem(KEY, JSON.stringify(unlocked));
     } catch {}
