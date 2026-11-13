@@ -223,3 +223,33 @@ html.no-js [data-reveal] { opacity: 1; transform: none; }
   .intro-word { display: none; }
   [data-reveal] { opacity: 1; transform: none; }
 }
+
+/* ───────── Back office ───────── */
+.adm { font-size: 0.9375rem; }
+.adm h1 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; }
+.adm h2 { font-size: 1.125rem; font-weight: 600; letter-spacing: -0.01em; }
+.adm .field { min-height: 2.6rem; padding: 0.5rem 0.8rem; font-size: 0.9375rem; }
+.adm textarea.field { min-height: 6rem; line-height: 1.5; }
+.adm .field-label { margin-bottom: 0.35rem; }
+.adm-card { background: var(--color-carbon); border: 1px solid var(--color-line); border-radius: 0.9rem; padding: 1.4rem; }
+.adm-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.adm-table th { text-align: left; font-weight: 500; color: var(--color-smoke); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; padding: 0.6rem 0.9rem 0.6rem 0; border-bottom: 1px solid var(--color-line); white-space: nowrap; }
+.adm-table td { padding: 0.7rem 0.9rem 0.7rem 0; border-bottom: 1px solid var(--color-line); vertical-align: top; }
+.adm-table tr:last-child td { border-bottom: 0; }
+.adm-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.adm-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 2.4rem; padding: 0 1rem; border-radius: 0.55rem; font-size: 0.85rem; font-weight: 600; background: #fff; color: var(--color-void); transition: background 0.15s, opacity 0.15s; cursor: pointer; white-space: nowrap; }
+.adm-btn:hover { background: var(--color-cyan); }
+.adm-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.adm-btn-ghost { background: transparent; color: #fff; border: 1px solid #3a3d46; }
+.adm-btn-ghost:hover { background: rgb(255 255 255 / 0.06); border-color: #fff; }
+.adm-btn-danger { background: transparent; color: #ff8a9a; border: 1px solid rgb(255 93 115 / 0.5); }
+.adm-btn-danger:hover { background: #ff5d73; color: var(--color-void); border-color: #ff5d73; }
+.adm-btn-sm { min-height: 2rem; padding: 0 0.7rem; font-size: 0.78rem; }
+.adm-badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.72rem; font-weight: 600; background: var(--color-graphite); color: var(--color-ash); white-space: nowrap; }
+.adm-badge-ok { background: rgb(0 217 255 / 0.14); color: var(--color-cyan); }
+.adm-badge-warn { background: rgb(255 190 80 / 0.14); color: #ffc46b; }
+.adm-badge-bad { background: rgb(255 93 115 / 0.14); color: #ff8a9a; }
+.adm-nav a { display: block; padding: 0.5rem 0.75rem; border-radius: 0.5rem; color: var(--color-ash); font-size: 0.9rem; }
+.adm-nav a:hover { color: #fff; background: rgb(255 255 255 / 0.05); }
+.adm-nav a[aria-current="page"] { color: #fff; background: var(--color-graphite); }
+.adm details > summary { cursor: pointer; }
