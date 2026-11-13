@@ -35,6 +35,7 @@ export async function sendEmail(message: OutgoingEmail): Promise<SendResult> {
     if (env().NODE_ENV !== "test") {
       console.info(`[email] no provider configured — not sent: "${message.subject}" → ${message.to.replace(/^(.).*@/, "$1***@")}`);
     }
+    if (env().NODE_ENV === "development") await writeDevOutbox(message);
     return { status: "NOT_SENT_NO_PROVIDER" };
   }
   try {
@@ -83,4 +84,21 @@ export async function sendEmailBatch(messages: OutgoingEmail[]): Promise<SendRes
     const reason = err instanceof Error ? err.message : String(err);
     return messages.map(() => ({ status: "FAILED" as const, error: reason }));
   }
+}
+
+/**
+ * Development only: with no provider configured, the message is written to
+ * .storage/outbox/ so the confirmation link can be opened locally. Never runs
+ * in production, where an unsent e-mail stays unsent and is recorded as such.
+ */
+async function writeDevOutbox(message: OutgoingEmail): Promise<void> {
+  try {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const path = await import("node:path");
+    const dir = path.join(process.cwd(), ".storage", "outbox");
+    await mkdir(dir, { recursive: true });
+    const name = `${Date.now()}-${message.to.replace(/[^a-z0-9@.-]/gi, "_")}`;
+    await writeFile(path.join(dir, `${name}.html`), message.html);
+    await writeFile(path.join(dir, `${name}.txt`), `To: ${message.to}\nSubject: ${message.subject}\n\n${message.text}`);
+  } catch {}
 }

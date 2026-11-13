@@ -11,11 +11,11 @@ export function manageSignature(sub: { id: string; tokenVersion: number }): stri
 }
 
 export function insiderToken(sub: Identity): string {
-  return `${sub.publicId}.${manageSignature(sub)}`;
+  return `${sub.publicId}-${manageSignature(sub)}`;
 }
 
 export function parseInsiderToken(token: string): { publicId: string; signature: string } | null {
-  const match = decodeURIComponent(token).match(/^(MILI-[A-Z0-9]{8})\.([A-Za-z0-9_-]{32})$/);
+  const match = decodeURIComponent(token).match(/^(MILI-[A-Z0-9]{8})-([A-Za-z0-9_-]{32})$/);
   return match ? { publicId: match[1], signature: match[2] } : null;
 }
 

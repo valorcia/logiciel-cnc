@@ -130,7 +130,7 @@ describe("GDPR rights", () => {
   it("resolves a personal link and rejects a forged one", async () => {
     const sub = await joinAndConfirm("ana@example.com");
     expect((await subscriberFromToken(insiderToken(sub)))?.id).toBe(sub.id);
-    expect(await subscriberFromToken(`${sub.publicId}.${"A".repeat(32)}`)).toBeNull();
+    expect(await subscriberFromToken(`${sub.publicId}-${"A".repeat(32)}`)).toBeNull();
   });
 
   it("unsubscribes, records the withdrawal and stops marketing", async () => {
