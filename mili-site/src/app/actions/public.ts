@@ -109,7 +109,13 @@ export async function submitChallengeAction(_prev: FormState, formData: FormData
     }
     // The stored name is generated; the original name is kept only as metadata.
     const key = `challenges/${createId()}.${check.file.ext}`;
-    await storage().put(key, bytes, check.file.mime);
+    try {
+      await storage().put(key, bytes, check.file.mime);
+    } catch (err) {
+      // Storage not configured or unreachable: say so instead of crashing, and keep nothing half-saved.
+      console.error("[challenge] file storage failed", err);
+      return { status: "error", code: "storage", fields: { file: "storage" } };
+    }
     file = { key, name: check.safeName, mime: check.file.mime, size: bytes.length };
   }
 

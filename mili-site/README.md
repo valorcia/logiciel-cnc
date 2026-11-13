@@ -80,7 +80,7 @@ Sans clé Resend, aucun e-mail ne part. En développement, chaque message est é
    DATABASE_URL="…adresse de production…" ADMIN_EMAIL="vous@…" ADMIN_PASSWORD="…12 caractères min…" npm run db:seed
    ```
    Ne relancez pas cette commande ensuite : elle recrée les contenus par défaut que vous auriez supprimés.
-7. **Tâche planifiée** — `vercel.json` appelle `/api/cron/emails` toutes les heures (envoi des séquences, durées de conservation). Une fréquence horaire demande l'offre Vercel Pro ; sur l'offre gratuite, remplacer le calendrier par `5 6 * * *` (une fois par jour).
+7. **Tâche planifiée** — `vercel.json` appelle `/api/cron/emails` une fois par jour (envoi des séquences, durées de conservation), ce qui fonctionne sur toutes les offres Vercel. Avec l'offre Pro, passez à un rythme horaire (`5 * * * *`) pour que les e-mails partent à l'heure près.
 8. **Dans le back-office**, avant d'annoncer le site : Paramètres (date de lancement, identité légale, adresse postale, réseaux sociaux), relire les pages légales, envoyer un e-mail de test.
 
 ### Sauvegardes

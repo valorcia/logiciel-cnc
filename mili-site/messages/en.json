@@ -141,7 +141,8 @@
     "description": "Your description is too short.",
     "name": "Enter your name.",
     "message": "Your message is too short.",
-    "alreadyVoted": "You have already voted for this challenge."
+    "alreadyVoted": "You have already voted for this challenge.",
+    "storage": "File upload is temporarily unavailable. Send your idea without a file, or try again later."
   },
   "faq": {
     "title": "QUESTIONS."
